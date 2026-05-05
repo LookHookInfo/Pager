@@ -4,7 +4,7 @@ import { getSupabaseServer } from '@/lib/supabase';
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { address, name, bio, website } = body;
+    const { address, name, bio, website, thirdweb_client_id, avatar_url } = body;
 
     if (!address) {
       return NextResponse.json({ error: 'Address is required' }, { status: 400 });
@@ -23,7 +23,9 @@ export async function POST(req: Request) {
         address: normalizedAddress,
         name, 
         bio, 
-        website
+        website,
+        thirdweb_client_id,
+        avatar_url
       }, { onConflict: 'address' })
       .select()
       .single();

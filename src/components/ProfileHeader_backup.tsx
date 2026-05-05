@@ -1,11 +1,12 @@
-"use client";
+﻿"use client";
 
-import { Globe, Settings2, Save, X, Loader2, Database, ShieldCheck, Camera, Eye, EyeOff, HelpCircle, ExternalLink } from "lucide-react";
+import { Globe, Settings2, Save, X, Loader2, Database, Upload, ShieldCheck, Camera, Eye, EyeOff } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useActiveAccount } from "thirdweb/react";
 import { createThirdwebClient } from "thirdweb";
 import { upload, resolveScheme } from "thirdweb/storage";
+import imageCompression from "browser-image-compression";
 import { supabase } from "@/lib/supabase";
 
 export default function ProfileHeader({ 
@@ -25,7 +26,6 @@ export default function ProfileHeader({
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [showClientId, setShowClientId] = useState(false);
-  const [showTooltip, setShowTooltip] = useState(false);
   
   const isOwner = account?.address?.toLowerCase() === profile.address?.toLowerCase();
 
@@ -68,9 +68,15 @@ export default function ProfileHeader({
     try {
       setIsUploading(true);
       const customClient = createThirdwebClient({ clientId: formData.thirdweb_client_id });
-      const uri = await upload({ client: customClient, files: [file] });
+      
+      const uri = await upload({
+        client: customClient,
+        files: [file],
+      });
+      
       const url = resolveScheme({ client: customClient, uri });
       setFormData({ ...formData, avatar_url: url });
+      
     } catch (error: any) {
       console.error("Avatar upload error:", error);
       alert("Failed to upload avatar to IPFS. Check your Client ID.");
@@ -106,6 +112,7 @@ export default function ProfileHeader({
       await new Promise(r => setTimeout(r, 800));
       router.refresh();
       setIsSaving(false);
+      
     } catch (e: any) {
       console.error("Save Error:", e.message);
       setDisplayData(previousDisplay);
@@ -119,6 +126,7 @@ export default function ProfileHeader({
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-8">
         <div className="space-y-6 flex-1">
           <div className="flex items-center gap-6">
+             {/* Avatar Section */}
              <div className="relative group">
                 <div className="w-24 h-24 bg-white border border-[var(--border-soft)] rounded-full flex items-center justify-center font-black text-3xl text-black shadow-sm overflow-hidden select-none relative">
                     {formData.avatar_url ? (
@@ -148,16 +156,16 @@ export default function ProfileHeader({
                       value={formData.name}
                       onChange={e => setFormData({...formData, name: e.target.value})}
                       placeholder="Your Name"
-                      className="text-3xl font-bold tracking-tight border-b-2 border-black focus:outline-none w-full max-w-md bg-transparent"
+                      className="text-3xl font-black uppercase tracking-tighter border-b-2 border-black focus:outline-none w-full max-w-md bg-transparent"
                       autoFocus
                     />
                   ) : (
                     <div className="flex items-center gap-3">
-                        <h1 className="text-4xl md:text-5xl font-bold tracking-tight leading-none">
+                        <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tighter leading-none">
                             {displayData.name}
                         </h1>
                         {displayData.thirdweb_client_id && (
-                            <div className="flex items-center gap-1 px-2 py-1 bg-green-50 text-green-600 rounded-full border border-green-100" title="Decentralized Storage Verified">
+                            <div className="flex items-center gap-1 px-2 py-1 bg-green-50 text-green-600 rounded-full border border-green-100 animate-in fade-in zoom-in duration-500" title="Decentralized Storage Verified">
                                 <ShieldCheck size={14} />
                                 <span className="text-[8px] font-black uppercase tracking-wider">Decentralized</span>
                             </div>
@@ -197,9 +205,13 @@ export default function ProfileHeader({
                       />
                     </div>
                   )}
-                  <div className="flex items-center gap-1.5"><span className="text-black">{totalArticles}</span> Stories</div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-black">{totalArticles}</span> Stories
+                  </div>
                   <div className="w-1 h-1 bg-gray-200 rounded-full" />
-                  <div className="flex items-center gap-1.5"><span className="text-black">{Math.floor(totalRewards)}</span> $HASH Earned</div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-black">{Math.floor(totalRewards)}</span> $HASH Earned
+                  </div>
                 </div>
              </div>
 
@@ -223,78 +235,48 @@ export default function ProfileHeader({
 
           <div className="max-w-2xl space-y-6">
             {isEditing ? (
-              <div className="space-y-6">
-                <div className="space-y-1">
-                    <textarea 
-                        value={formData.bio}
-                        onChange={e => setFormData({...formData, bio: e.target.value.slice(0, 120)})}
-                        placeholder="Write a short bio..."
-                        className="w-full text-lg typography-body border border-[var(--border-soft)] p-4 focus:border-black focus:outline-none min-h-[100px] resize-none bg-white rounded-sm"
-                    />
-                    <div className="flex justify-end text-[10px] font-bold uppercase tracking-widest text-gray-300">
-                        {formData.bio.length} / 120
-                    </div>
-                </div>
+              <div className="space-y-4">
+                <textarea 
+                    value={formData.bio}
+                    onChange={e => setFormData({...formData, bio: e.target.value})}
+                    placeholder="Write a short bio..."
+                    className="w-full text-lg typography-body border border-[var(--border-soft)] p-4 focus:border-black focus:outline-none min-h-[100px] resize-none bg-white rounded-sm"
+                />
                 
-                <div className="p-6 bg-gray-50 border border-gray-100 rounded-sm space-y-4 relative">
+                {/* Storage Settings Section */}
+                <div className="p-5 bg-gray-50 border border-gray-100 rounded-sm space-y-3">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-black">
                             <Database size={14} /> Storage Settings (Web3)
-                            <div className="relative group/tooltip">
-                                <HelpCircle 
-                                    size={14} 
-                                    className="text-gray-300 cursor-help hover:text-black transition-colors"
-                                    onMouseEnter={() => setShowTooltip(true)}
-                                    onMouseLeave={() => setShowTooltip(false)}
-                                />
-                                {showTooltip && (
-                                    <div className="absolute left-full ml-2 top-0 w-48 p-3 bg-black text-white text-[9px] font-bold uppercase leading-relaxed z-[100] shadow-xl animate-in fade-in slide-in-from-left-1">
-                                        Authorized users can upload custom Avatars and uncompressed IPFS Banners.
-                                    </div>
-                                )}
-                            </div>
                         </div>
                         {formData.thirdweb_client_id && (
-                            <span className="text-[8px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter">Verified</span>
+                            <span className="text-[8px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-bold">ACTIVE</span>
                         )}
                     </div>
-                    
-                    <div className="space-y-3">
-                        <div className="relative">
-                            <input 
-                                type={showClientId ? "text" : "password"}
-                                value={formData.thirdweb_client_id}
-                                onChange={e => setFormData({...formData, thirdweb_client_id: e.target.value})}
-                                placeholder="Thirdweb Client ID"
-                                className="w-full text-xs font-mono p-3 pr-10 border border-gray-200 focus:border-black outline-none bg-white tracking-widest"
-                            />
-                            <button 
-                                type="button"
-                                onClick={() => setShowClientId(!showClientId)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black"
-                            >
-                                {showClientId ? <EyeOff size={14} /> : <Eye size={14} />}
-                            </button>
-                        </div>
-                        
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <a 
-                                href="https://thirdweb.com/dashboard/settings/api-keys" 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-[9px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors"
-                            >
-                                Get FREE Client ID at thirdweb.com <ExternalLink size={10} />
-                            </a>
-                        </div>
-
-                        <div className="mt-4 pt-4 border-t border-gray-100">
-                             <p className="text-[9px] text-gray-400 font-bold uppercase mb-2">How to register:</p>
-                             <div className="border border-gray-200 rounded-sm overflow-hidden bg-white">
-                                <img src="/screen.png" alt="Registration Guide" className="w-full h-auto grayscale hover:grayscale-0 transition-all opacity-50 hover:opacity-100 cursor-zoom-in" />
-                             </div>
-                        </div>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase leading-relaxed">
+                        Incentive: Authorized users can upload custom Avatars and uncompressed IPFS Banners.
+                    </p>
+                    <div className="relative">
+                        <input 
+                            type={showClientId ? "text" : "password"}
+                            value={formData.thirdweb_client_id}
+                            onChange={e => setFormData({...formData, thirdweb_client_id: e.target.value})}
+                            placeholder="Thirdweb Client ID"
+                            className="w-full text-xs font-mono p-3 pr-10 border border-gray-200 focus:border-black outline-none bg-white tracking-widest"
+                        />
+                        <button 
+                            type="button"
+                            onClick={() => setShowClientId(!showClientId)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black transition-colors"
+                        >
+                            {showClientId ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
                     </div>
+                    {!formData.thirdweb_client_id && (
+                        <p className="text-[9px] text-orange-400 font-bold italic">
+                            * Enter Client ID to unlock Avatar and IPFS uploads.
+                        </p>
+                    )}
                 </div>
               </div>
             ) : (
