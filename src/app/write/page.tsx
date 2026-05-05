@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { 
   Image as ImageIcon, Send, X, AlertCircle, 
-  Bold, Italic, Link as LinkIcon, Type, Loader2, Upload 
+  Bold, Italic, Link as LinkIcon, Loader2, Upload 
 } from "lucide-react";
 import Link from "next/link";
 import { client, HASH_TOKEN_ADDRESS } from "@/lib/web3";
@@ -38,45 +38,82 @@ export default function WritePage() {
   const [status, setStatus] = useState<"idle" | "paying" | "publishing" | "success" | "error">("idle");
   const [profile, setProfile] = useState<any>(null);
 
-  // --- Initialization: Fetch Profile from DB ---
+  // Floating Toolbar State
+  const [toolbarPos, setToolbarPos] = useState({ top: 0, left: 0, visible: false });
+
+  // --- Initialization ---
   useEffect(() => {
-    if (account?.address) {
-      fetchProfile();
-    }
+    if (account?.address) fetchProfile();
   }, [account?.address]);
 
+  // Selection Logic for Floating Toolbar
+  useEffect(() => {
+    const handleSelection = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || !editorRef.current?.contains(selection.anchorNode)) {
+        setToolbarPos(prev => ({ ...prev, visible: false }));
+        return;
+      }
+
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+
+      setToolbarPos({
+        top: rect.top + window.scrollY - 50, // Above selection
+        left: rect.left + window.scrollX + rect.width / 2, // Centered
+        visible: true,
+      });
+    };
+
+    document.addEventListener("mouseup", handleSelection);
+    document.addEventListener("keyup", handleSelection);
+    return () => {
+      document.removeEventListener("mouseup", handleSelection);
+      document.removeEventListener("keyup", handleSelection);
+    };
+  }, []);
+
   async function fetchProfile() {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('profiles')
       .select('thirdweb_client_id')
       .eq('address', account?.address?.toLowerCase())
       .maybeSingle();
-    
     if (data) setProfile(data);
   }
 
   const { data: balance } = useWalletBalance({
-    client,
-    chain: base,
-    address: account?.address,
-    tokenAddress: HASH_TOKEN_ADDRESS,
+    client, chain: base, address: account?.address, tokenAddress: HASH_TOKEN_ADDRESS,
   });
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     try {
       setIsUploading(true);
       const clientId = profile?.thirdweb_client_id;
 
       if (clientId) {
-        await handleIPFSUpload(file, clientId);
+        // --- ПУТЬ С ID-КЛЮЧОМ (БЕЗ СЖАТИЯ) ---
+        console.log("🛠 [Upload] ID Key detected, skipping compression...");
+        const customClient = createThirdwebClient({ clientId });
+        const uri = await upload({ client: customClient, files: [file] });
+        setImageUrl(resolveScheme({ client: customClient, uri }));
       } else {
-        await uploadToSupabase(file);
+        // --- СТАНДАРТНЫЙ ПУТЬ (СО СЖАТИЕМ) ---
+        console.log("🛠 [Upload] No ID Key, applying compression...");
+        if (!file.type.startsWith('image/')) throw new Error("Images only.");
+        const compressedBlob = await imageCompression(file, COMPRESSION_OPTIONS);
+        const fileToUpload = new File([compressedBlob], file.name, { type: file.type });
+        
+        const fileName = `${Math.random().toString(36).slice(2)}-${Date.now()}.${file.name.split('.').pop()}`;
+        const { error } = await supabase.storage.from('banners').upload(`banners/${fileName}`, fileToUpload);
+        if (error) throw error;
+        const { data: { publicUrl } } = supabase.storage.from('banners').getPublicUrl(`banners/${fileName}`);
+        setImageUrl(publicUrl);
       }
     } catch (error: any) {
-      console.error("Upload error:", error);
+      console.error("❌ [Upload] Error:", error);
       alert(error.message || "Upload failed");
     } finally {
       setIsUploading(false);
@@ -84,39 +121,11 @@ export default function WritePage() {
     }
   };
 
-  const handleIPFSUpload = async (file: File, clientId: string) => {
-    try {
-      const customClient = createThirdwebClient({ clientId });
-      const uri = await upload({ client: customClient, files: [file] });
-      setImageUrl(resolveScheme({ client: customClient, uri }));
-    } catch (err: any) {
-      if (err.message?.includes("401") || err.message?.includes("Unauthorized")) {
-        if (confirm("Your Thirdweb Client ID is unauthorized. Use Supabase instead?")) {
-          await uploadToSupabase(file);
-        }
-      } else throw err;
-    }
-  };
-
-  const uploadToSupabase = async (file: File) => {
-    if (!file.type.startsWith('image/')) throw new Error("Only images are allowed for Supabase storage.");
-    
-    const compressedFile = await imageCompression(file, COMPRESSION_OPTIONS);
-    const fileName = `${Math.random().toString(36).slice(2)}-${Date.now()}.${file.name.split('.').pop()}`;
-    const filePath = `banners/${fileName}`;
-
-    const { error } = await supabase.storage.from('banners').upload(filePath, compressedFile);
-    if (error) throw error;
-
-    const { data: { publicUrl } } = supabase.storage.from('banners').getPublicUrl(filePath);
-    setImageUrl(publicUrl);
-  };
-
   const handlePublish = async () => {
     const content = editorRef.current?.innerHTML || "";
-    if (!account) return alert("Please connect wallet");
-    if (!title || !content || content === "<br>") return alert("Title and Content are required");
-    if (parseFloat(balance?.displayValue || "0") < 10) return alert("Insufficient $HASH balance.");
+    if (!account) return alert("Connect wallet");
+    if (!title || !content || content === "<br>") return alert("Title and Content required");
+    if (parseFloat(balance?.displayValue || "0") < 10) return alert("Insufficient $HASH");
 
     setStatus("paying");
     const contract = getContract({ client, chain: base, address: HASH_TOKEN_ADDRESS });
@@ -129,19 +138,36 @@ export default function WritePage() {
     sendTransaction(transaction, {
       onSuccess: async () => {
         setStatus("publishing");
-        const { error } = await supabase.from('articles').insert([{
-          title, content, image_url: imageUrl, 
-          author_address: account.address.toLowerCase(),
-          lang: "ru", likes: 0, created_at: new Date().toISOString()
-        }]);
+        
+        try {
+          const res = await fetch("/api/article/create", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title,
+              content,
+              image_url: imageUrl || null,
+              author_address: account.address.toLowerCase(),
+              lang: "ru"
+            })
+          });
 
-        if (error) setStatus("error");
-        else {
+          if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.error || "Failed to create article");
+          }
+
           setStatus("success");
           setTimeout(() => router.push("/"), 1500);
+        } catch (err: any) {
+          console.error("❌ [Publish] API Error:", err.message);
+          setStatus("error");
         }
       },
-      onError: () => setStatus("error")
+      onError: (err) => {
+        console.error("❌ [Publish] Payment Error:", err);
+        setStatus("error");
+      }
     });
   };
 
@@ -151,7 +177,7 @@ export default function WritePage() {
   };
 
   const addLink = () => {
-    const url = prompt("Enter URL:");
+    const url = prompt("URL:");
     if (url) {
       const selection = window.getSelection();
       const domain = url.replace(/https?:\/\/(www\.)?/, '').split('/')[0];
@@ -179,13 +205,11 @@ export default function WritePage() {
           <div className="h-4 w-[1px] bg-gray-200 hidden md:block" />
           <span className="text-[10px] text-gray-400 uppercase font-bold tracking-widest hidden md:block">Draft</span>
         </div>
-        
         <div className="flex items-center gap-6">
           <div className="hidden sm:flex flex-col items-end mr-4">
             <span className="text-[9px] text-gray-400 uppercase font-bold">Balance</span>
             <span className="text-xs font-bold">{Math.floor(parseFloat(balance?.displayValue || "0"))} $HASH</span>
           </div>
-          
           <button 
             onClick={handlePublish}
             disabled={status !== "idle" || !title}
@@ -196,22 +220,28 @@ export default function WritePage() {
         </div>
       </nav>
 
-      <div className="sticky top-16 bg-white/80 backdrop-blur-md border-b border-[var(--border-soft)] z-40 py-2">
-        <div className="max-w-3xl mx-auto px-6 flex items-center gap-2 text-[var(--text-secondary)]">
-          <ToolbarButton icon={<Bold size={18} />} onClick={() => execAction('bold')} title="Bold" />
-          <ToolbarButton icon={<Italic size={18} />} onClick={() => execAction('italic')} title="Italic" />
-          <ToolbarButton icon={<LinkIcon size={18} />} onClick={addLink} title="Link" />
-          <div className="h-4 w-[1px] bg-gray-200 mx-2" />
-          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-gray-300">
-            <Type size={14} /> Visual Editor
-          </div>
+      {/* Floating Bubble Toolbar */}
+      {toolbarPos.visible && (
+        <div 
+          className="fixed z-[100] flex items-center bg-black text-white rounded-full px-2 py-1 shadow-xl animate-in fade-in zoom-in-95 duration-200"
+          style={{ 
+            top: toolbarPos.top, 
+            left: toolbarPos.left, 
+            transform: "translateX(-50%)" 
+          }}
+        >
+          <ToolbarButton icon={<Bold size={16} />} onClick={() => execAction('bold')} title="Bold" />
+          <ToolbarButton icon={<Italic size={16} />} onClick={() => execAction('italic')} title="Italic" />
+          <ToolbarButton icon={<LinkIcon size={16} />} onClick={addLink} title="Link" />
+          <div className="w-[1px] h-4 bg-white/20 mx-1" />
+          <div className="px-2 text-[8px] font-black uppercase tracking-widest opacity-50">Editor</div>
         </div>
-      </div>
+      )}
 
       <div className="max-w-3xl mx-auto px-6 pt-12 space-y-8">
         {status === "error" && (
           <div className="p-4 bg-red-50 border border-red-100 text-red-600 rounded-sm flex items-center gap-3 text-sm">
-            <AlertCircle size={18} /> Error publishing. Please try again.
+            <AlertCircle size={18} /> Error publishing. Please check console for details.
           </div>
         )}
 
@@ -235,7 +265,6 @@ export default function WritePage() {
                 className="w-full text-xs font-medium border-none focus:outline-none bg-transparent"
               />
             </div>
-            
             <button 
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
@@ -263,7 +292,7 @@ export default function WritePage() {
       </div>
 
       {status === "paying" && (
-        <div className="fixed inset-0 bg-white/90 backdrop-blur-md z-[100] flex items-center justify-center">
+        <div className="fixed inset-0 bg-white/90 backdrop-blur-md z-[100] flex items-center justify-center animate-in fade-in">
           <div className="text-center space-y-6">
             <div className="w-16 h-16 border-4 border-black border-t-transparent rounded-full animate-spin mx-auto" />
             <h2 className="text-2xl font-black uppercase">Confirm Payment</h2>
@@ -277,7 +306,7 @@ export default function WritePage() {
 
 function ToolbarButton({ icon, onClick, title }: { icon: React.ReactNode, onClick: () => void, title: string }) {
   return (
-    <button onClick={onClick} className="p-2 hover:bg-gray-100 rounded-sm hover:text-black transition-colors" title={title}>
+    <button onClick={onClick} className="p-2 hover:bg-white/10 rounded-full transition-colors" title={title}>
       {icon}
     </button>
   );

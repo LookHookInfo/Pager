@@ -1,6 +1,6 @@
 "use client";
 
-import { Globe, Settings2, Save, X, Loader2, Database, ShieldCheck, Camera, Eye, EyeOff, HelpCircle, ExternalLink } from "lucide-react";
+import { Globe, Settings2, Save, X, Loader2, Database, ShieldCheck, Camera, Eye, EyeOff, HelpCircle, ExternalLink, CheckCircle2 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useActiveAccount } from "thirdweb/react";
@@ -236,20 +236,59 @@ export default function ProfileHeader({
                     </div>
                 </div>
                 
+                {/* Storage Settings Section */}
                 <div className="p-6 bg-gray-50 border border-gray-100 rounded-sm space-y-4 relative">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-black">
                             <Database size={14} /> Storage Settings (Web3)
-                            <div className="relative group/tooltip">
-                                <HelpCircle 
-                                    size={14} 
-                                    className="text-gray-300 cursor-help hover:text-black transition-colors"
+                            <div className="relative inline-block">
+                                <button
+                                    type="button"
                                     onMouseEnter={() => setShowTooltip(true)}
                                     onMouseLeave={() => setShowTooltip(false)}
-                                />
+                                    onClick={() => setShowTooltip(!showTooltip)}
+                                    className="text-gray-300 hover:text-black transition-colors"
+                                >
+                                    <HelpCircle size={14} />
+                                </button>
+                                
                                 {showTooltip && (
-                                    <div className="absolute left-full ml-2 top-0 w-48 p-3 bg-black text-white text-[9px] font-bold uppercase leading-relaxed z-[100] shadow-xl animate-in fade-in slide-in-from-left-1">
-                                        Authorized users can upload custom Avatars and uncompressed IPFS Banners.
+                                    <div className="absolute left-0 bottom-full mb-4 w-[320px] bg-white border border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] z-[100] animate-in fade-in slide-in-from-bottom-2 duration-300 overflow-hidden">
+                                        <div className="p-5 space-y-4">
+                                            <div className="space-y-1">
+                                                <h4 className="text-[11px] font-black uppercase tracking-tighter">Why authorize?</h4>
+                                                <div className="h-[2px] w-8 bg-black" />
+                                            </div>
+                                            
+                                            <div className="space-y-3">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="mt-0.5"><CheckCircle2 size={12} className="text-green-600" /></div>
+                                                    <div>
+                                                        <p className="text-[10px] font-black uppercase leading-none mb-1 text-black">IPFS Avatars</p>
+                                                        <p className="text-[9px] text-gray-500 font-bold uppercase leading-relaxed">Upload and store your profile picture on the decentralized web.</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-start gap-3">
+                                                    <div className="mt-0.5"><CheckCircle2 size={12} className="text-green-600" /></div>
+                                                    <div>
+                                                        <p className="text-[10px] font-black uppercase leading-none mb-1 text-black">No Compression</p>
+                                                        <p className="text-[9px] text-gray-500 font-bold uppercase leading-relaxed">Your story banners will be saved in original quality without size limits.</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="pt-4 border-t border-gray-50 space-y-3">
+                                                <div className="space-y-2">
+                                                    <p className="text-[9px] text-gray-400 font-bold uppercase italic">Quick Setup Guide:</p>
+                                                    <div className="border border-gray-100 rounded-sm overflow-hidden shadow-sm grayscale hover:grayscale-0 transition-all duration-500">
+                                                        <img src="/screen.png" alt="Thirdweb Guide" className="w-full h-auto" />
+                                                    </div>
+                                                </div>
+                                                <p className="text-[9px] text-gray-500 font-bold uppercase leading-relaxed">
+                                                    Go to thirdweb.com, create an <span className="text-black underline">API Key</span>, and copy your <span className="text-black underline">Client ID</span>.
+                                                </p>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -277,22 +316,15 @@ export default function ProfileHeader({
                             </button>
                         </div>
                         
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex items-center justify-between">
                             <a 
                                 href="https://thirdweb.com/dashboard/settings/api-keys" 
                                 target="_blank" 
                                 rel="noopener noreferrer"
-                                className="text-[9px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors"
+                                className="text-[9px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors group"
                             >
-                                Get FREE Client ID at thirdweb.com <ExternalLink size={10} />
+                                Get FREE Client ID <ExternalLink size={10} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                             </a>
-                        </div>
-
-                        <div className="mt-4 pt-4 border-t border-gray-100">
-                             <p className="text-[9px] text-gray-400 font-bold uppercase mb-2">How to register:</p>
-                             <div className="border border-gray-200 rounded-sm overflow-hidden bg-white">
-                                <img src="/screen.png" alt="Registration Guide" className="w-full h-auto grayscale hover:grayscale-0 transition-all opacity-50 hover:opacity-100 cursor-zoom-in" />
-                             </div>
                         </div>
                     </div>
                 </div>
