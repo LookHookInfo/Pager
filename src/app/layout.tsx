@@ -1,0 +1,63 @@
+import type { Metadata } from "next";
+import { Inter, Source_Serif_4 } from "next/font/google";
+import "./globals.css";
+import { ThirdwebProvider } from "thirdweb/react";
+
+import AccountSync from "@/components/AccountSync";
+import Footer from "@/components/Footer";
+
+const inter = Inter({ subsets: ["latin", "cyrillic"], variable: "--font-sans" });
+const serif = Source_Serif_4({ subsets: ["latin", "cyrillic"], variable: "--font-serif" });
+
+export const metadata: Metadata = {
+  title: "Pager - Web3 Media",
+  description: "A minimalist decentralized news platform built on Base. Curated by AI, powered by $HASH.",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://pager.lookhook.info"),
+  icons: {
+    icon: "/favicon.png",
+  },
+  openGraph: {
+    title: "Pager - Web3 Media",
+    description: "Minimalist news platform for $HASH holders on Base.",
+    url: "/",
+    siteName: "Pager",
+    images: [
+      {
+        url: "/logo-pager.png",
+        width: 1200,
+        height: 630,
+        alt: "Pager Web3 Media",
+      },
+    ],
+    locale: "ru_RU",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Pager - Web3 Media",
+    description: "Minimalist news platform for $HASH holders on Base.",
+    images: ["/logo-pager.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="ru">
+      <body className={`${inter.variable} ${serif.variable} font-sans selection:bg-black selection:text-white`}>
+        <ThirdwebProvider>
+          <AccountSync />
+          {children}
+          <Footer />
+        </ThirdwebProvider>
+      </body>
+    </html>
+  );
+}
