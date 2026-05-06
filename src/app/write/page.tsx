@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { getContract, prepareContractCall, toWei, createThirdwebClient } from "thirdweb";
 import { useActiveAccount, useSendTransaction, useWalletBalance } from "thirdweb/react";
 import { base } from "thirdweb/chains";
@@ -24,6 +24,12 @@ const COMPRESSION_OPTIONS = {
   useWebWorker: true,
 };
 
+interface ToolbarPos {
+  top: number;
+  left: number;
+  visible: boolean;
+}
+
 export default function WritePage() {
   const account = useActiveAccount();
   const router = useRouter();
@@ -38,15 +44,28 @@ export default function WritePage() {
   const [status, setStatus] = useState<"idle" | "paying" | "publishing" | "success" | "error">("idle");
   const [profile, setProfile] = useState<any>(null);
 
-  // Floating Toolbar State
-  const [toolbarPos, setToolbarPos] = useState({ top: 0, left: 0, visible: false });
+  const [toolbarPos, setToolbarPos] = useState<ToolbarPos>({ top: 0, left: 0, visible: false });
 
-  // --- Initialization ---
-  useEffect(() => {
-    if (account?.address) fetchProfile();
+  // --- Fetch Profile ---
+  const fetchProfile = useCallback(async () => {
+    if (!account?.address) return;
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('thirdweb_client_id')
+        .eq('address', account.address.toLowerCase())
+        .maybeSingle();
+      if (data) setProfile(data);
+    } catch (err) {
+      console.error("❌ [WritePage] Profile fetch error:", err);
+    }
   }, [account?.address]);
 
-  // Selection Logic for Floating Toolbar
+  useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
+
+  // --- Floating Toolbar Selection Logic ---
   useEffect(() => {
     const handleSelection = () => {
       const selection = window.getSelection();
@@ -59,8 +78,8 @@ export default function WritePage() {
       const rect = range.getBoundingClientRect();
 
       setToolbarPos({
-        top: rect.top + window.scrollY - 50, // Above selection
-        left: rect.left + window.scrollX + rect.width / 2, // Centered
+        top: rect.top + window.scrollY - 50,
+        left: rect.left + window.scrollX + rect.width / 2,
         visible: true,
       });
     };
@@ -73,42 +92,38 @@ export default function WritePage() {
     };
   }, []);
 
-  async function fetchProfile() {
-    const { data } = await supabase
-      .from('profiles')
-      .select('thirdweb_client_id')
-      .eq('address', account?.address?.toLowerCase())
-      .maybeSingle();
-    if (data) setProfile(data);
-  }
-
   const { data: balance } = useWalletBalance({
-    client, chain: base, address: account?.address, tokenAddress: HASH_TOKEN_ADDRESS,
+    client, 
+    chain: base, 
+    address: account?.address, 
+    tokenAddress: HASH_TOKEN_ADDRESS,
   });
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     try {
       setIsUploading(true);
       const clientId = profile?.thirdweb_client_id;
 
       if (clientId) {
-        // --- ПУТЬ С ID-КЛЮЧОМ (БЕЗ СЖАТИЯ) ---
-        console.log("🛠 [Upload] ID Key detected, skipping compression...");
+        console.log("🛠 [Upload] ID Key detected, using direct IPFS upload.");
         const customClient = createThirdwebClient({ clientId });
         const uri = await upload({ client: customClient, files: [file] });
         setImageUrl(resolveScheme({ client: customClient, uri }));
       } else {
-        // --- СТАНДАРТНЫЙ ПУТЬ (СО СЖАТИЕМ) ---
-        console.log("🛠 [Upload] No ID Key, applying compression...");
+        console.log("🛠 [Upload] No ID Key, applying compression and Supabase upload.");
         if (!file.type.startsWith('image/')) throw new Error("Images only.");
+        
         const compressedBlob = await imageCompression(file, COMPRESSION_OPTIONS);
         const fileToUpload = new File([compressedBlob], file.name, { type: file.type });
         
         const fileName = `${Math.random().toString(36).slice(2)}-${Date.now()}.${file.name.split('.').pop()}`;
-        const { error } = await supabase.storage.from('banners').upload(`banners/${fileName}`, fileToUpload);
-        if (error) throw error;
+        const { error: uploadError } = await supabase.storage.from('banners').upload(`banners/${fileName}`, fileToUpload);
+        
+        if (uploadError) throw uploadError;
+        
         const { data: { publicUrl } } = supabase.storage.from('banners').getPublicUrl(`banners/${fileName}`);
         setImageUrl(publicUrl);
       }
@@ -125,50 +140,58 @@ export default function WritePage() {
     const content = editorRef.current?.innerHTML || "";
     if (!account) return alert("Connect wallet");
     if (!title || !content || content === "<br>") return alert("Title and Content required");
-    if (parseFloat(balance?.displayValue || "0") < 10) return alert("Insufficient $HASH");
+    
+    const currentBalance = parseFloat(balance?.displayValue || "0");
+    if (currentBalance < parseFloat(POST_PRICE)) return alert(`Insufficient $HASH. Need ${POST_PRICE}.`);
 
     setStatus("paying");
-    const contract = getContract({ client, chain: base, address: HASH_TOKEN_ADDRESS });
-    const transaction = prepareContractCall({
-      contract,
-      method: "function transfer(address to, uint256 value)",
-      params: [PROJECT_WALLET, BigInt(toWei(POST_PRICE))],
-    });
+    
+    try {
+        const contract = getContract({ client, chain: base, address: HASH_TOKEN_ADDRESS });
+        const transaction = prepareContractCall({
+          contract,
+          method: "function transfer(address to, uint256 value)",
+          params: [PROJECT_WALLET, BigInt(toWei(POST_PRICE))],
+        });
 
-    sendTransaction(transaction, {
-      onSuccess: async () => {
-        setStatus("publishing");
-        
-        try {
-          const res = await fetch("/api/article/create", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              title,
-              content,
-              image_url: imageUrl || null,
-              author_address: account.address.toLowerCase(),
-              lang: "ru"
-            })
-          });
+        sendTransaction(transaction, {
+          onSuccess: async () => {
+            setStatus("publishing");
+            
+            try {
+              const res = await fetch("/api/article/create", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  title,
+                  content,
+                  image_url: imageUrl || null,
+                  author_address: account.address.toLowerCase(),
+                  lang: "ru"
+                })
+              });
 
-          if (!res.ok) {
-            const errorData = await res.json();
-            throw new Error(errorData.error || "Failed to create article");
+              if (!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.error || "Failed to create article");
+              }
+
+              setStatus("success");
+              setTimeout(() => router.push("/"), 1500);
+            } catch (err: any) {
+              console.error("❌ [Publish] API Error:", err.message);
+              setStatus("error");
+            }
+          },
+          onError: (err) => {
+            console.error("❌ [Publish] Payment Error:", err);
+            setStatus("error");
           }
-
-          setStatus("success");
-          setTimeout(() => router.push("/"), 1500);
-        } catch (err: any) {
-          console.error("❌ [Publish] API Error:", err.message);
-          setStatus("error");
-        }
-      },
-      onError: (err) => {
-        console.error("❌ [Publish] Payment Error:", err);
+        });
+    } catch (err) {
+        console.error("❌ [Publish] Setup Error:", err);
         setStatus("error");
-      }
-    });
+    }
   };
 
   const execAction = (command: string, value?: string) => {
@@ -178,12 +201,12 @@ export default function WritePage() {
 
   const addLink = () => {
     const url = prompt("URL:");
-    if (url) {
-      const selection = window.getSelection();
-      const domain = url.replace(/https?:\/\/(www\.)?/, '').split('/')[0];
-      const linkHtml = `<a href="${url}" target="_blank" rel="noopener" class="text-black underline font-bold">${selection?.toString() || domain}</a>`;
-      document.execCommand("insertHTML", false, linkHtml);
-    }
+    if (!url) return;
+    
+    const selection = window.getSelection();
+    const domain = url.replace(/https?:\/\/(www\.)?/, '').split('/')[0];
+    const linkHtml = `<a href="${url}" target="_blank" rel="noopener" class="text-black underline font-bold">${selection?.toString() || domain}</a>`;
+    document.execCommand("insertHTML", false, linkHtml);
   };
 
   if (!account) {
