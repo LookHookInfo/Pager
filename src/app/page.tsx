@@ -34,8 +34,8 @@ export default async function Home() {
 
       <section className="max-w-7xl mx-auto px-4 md:px-10 pt-20 pb-16 border-b border-[var(--border-soft)]">
         <div className="max-w-2xl">
-          <h1 className="text-5xl md:text-7xl typography-title mb-6">Keep your curiosity <span className="text-[var(--text-secondary)]">fed.</span></h1>
-          <p className="text-xl text-[var(--text-secondary)] leading-relaxed">Deep dives into the Base ecosystem and Web3 analytics. Curated by the community, powered by $HASH.</p>
+          <h1 className="text-5xl md:text-7xl typography-title mb-6">Post your <span className="text-[var(--text-secondary)]">opinion.</span></h1>
+          <p className="text-xl text-[var(--text-secondary)] leading-relaxed">Web3 media community of $HASH on the Base network.</p>
         </div>
       </section>
 

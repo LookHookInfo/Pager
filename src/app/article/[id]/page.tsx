@@ -1,8 +1,12 @@
 import { notFound } from 'next/navigation';
-import { ArrowLeft, ExternalLink, Share2, Bookmark } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import Link from 'next/link';
+import { Metadata } from 'next';
 import { supabase } from '@/lib/supabase';
 import LikeButton from '@/components/LikeButton';
+import Navbar from '@/components/Navbar';
+import BackButton from '@/components/BackButton';
+import PostActions from '@/components/PostActions';
 import { getLanguageIcon } from '@/lib/lang';
 
 export const dynamic = 'force-dynamic';
@@ -19,6 +23,49 @@ async function getArticle(id: string) {
   return data;
 }
 
+export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
+  const article = await getArticle(params.id);
+  
+  if (!article) return {};
+
+  const description = article.content.replace(/<[^>]*>?/gm, '').slice(0, 160) + '...';
+  // Удаляем лишний слеш в конце, если он есть в ENV
+  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info').replace(/\/$/, '');
+  
+  // Убеждаемся, что URL картинки абсолютный
+  let imageUrl = article.image_url || `${baseUrl}/logo-pager.png`;
+  if (imageUrl.startsWith('/')) {
+    imageUrl = `${baseUrl}${imageUrl}`;
+  }
+
+  return {
+    title: article.title,
+    description: description,
+    openGraph: {
+      title: article.title,
+      description: description,
+      url: `${baseUrl}/article/${article.id}`,
+      siteName: 'Pager',
+      images: [
+        {
+          url: imageUrl,
+          width: 1200,
+          height: 630,
+          alt: article.title,
+        },
+      ],
+      locale: 'ru_RU',
+      type: 'article',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: article.title,
+      description: description,
+      images: [imageUrl],
+    },
+  };
+}
+
 export default async function ArticlePage({ params }: { params: { id: string } }) {
   const article = await getArticle(params.id);
 
@@ -27,34 +74,26 @@ export default async function ArticlePage({ params }: { params: { id: string } }
   }
 
   return (
-    <main className="min-h-screen pb-24">
-      <nav className="sticky top-0 z-50 bg-[var(--bg-main)]/90 backdrop-blur-sm border-b border-[var(--border-soft)]">
-        <div className="max-w-7xl mx-auto px-4 md:px-10 h-16 flex justify-between items-center">
-          <Link href="/" className="flex items-center gap-2 text-sm font-medium hover:text-[var(--text-secondary)] transition-colors">
-            <ArrowLeft size={18} />
-            <span>Back</span>
-          </Link>
-          <div className="flex items-center gap-4 text-[var(--text-secondary)]">
-            <button className="hover:text-black transition-colors"><Bookmark size={18} /></button>
-            <button className="hover:text-black transition-colors"><Share2 size={18} /></button>
-          </div>
-        </div>
-      </nav>
+    <main className="min-h-screen bg-[var(--bg-main)]">
+      <Navbar />
 
-      <article className="max-w-3xl mx-auto px-6 pt-16 md:pt-24">
+      <article className="max-w-3xl mx-auto px-6 pt-16 md:pt-24 pb-24">
         <header className="mb-12">
-          <div className="flex items-center gap-3 mb-8 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-secondary)]">
-            <span className="text-sm font-serif italic text-black leading-none">
-              {getLanguageIcon(article.content, article.lang)}
-            </span>
-            <span className="text-[var(--border-soft)]">/</span>
-            <span>
-              {new Date(article.created_at).toLocaleDateString("en-US", {
-                month: "short",
-                day: "2-digit",
-                year: "numeric"
-              })}
-            </span>
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-secondary)]">
+              <span className="text-sm font-serif italic text-black leading-none">
+                {getLanguageIcon(article.content, article.lang)}
+              </span>
+              <span className="text-[var(--border-soft)]">/</span>
+              <span>
+                {new Date(article.created_at).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "2-digit",
+                  year: "numeric"
+                })}
+              </span>
+            </div>
+            <BackButton />
           </div>
           
           <h1 className="text-4xl md:text-6xl typography-title mb-10 leading-[1.05]">
@@ -90,35 +129,43 @@ export default async function ArticlePage({ params }: { params: { id: string } }
           </div>
         )}
 
-        {/* Рендеринг HTML контента с использованием prose */}
         <div 
           className="prose prose-xl prose-stone max-w-none typography-body text-[var(--text-primary)] mb-20"
           dangerouslySetInnerHTML={{ __html: article.content }}
         />
 
-        <footer className="pt-12 border-t border-[var(--border-soft)] flex flex-col gap-12">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-            <div className="flex items-center gap-6">
-               <LikeButton 
-                 articleId={article.id} 
-                 initialLikes={article.likes || 0} 
-                 authorAddress={article.author_address} 
-               />
-               {article.source_url && (
-                 <a 
-                   href={article.source_url} 
-                   target="_blank" 
-                   rel="noopener noreferrer"
-                   className="btn-secondary rounded-none px-8 py-3 text-xs"
-                 >
-                   Original Source <ExternalLink size={14} />
-                 </a>
-               )}
+        <footer className="pt-12 border-t border-[var(--border-soft)]">
+          <div className="flex flex-col gap-12">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+              <div className="flex items-center gap-8">
+                 <LikeButton 
+                   articleId={article.id} 
+                   initialLikes={article.likes || 0} 
+                   authorAddress={article.author_address} 
+                 />
+                 <PostActions title={article.title} id={article.id} />
+              </div>
+
+              {article.source_url && (
+                <a 
+                  href={article.source_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-xs font-bold uppercase tracking-widest text-[var(--text-secondary)] hover:text-black transition-colors flex items-center gap-2"
+                >
+                  Source <ExternalLink size={14} />
+                </a>
+              )}
             </div>
             
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] text-[var(--text-secondary)] uppercase font-bold tracking-[0.2em] mb-1">Curated by</span>
-              <span className="font-bold text-lg tracking-tighter uppercase">Pager</span>
+            <div className="flex items-center justify-between border-t border-[var(--border-soft)] pt-8">
+              <div className="flex flex-col">
+                <span className="text-[10px] text-[var(--text-secondary)] uppercase font-bold tracking-[0.2em] mb-1">Curated by</span>
+                <span className="font-bold text-lg tracking-tighter uppercase leading-none">Pager AI</span>
+              </div>
+              <Link href="/" className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-secondary)] hover:text-black transition-colors">
+                Back to Feed
+              </Link>
             </div>
           </div>
         </footer>

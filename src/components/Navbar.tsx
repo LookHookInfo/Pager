@@ -1,11 +1,11 @@
 "use client";
 
-import { ConnectButton, useActiveAccount, useWalletBalance } from "thirdweb/react";
+import { ConnectButton, useActiveAccount, useWalletBalance, useActiveWallet, useDisconnect } from "thirdweb/react";
 import { createWallet, inAppWallet } from "thirdweb/wallets";
-import { useState } from "react";
 import { base } from "thirdweb/chains";
-import { Copy, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { LogOut } from "lucide-react";
 import { client, HASH_TOKEN_ADDRESS } from "@/lib/web3";
 
 const wallets = [
@@ -23,7 +23,9 @@ const wallets = [
 
 export default function Navbar() {
   const account = useActiveAccount();
-  const [copied, setCopied] = useState(false);
+  const wallet = useActiveWallet();
+  const { disconnect } = useDisconnect();
+  const pathname = usePathname();
 
   const { data: balance, isLoading: isBalanceLoading } = useWalletBalance({
     client,
@@ -32,13 +34,13 @@ export default function Navbar() {
     tokenAddress: HASH_TOKEN_ADDRESS,
   });
 
-  const copyAddress = () => {
-    if (account?.address) {
-      navigator.clipboard.writeText(account.address);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
+  const { data: ethBalance } = useWalletBalance({
+    client,
+    chain: base,
+    address: account?.address,
+  });
+
+  const isMyTapePage = account && pathname === `/tape/${account.address}`;
 
   return (
     <nav className="border-b border-[var(--border-soft)] bg-[var(--bg-main)] sticky top-0 z-50 h-16 flex items-center">
@@ -53,29 +55,45 @@ export default function Navbar() {
             <div className="hidden md:flex items-center gap-6">
               <Link href="/write" className="text-sm font-medium text-[var(--text-secondary)] hover:text-black transition-colors">Write</Link>
               <div className="h-4 w-[1px] bg-[var(--border-soft)]" />
-              <Link href={`/tape/${account.address}`} className="flex flex-col items-end group">
-                <span className="text-[10px] text-[var(--text-secondary)] uppercase font-bold tracking-widest leading-none">My Tape</span>
-                <span className="text-sm font-bold group-hover:underline">
-                  {isBalanceLoading ? "..." : `${Math.floor(parseFloat(balance?.displayValue || "0"))} $HASH`}
-                </span>
+              <Link href={`/tape/${account.address}`} className="text-sm font-medium text-[var(--text-secondary)] hover:text-black transition-colors">
+                {isMyTapePage ? (
+                  isBalanceLoading ? "..." : `${Math.floor(parseFloat(balance?.displayValue || "0"))} $HASH`
+                ) : (
+                  "My Tape"
+                )}
               </Link>
-              <div className="h-4 w-[1px] bg-[var(--border-soft)]" />
-              <button onClick={copyAddress} className="text-[var(--text-secondary)] hover:text-black transition-colors">
-                {copied ? <CheckCircle2 size={18} className="text-green-600" /> : <Copy size={18} />}
-              </button>
             </div>
           )}
-          <ConnectButton
-            client={client}
-            chain={base}
-            wallets={wallets}
-            appMetadata={{ 
-              name: "Pager", 
-              url: "https://pager.lookhook.info",
-              description: "Web3 Media"
-            }}
-            connectButton={{ className: "connect-btn-medium", label: "Sign In" }}
-          />
+
+          {!account ? (
+            <ConnectButton
+              client={client}
+              chain={base}
+              wallets={wallets}
+              appMetadata={{ 
+                name: "Pager", 
+                url: "https://pager.lookhook.info",
+                description: "Web3 Media"
+              }}
+              connectButton={{ className: "connect-btn-medium", label: "Sign In" }}
+            />
+          ) : (
+            <div className="relative group">
+              <button 
+                onClick={() => wallet && disconnect(wallet)}
+                className="flex items-center justify-center w-10 h-10 rounded-full border border-[var(--border-soft)] hover:border-black transition-all bg-white"
+              >
+                <LogOut size={16} className="text-[var(--text-secondary)] group-hover:text-black transition-colors" />
+              </button>
+              
+              {/* Tooltip */}
+              <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-black text-white text-[10px] font-bold rounded opacity-0 group-hover:opacity-100 transition-all pointer-events-none whitespace-nowrap z-[60] translate-y-1 group-hover:translate-y-0 shadow-lg">
+                {ethBalance?.displayValue.slice(0, 6)} ETH
+                {/* Triangle arrow */}
+                <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-black rotate-45" />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </nav>
