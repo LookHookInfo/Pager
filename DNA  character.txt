@@ -1,0 +1,60 @@
+Я хочу создать бренд персонажа для своего проекта .
+
+Если ты знаком с рисованными постами по типу коинтелеграф то мой персанаж тоже хочет учасвтвовать в рисованных баннерах для постов.
+
+
+
+И баннеры будет рисовать AI и мне нужно както разместить данные в коде в проекте что бы ИИ понимал этого персонажа и создавал его на баннерах . Я прикрепил его посмотри и скажи как мне оформить код директорию что бы ИИ хорошо читал .
+
+Отличный персонаж! Стиль напоминает современный нео-поп-арт с элементами киберпанка — очень выразительно. Для того чтобы ИИ (например, через API Stable Diffusion, Midjourney или DALL-E) стабильно воспроизводил этого героя в разных сценах, вам нужно создать так называемый Character Sheet (паспорт персонажа) и правильно организовать данные в проекте.
+
+Вот как лучше всего это реализовать:
+
+1. Структура директории в проекте
+Если вы пишете код для автоматизации баннеров, создайте папку brand_identity или assets/character. Это поможет ИИ-агенту или вашему скрипту всегда иметь под рукой "контекст".
+
+Plaintext
+project/
+├── assets/
+│   └── character/
+│       ├── reference.png        (основное изображение)
+│       ├── appearance.json     (техническое описание внешности)
+│       ├── lore.txt            (характер и вайб для текстовых моделей)
+│       └── style_guide.json    (параметры стиля: освещение, линии)
+2. Формирование "ДНК" персонажа (appearance.json)
+Для ИИ важно не "имя", а конкретные атрибуты. Оформите описание в формате JSON, чтобы ваш код мог легко подставлять эти данные в промпт.
+
+JSON
+{
+  "character_name": "Cyber-Ghoul",
+  "physical_attributes": {
+    "species": "robot-alien humanoid",
+    "skin_color": "pale mint green",
+    "eyes": "massive glossy magenta eyes with high reflection",
+    "mouth": "wide expressive smile, sharp white teeth, visible robotic jaw joints",
+    "neck": "segmented silver metallic robotic neck"
+  },
+  "outfit": {
+    "headwear": "large fluffy neon pink fur hood",
+    "jacket": "dark techwear puffer jacket with patches",
+    "details": "glowing triangle patch on chest, magenta inner lining"
+  },
+  "art_style": "bold comic book outline, Cointelegraph-style digital illustration, vibrant neon backlighting, high contrast"
+}
+3. Как это использовать в коде
+Когда вы будете генерировать баннер (например, "Персонаж читает новости о крипте"), ваш скрипт должен собирать промпт так:
+{physical_attributes} + {outfit} + {art_style} + {action/scene}.
+
+Пример системного промпта для ИИ:
+
+"Generate an illustration in the style of Cointelegraph featuring a character with [pale mint green skin], [massive magenta eyes], and a [neon pink fur hood]. The character is [holding a bitcoin coin]. Use bold lines and neon lighting."
+
+4. Советы по сохранению визуальной стабильности
+Имя-токен: Придумайте уникальное имя для персонажа в коде (например, NEO_GHOUL_ID). Если вы используете дообучение (LoRA), это имя станет ключевым триггером.
+
+Фиксация стиля: Чтобы баннеры были как у Cointelegraph, обязательно добавьте в style_guide.json ключевые слова: flat vector art, textured shading, conceptual illustration, financial cartoon style.
+
+NFT-контекст: Поскольку вы упоминали, что NFT не передаются, ваш персонаж может стать отличным "лицом" проекта, закрепленным за брендом, а не за отдельными токенами.
+
+Рекомендация по "рисованным баннерам"
+Чтобы ИИ не "разваливал" лицо персонажа, я рекомендую сделать Reference Pack: 4-5 картинок этого героя в разных ракурсах. В коде вы сможете передавать ссылку на эти картинки как image_prompt (в Midjourney) или через ControlNet (в Stable Diffusion). Это гарантирует, что розовый капюшон и зубы всегда будут выглядеть одинаково.

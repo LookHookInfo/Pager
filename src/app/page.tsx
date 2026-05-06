@@ -1,32 +1,43 @@
 import { supabase } from "@/lib/supabase";
-import { ArrowUpRight, Newspaper } from "lucide-react";
+import { ArrowUpRight, Newspaper, Radio, ChevronLeft, ChevronRight } from "lucide-react";
 import LikeButton from "@/components/LikeButton";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
-import { getLanguageIcon } from "@/lib/lang";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-async function getArticles() {
-  const { data, error } = await supabase
+const ITEMS_PER_PAGE = 12;
+
+async function getArticles(page: number) {
+  const from = (page - 1) * ITEMS_PER_PAGE;
+  const to = from + ITEMS_PER_PAGE - 1;
+
+  // Оптимизация: выбираем только нужные поля для превью, НЕ тянем тяжелый content
+  const { data, error, count } = await supabase
     .from("articles")
-    .select("*")
-    .order("created_at", { ascending: false });
+    .select("id, title, content, image_url, author_address, created_at, likes", { count: 'exact' })
+    .order("created_at", { ascending: false })
+    .range(from, to);
 
   if (error) {
     console.error("Fetch error:", error);
-    return [];
+    return { articles: [], totalPages: 0 };
   }
-  return data;
+  
+  return { 
+    articles: data || [], 
+    totalPages: Math.ceil((count || 0) / ITEMS_PER_PAGE) 
+  };
 }
 
 const stripHtml = (html: string) => {
   return html.replace(/<[^>]*>?/gm, '');
 };
 
-export default async function Home() {
-  const articles = await getArticles();
+export default async function Home({ searchParams }: { searchParams: { page?: string } }) {
+  const currentPage = Number(searchParams.page) || 1;
+  const { articles, totalPages } = await getArticles(currentPage);
 
   return (
     <main className="min-h-screen bg-[var(--bg-main)]">
@@ -47,7 +58,7 @@ export default async function Home() {
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-secondary)]">
                     <span className="text-black leading-none">
-                      {getLanguageIcon(article.content, article.lang)}
+                      <Radio size={14} strokeWidth={3} />
                     </span>
                     <span className="text-[var(--border-soft)]">/</span>
                     <span>
@@ -89,12 +100,51 @@ export default async function Home() {
               </Link>
             </article>
           ))}
+          
           {articles.length === 0 && (
             <div className="py-20 text-center text-[var(--text-secondary)]">
               No articles found.
             </div>
           )}
         </div>
+
+        {/* Pagination UI */}
+        {totalPages > 1 && (
+          <div className="mt-24 pt-12 border-t border-[var(--border-soft)] flex items-center justify-between">
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Edition</span>
+              <span className="text-sm font-black uppercase">{currentPage} of {totalPages}</span>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              {currentPage > 1 ? (
+                <Link 
+                  href={`/?page=${currentPage - 1}`}
+                  className="p-3 border border-black hover:bg-black hover:text-white transition-all rounded-sm"
+                >
+                  <ChevronLeft size={20} />
+                </Link>
+              ) : (
+                <div className="p-3 border border-[var(--border-soft)] text-gray-300 cursor-not-allowed">
+                  <ChevronLeft size={20} />
+                </div>
+              )}
+              
+              {currentPage < totalPages ? (
+                <Link 
+                  href={`/?page=${currentPage + 1}`}
+                  className="p-3 border border-black hover:bg-black hover:text-white transition-all rounded-sm"
+                >
+                  <ChevronRight size={20} />
+                </Link>
+              ) : (
+                <div className="p-3 border border-[var(--border-soft)] text-gray-300 cursor-not-allowed">
+                  <ChevronRight size={20} />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </section>
     </main>
   );

@@ -1,35 +1,51 @@
 import { supabase } from "@/lib/supabase";
-import { Newspaper } from "lucide-react";
+import { Newspaper, Radio, ChevronLeft, ChevronRight } from "lucide-react";
 import LikeButton from "@/components/LikeButton";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import ProfileHeader from "@/components/ProfileHeader";
 import DeleteButton from "@/components/DeleteButton";
-import { getLanguageIcon } from "@/lib/lang";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-async function getProfileData(address: string) {
+const ITEMS_PER_PAGE = 12;
+
+async function getProfileData(address: string, page: number) {
   const cleanAddress = address.toLowerCase();
+  const from = (page - 1) * ITEMS_PER_PAGE;
+  const to = from + ITEMS_PER_PAGE - 1;
   
-  // Получаем профиль
+  // 1. Получаем профиль
   const { data: profile } = await supabase
     .from("profiles")
     .select("*")
     .eq('address', cleanAddress)
     .maybeSingle();
 
-  // Получаем статьи
-  const { data: articles } = await supabase
+  // 2. Получаем общее количество наград и статей (нужно для хедера)
+  const { data: allStats } = await supabase
     .from("articles")
-    .select("*")
+    .select("likes")
+    .eq('author_address', cleanAddress);
+  
+  const totalArticlesCount = allStats?.length || 0;
+  const totalRewards = allStats?.reduce((sum, art) => sum + (art.likes || 0), 0) || 0;
+
+  // 3. Получаем статьи только для текущей страницы (оптимизировано)
+  const { data: articles, error, count } = await supabase
+    .from("articles")
+    .select("id, title, content, image_url, author_address, created_at, likes", { count: 'exact' })
     .eq('author_address', cleanAddress)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .range(from, to);
 
   return {
     profile: profile || { address: cleanAddress, name: "Anonymous Author" },
-    articles: articles || []
+    articles: articles || [],
+    totalArticles: totalArticlesCount,
+    totalRewards,
+    totalPages: Math.ceil((count || 0) / ITEMS_PER_PAGE)
   };
 }
 
@@ -37,10 +53,23 @@ const stripHtml = (html: string) => {
   return html.replace(/<[^>]*>?/gm, '');
 };
 
-export default async function TapePage({ params }: { params: { address: string } }) {
+export default async function TapePage({ 
+  params, 
+  searchParams 
+}: { 
+  params: { address: string }, 
+  searchParams: { page?: string } 
+}) {
   const decodedAddress = decodeURIComponent(params.address);
-  const { profile, articles } = await getProfileData(decodedAddress);
-  const totalRewards = articles.reduce((sum, art) => sum + (art.likes || 0), 0);
+  const currentPage = Number(searchParams.page) || 1;
+  
+  const { 
+    profile, 
+    articles, 
+    totalArticles, 
+    totalRewards, 
+    totalPages 
+  } = await getProfileData(decodedAddress, currentPage);
 
   return (
     <main className="min-h-screen bg-[var(--bg-main)]">
@@ -49,7 +78,7 @@ export default async function TapePage({ params }: { params: { address: string }
       <div className="max-w-4xl mx-auto px-6 py-12 md:py-16">
         <ProfileHeader 
           profile={profile} 
-          totalArticles={articles.length}
+          totalArticles={totalArticles}
           totalRewards={totalRewards}
         />
 
@@ -63,8 +92,8 @@ export default async function TapePage({ params }: { params: { address: string }
                   <div className="flex-[2] space-y-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-secondary)]">
-                        <span className="text-sm font-serif italic text-black leading-none">
-                          {getLanguageIcon(article.content, article.lang)}
+                        <span className="text-black leading-none">
+                          <Radio size={14} strokeWidth={3} />
                         </span>
                         <span className="text-[var(--border-soft)]">/</span>
                         <span>
@@ -115,6 +144,44 @@ export default async function TapePage({ params }: { params: { address: string }
             </div>
           )}
         </section>
+
+        {/* Pagination UI */}
+        {totalPages > 1 && (
+          <div className="mt-24 pt-12 border-t border-[var(--border-soft)] flex items-center justify-between">
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Tape Page</span>
+              <span className="text-sm font-black uppercase">{currentPage} of {totalPages}</span>
+            </div>
+            
+            <div className="flex items-center gap-4">
+              {currentPage > 1 ? (
+                <Link 
+                  href={`/tape/${decodedAddress}?page=${currentPage - 1}`}
+                  className="p-3 border border-black hover:bg-black hover:text-white transition-all rounded-sm"
+                >
+                  <ChevronLeft size={20} />
+                </Link>
+              ) : (
+                <div className="p-3 border border-[var(--border-soft)] text-gray-300 cursor-not-allowed">
+                  <ChevronLeft size={20} />
+                </div>
+              )}
+              
+              {currentPage < totalPages ? (
+                <Link 
+                  href={`/tape/${decodedAddress}?page=${currentPage + 1}`}
+                  className="p-3 border border-black hover:bg-black hover:text-white transition-all rounded-sm"
+                >
+                  <ChevronRight size={20} />
+                </Link>
+              ) : (
+                <div className="p-3 border border-[var(--border-soft)] text-gray-300 cursor-not-allowed">
+                  <ChevronRight size={20} />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );

@@ -24,7 +24,6 @@ export async function POST(req: Request) {
         content,
         image_url: image_url || null,
         author_address: author_address.toLowerCase(),
-        lang: lang || 'ru',
         likes: 0
       }])
       .select()

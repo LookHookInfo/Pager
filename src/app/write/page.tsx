@@ -166,8 +166,7 @@ export default function WritePage() {
                   title,
                   content,
                   image_url: imageUrl || null,
-                  author_address: account.address.toLowerCase(),
-                  lang: "ru"
+                  author_address: account.address.toLowerCase()
                 })
               });
 

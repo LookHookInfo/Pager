@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Radio } from 'lucide-react';
 import Link from 'next/link';
 import { Metadata } from 'next';
 import { supabase } from '@/lib/supabase';
@@ -7,7 +7,6 @@ import LikeButton from '@/components/LikeButton';
 import Navbar from '@/components/Navbar';
 import BackButton from '@/components/BackButton';
 import PostActions from '@/components/PostActions';
-import { getLanguageIcon } from '@/lib/lang';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -29,14 +28,10 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   if (!article) return {};
 
   const description = article.content.replace(/<[^>]*>?/gm, '').slice(0, 160) + '...';
-  // Удаляем лишний слеш в конце, если он есть в ENV
   const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info').replace(/\/$/, '');
   
-  // Убеждаемся, что URL картинки абсолютный
-  let imageUrl = article.image_url || `${baseUrl}/logo-pager.png`;
-  if (imageUrl.startsWith('/')) {
-    imageUrl = `${baseUrl}${imageUrl}`;
-  }
+  // Используем наш новый API для генерации динамического OG-изображения
+  const ogImageUrl = `${baseUrl}/api/og?id=${article.id}`;
 
   return {
     title: article.title,
@@ -48,20 +43,20 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
       siteName: 'Pager',
       images: [
         {
-          url: imageUrl,
+          url: ogImageUrl,
           width: 1200,
           height: 630,
           alt: article.title,
         },
       ],
-      locale: 'ru_RU',
+      locale: 'en_US',
       type: 'article',
     },
     twitter: {
       card: 'summary_large_image',
       title: article.title,
       description: description,
-      images: [imageUrl],
+      images: [ogImageUrl],
     },
   };
 }
@@ -81,8 +76,8 @@ export default async function ArticlePage({ params }: { params: { id: string } }
         <header className="mb-12">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-secondary)]">
-              <span className="text-sm font-serif italic text-black leading-none">
-                {getLanguageIcon(article.content, article.lang)}
+              <span className="text-black leading-none">
+                <Radio size={14} strokeWidth={3} />
               </span>
               <span className="text-[var(--border-soft)]">/</span>
               <span>

@@ -13,9 +13,11 @@ export default function PostActions({ title, id }: PostActionsProps) {
   const [copied, setCopied] = useState(false);
 
   const shareUrl = `${window.location.origin}/article/${id}`;
-  const shareText = `${title}\n\nRead more on Pager:`;
   const hashtags = "Pager,Web3,Base,Hash";
   const formattedHashtags = `#${hashtags.split(',').join(' #')}`;
+  
+  // Лаконичный текст для репоста
+  const shareText = `«${title}»\n\nRead on Pager:`;
 
   const handleCopy = () => {
     const fullText = `${shareText}\n${shareUrl}\n\n${formattedHashtags}`;
@@ -28,7 +30,8 @@ export default function PostActions({ title, id }: PostActionsProps) {
     {
       name: "Twitter",
       icon: <Twitter size={18} />,
-      url: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}&hashtags=${hashtags}`,
+      // Исправлено: объединяем текст и URL для корректного отображения в Twitter
+      url: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText + "\n" + shareUrl)}&hashtags=${hashtags}`,
       color: "hover:bg-sky-500"
     },
     {
