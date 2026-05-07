@@ -1,0 +1,29 @@
+{
+  "name": "Cyber-Ghoul",
+  "version": "1.2",
+  "physical_attributes": {
+    "species": "robot-alien humanoid",
+    "skin_color": "pale mint green",
+    "eyes": "massive glossy magenta eyes with high reflection",
+    "mouth": "wide expressive smile, sharp white teeth, visible robotic jaw joints",
+    "neck": "segmented silver metallic robotic neck"
+  },
+  "outfit": {
+    "headwear": "large fluffy neon pink fur hood",
+    "jacket": "dark techwear puffer jacket with patches",
+    "details": "glowing triangle patch on chest, magenta inner lining"
+  },
+  "art_style": {
+    "base": "Pager Editorial digital illustration style",
+    "lines": "bold comic book outline",
+    "lighting": "vibrant neon backlighting, high contrast",
+    "keywords": [
+      "flat vector art", 
+      "textured shading", 
+      "conceptual illustration", 
+      "minimalist financial cartoon style"
+    ],
+    "reference_image": "/character-reference.png",
+    "branding_rules": "Subtly integrate the 'Pager' wordmark or '$HASH' symbol into the background. It should appear as ambient details like neon signs, small graffiti, or interface elements. Keep it minimal and secondary to the character."
+  }
+}
