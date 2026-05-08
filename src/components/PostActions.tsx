@@ -1,7 +1,7 @@
 "use client";
 
 import { Share2, Bookmark, Check, Copy, Twitter, Send } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface PostActionsProps {
   title: string;
@@ -11,8 +11,14 @@ interface PostActionsProps {
 export default function PostActions({ title, id }: PostActionsProps) {
   const [showShareModal, setShowShareModal] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
 
-  const shareUrl = `${window.location.origin}/article/${id}`;
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setShareUrl(`${window.location.origin}/article/${id}`);
+    }
+  }, [id]);
+
   const hashtags = "Pager,Web3,Base,Hash";
   const formattedHashtags = `#${hashtags.split(',').join(' #')}`;
   

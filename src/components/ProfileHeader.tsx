@@ -25,7 +25,9 @@ export default function ProfileHeader({
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [showClientId, setShowClientId] = useState(false);
+  const [showAiKey, setShowAiKey] = useState(false);
   const [showTooltip, setShowTooltip] = useState(false);
+  const [showAiTooltip, setShowAiTooltip] = useState(false);
   
   const isOwner = account?.address?.toLowerCase() === profile.address?.toLowerCase();
 
@@ -34,7 +36,8 @@ export default function ProfileHeader({
     bio: profile.bio || "",
     website: profile.website || "",
     thirdweb_client_id: profile.thirdweb_client_id || "",
-    avatar_url: profile.avatar_url || ""
+    avatar_url: profile.avatar_url || "",
+    ai_api_key: profile.ai_api_key || ""
   });
 
   const [displayData, setDisplayData] = useState({
@@ -42,7 +45,8 @@ export default function ProfileHeader({
     bio: profile.bio || "Web3 enthusiast and curator.",
     website: profile.website || "",
     thirdweb_client_id: profile.thirdweb_client_id || "",
-    avatar_url: profile.avatar_url || ""
+    avatar_url: profile.avatar_url || "",
+    ai_api_key: profile.ai_api_key || ""
   });
 
   useEffect(() => {
@@ -51,7 +55,8 @@ export default function ProfileHeader({
       bio: profile.bio || "",
       website: profile.website || "",
       thirdweb_client_id: profile.thirdweb_client_id || "",
-      avatar_url: profile.avatar_url || ""
+      avatar_url: profile.avatar_url || "",
+      ai_api_key: profile.ai_api_key || ""
     };
     setFormData(data);
     setDisplayData({
@@ -324,6 +329,93 @@ export default function ProfileHeader({
                                 className="text-[9px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors group"
                             >
                                 Get FREE Client ID <ExternalLink size={10} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                {/* AI Settings Section */}
+                <div className="p-6 bg-gray-50 border border-gray-100 rounded-sm space-y-4 relative">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-black">
+                            <Database size={14} /> AI Settings (OpenRouter)
+                            <div className="relative inline-block">
+                                <button
+                                    type="button"
+                                    onMouseEnter={() => setShowAiTooltip(true)}
+                                    onMouseLeave={() => setShowAiTooltip(false)}
+                                    onClick={() => setShowAiTooltip(!showAiTooltip)}
+                                    className="text-gray-300 hover:text-black transition-colors"
+                                >
+                                    <HelpCircle size={14} />
+                                </button>
+                                
+                                {showAiTooltip && (
+                                    <div className="absolute left-0 bottom-full mb-4 w-[320px] bg-white border border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] z-[100] animate-in fade-in slide-in-from-bottom-2 duration-300 overflow-hidden">
+                                        <div className="p-5 space-y-4">
+                                            <div className="space-y-1">
+                                                <h4 className="text-[11px] font-black uppercase tracking-tighter">Personal AI Power</h4>
+                                                <div className="h-[2px] w-8 bg-black" />
+                                            </div>
+                                            
+                                            <div className="space-y-3">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="mt-0.5"><CheckCircle2 size={12} className="text-green-600" /></div>
+                                                    <div>
+                                                        <p className="text-[10px] font-black uppercase leading-none mb-1 text-black">Unlimited Rewrites</p>
+                                                        <p className="text-[9px] text-gray-500 font-bold uppercase leading-relaxed">Use your own OpenRouter quota for Magic Rewrites without system limits.</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-start gap-3">
+                                                    <div className="mt-0.5"><CheckCircle2 size={12} className="text-green-600" /></div>
+                                                    <div>
+                                                        <p className="text-[10px] font-black uppercase leading-none mb-1 text-black">Privacy & Speed</p>
+                                                        <p className="text-[9px] text-gray-500 font-bold uppercase leading-relaxed">Your key is used directly from the server to OpenRouter, bypassing shared proxies.</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="pt-4 border-t border-gray-50 space-y-3">
+                                                <p className="text-[9px] text-gray-500 font-bold uppercase leading-relaxed">
+                                                    Get your key at <span className="text-black underline">openrouter.ai</span>. We recommend using <span className="text-black underline">Gemini 2.0 Flash</span> for the best results.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        {formData.ai_api_key && (
+                            <span className="text-[8px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter">Active</span>
+                        )}
+                    </div>
+                    
+                    <div className="space-y-3">
+                        <div className="relative">
+                            <input 
+                                type={showAiKey ? "text" : "password"}
+                                value={formData.ai_api_key}
+                                onChange={e => setFormData({...formData, ai_api_key: e.target.value})}
+                                placeholder="OpenRouter API Key (sk-or-...)"
+                                className="w-full text-xs font-mono p-3 pr-10 border border-gray-200 focus:border-black outline-none bg-white tracking-widest"
+                            />
+                            <button 
+                                type="button"
+                                onClick={() => setShowAiKey(!showAiKey)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black"
+                            >
+                                {showAiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                            </button>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                            <a 
+                                href="https://openrouter.ai/keys" 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-[9px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors group"
+                            >
+                                Get OpenRouter Key <ExternalLink size={10} className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
                             </a>
                         </div>
                     </div>

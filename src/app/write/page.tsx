@@ -40,9 +40,87 @@ export default function WritePage() {
   
   const [title, setTitle] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [externalUrl, setExternalUrl] = useState("");
+  const [mood, setMood] = useState("sarcastic");
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [status, setStatus] = useState<"idle" | "paying" | "publishing" | "success" | "error">("idle");
   const [profile, setProfile] = useState<any>(null);
+
+  const moods = [
+    { id: "sarcastic", label: "Sarcastic", icon: "🎭" },
+    { id: "bullish", label: "Bullish", icon: "🚀" },
+    { id: "bearish", label: "Bearish", icon: "📉" },
+    { id: "humorous", label: "Humorous", icon: "😆" },
+    { id: "negative", label: "Negative", icon: "💀" },
+  ];
+
+  const [processingStep, setProcessingStep] = useState<"idle" | "scraping" | "rewriting" | "done">("idle");
+
+  const handleAiRewrite = async () => {
+    if (!externalUrl) return alert("Paste a link first!");
+    
+    setProcessingStep("scraping");
+    setIsAiProcessing(true);
+    
+    try {
+      // --- ШАГ 1: Скрейпинг ---
+      console.log("📡 [AI Step 1] Scraping article...");
+      const scrapeRes = await fetch("/api/ai/scrape", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: externalUrl })
+      });
+      
+      if (!scrapeRes.ok) {
+        throw new Error(`Scrape API returned ${scrapeRes.status}. Server might be down.`);
+      }
+
+      const scrapeData = await scrapeRes.json();
+      if (scrapeData.error) {
+        throw new Error(`Scraping failed: ${scrapeData.error}`);
+      }
+
+      // --- ШАГ 2: Рерайт с DNA ---
+      setProcessingStep("rewriting");
+      console.log("🚀 [AI Step 2] Rewriting with Cyber-DNA...");
+      
+      const processRes = await fetch("/api/ai/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          content: scrapeData.textContent,
+          title: scrapeData.title,
+          mood,
+          userApiKey: profile?.ai_api_key
+        })
+      });
+      
+      if (!processRes.ok) {
+        const errorText = await processRes.text();
+        console.error("❌ [Process Error Output]:", errorText);
+        throw new Error(`AI Rewrite API error (${processRes.status}). Check server logs.`);
+      }
+
+      const data = await processRes.json();
+      
+      setTitle(data.title);
+      setImageUrl(data.image_url);
+      if (editorRef.current) {
+        editorRef.current.innerHTML = data.content;
+      }
+      
+      setProcessingStep("done");
+      setTimeout(() => setProcessingStep("idle"), 3000);
+      
+    } catch (err: any) {
+      console.error("❌ [AI Processing Error]:", err.message);
+      alert(err.message);
+      setProcessingStep("idle");
+    } finally {
+      setIsAiProcessing(false);
+    }
+  };
 
   const [toolbarPos, setToolbarPos] = useState<ToolbarPos>({ top: 0, left: 0, visible: false });
 
@@ -52,7 +130,7 @@ export default function WritePage() {
     try {
       const { data } = await supabase
         .from('profiles')
-        .select('thirdweb_client_id')
+        .select('thirdweb_client_id, ai_api_key')
         .eq('address', account.address.toLowerCase())
         .maybeSingle();
       if (data) setProfile(data);
@@ -266,6 +344,56 @@ export default function WritePage() {
             <AlertCircle size={18} /> Error publishing. Please check console for details.
           </div>
         )}
+
+        {/* AI Rewrite Section */}
+        <div className="bg-gray-50 p-6 rounded-sm border border-gray-100 space-y-4">
+          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
+            <div className="w-2 h-2 bg-black rounded-full animate-pulse" />
+            AI Publication Protocol
+          </div>
+          <div className="flex flex-col md:flex-row gap-3">
+            <input 
+              type="text"
+              placeholder="Paste article URL (e.g., Cointelegraph, Bloomberg...)"
+              value={externalUrl}
+              onChange={e => setExternalUrl(e.target.value)}
+              className="flex-[3] px-4 py-3 text-sm border border-gray-200 focus:border-black outline-none bg-white transition-colors"
+            />
+            <select 
+              value={mood}
+              onChange={e => setMood(e.target.value)}
+              className="flex-1 px-3 py-3 text-sm border border-gray-200 outline-none bg-white cursor-pointer"
+            >
+              {moods.map(m => (
+                <option key={m.id} value={m.id}>{m.icon} {m.label}</option>
+              ))}
+            </select>
+            <button 
+              onClick={handleAiRewrite}
+              disabled={isAiProcessing || !externalUrl}
+              className="flex-1 bg-black text-white text-xs font-bold uppercase tracking-widest py-3 px-6 hover:bg-gray-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {isAiProcessing ? (
+                <div className="flex items-center gap-2">
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>
+                    {processingStep === "scraping" ? "Reading..." : "Rewriting..."}
+                  </span>
+                </div>
+              ) : "Magic Rewrite"}
+            </button>
+          </div>
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] text-gray-400">
+              Cyber-Ghoul will rewrite the content, generate a GTA-style banner, and add BTC market analysis.
+            </p>
+            {processingStep !== "idle" && (
+               <div className="text-[10px] font-black uppercase tracking-tighter text-black animate-pulse">
+                 Status: {processingStep}
+               </div>
+            )}
+          </div>
+        </div>
 
         <input 
           type="text"
