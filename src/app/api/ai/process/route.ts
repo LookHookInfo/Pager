@@ -1,56 +1,59 @@
 import { NextResponse } from 'next/server';
-import { getCharacterSystemPrompt, getBtcAnalysisBlock, getMiningSponsorBlock } from '@/lib/character';
+import { getCharacterSystemPrompt, getBtcAnalysisBlock, getMiningSponsorBlock, getCharacterVisualPrompt } from '@/lib/character';
 
-// Vercel Serverless Config
 export const maxDuration = 30; 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Финальная очистка и превращение остатков Markdown в чистый HTML.
+ */
+function finalFormat(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/__(.*?)__/g, '<strong>$1</strong>')
+    .replace(/_(.*?)_/g, '<em>$1</em>')
+    .trim();
+}
+
 export async function POST(req: Request) {
-  let requestUrl = '';
-  console.log("--- 🤖 [AI Process] Step-by-Step Mode ---");
   try {
     const body = await req.json();
-    const { mood = "neutral", userApiKey, content: providedContent, title: providedTitle } = body;
+    const { mood = "neutral", character = "ghoul", userApiKey, content: providedContent, title: providedTitle } = body;
 
-    // Приоритет: 1. Ключ пользователя 2. Системный ключ
     const apiKey = userApiKey || process.env.OPENROUTER_API_KEY || process.env.AI_API_KEY;
-    
-    if (!apiKey) {
-      console.error("❌ [AI Process] No API Key found");
-      return NextResponse.json({ error: 'No API Key provided. Please set it in your profile.' }, { status: 400 });
-    }
+    if (!apiKey) return NextResponse.json({ error: 'API Key missing' }, { status: 400 });
 
-    if (!providedContent) {
-      console.error("❌ [AI Process] No content provided");
-      return NextResponse.json({ error: 'Content is required' }, { status: 400 });
-    }
-
-    // 2. AI Rewrite
     const model = process.env.AI_MODEL || 'google/gemini-2.0-flash-001';
-    console.log("🚀 [AI Process] Requesting AI Rewrite (Model:", model, ")...");
-    
-    const systemPrompt = getCharacterSystemPrompt(mood);
+    const systemPrompt = getCharacterSystemPrompt(mood, character as any);
+    const charName = character === 'nana' ? 'Nana Banana' : 'Cyber-Ghoul';
+
     const userPrompt = `
-      Rewrite the following article in Cyber-Ghoul style.
-      Style guidelines: ${mood} tone. 
-      Original Title: ${providedTitle || 'Untitled'}
-      Original Content: ${providedContent}
+      ACT AS A PROFESSIONAL WEB3 EDITOR. 
+      Rewrite the article below in ${charName} style.
       
-      Requirements:
-      1. Create a punchy, unique title.
-      2. Rewrite the content to be engaging, witty, and Web3-focused. Use Markdown.
-      3. Add a short BTC market analysis at the end based on the news.
+      CRITICAL RULES:
+      1. TITLE: Explosive, provocative, under 50 chars. NO QUOTES.
+      2. CONTENT: Professional HTML only. 
+         - Wrap every paragraph in <p style="margin-bottom: 24px; line-height: 1.6;">.
+         - Use <strong> for tickers ($BTC, $HASH) and key concepts.
+         - 3-4 paragraphs max. 
+      3. BTC ANALYSIS: 2-3 sentences of expert market view.
+      4. BANNER: Describe a cinematic scene with ${charName}.
       
-      Return ONLY JSON format:
+      JSON OUTPUT FORMAT:
       {
-        "rewrittenTitle": "...",
-        "rewrittenContent": "...",
-        "btcAnalysis": "...",
-        "bannerSceneDescription": "..."
+        "title": "...",
+        "body": "...",
+        "analysis": "...",
+        "banner": "..."
       }
+      
+      ARTICLE TO REWRITE:
+      ${providedContent}
     `;
 
-    // Используем нативный fetch для стабильности
     const aiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -59,7 +62,7 @@ export async function POST(req: Request) {
         'HTTP-Referer': 'https://pager.lookhook.info',
       },
       body: JSON.stringify({
-        model: model,
+        model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
@@ -69,52 +72,49 @@ export async function POST(req: Request) {
     });
 
     if (!aiResponse.ok) {
-      const errorData = await aiResponse.json().catch(() => ({}));
-      const errorMsg = errorData.error?.message || `AI error: ${aiResponse.status}`;
-      console.error("❌ [AI Process] OpenRouter Error:", errorMsg);
-      return NextResponse.json({ error: errorMsg }, { status: aiResponse.status });
+      const err = await aiResponse.json().catch(() => ({}));
+      throw new Error(err.error?.message || "AI Provider Error");
     }
 
     const aiData = await aiResponse.json();
     const aiContent = aiData.choices?.[0]?.message?.content;
-    
-    if (!aiContent) {
-      throw new Error("Empty AI response from OpenRouter");
-    }
+    if (!aiContent) throw new Error("AI returned empty content");
 
-    // Парсим результат
     let result;
     try {
-      const jsonMatch = aiContent.match(/\{[\s\S]*\}/);
-      result = JSON.parse(jsonMatch ? jsonMatch[0] : aiContent);
+      result = JSON.parse(aiContent);
     } catch (e) {
-      console.error("❌ [AI Process] JSON Parse Error. Raw content:", aiContent);
-      throw new Error("AI returned invalid JSON format");
+      const match = aiContent.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error("JSON Parse Error");
+      result = JSON.parse(match[0]);
     }
 
-    // 4. Assembly
-    const finalContent = `${result.rewrittenContent}
+    // --- ASSEMBLY ---
+    const finalTitle = (result.title || providedTitle || "New Intel").replace(/["']/g, '').trim();
     
-${getBtcAnalysisBlock(result.btcAnalysis)}
+    // Форматируем тело статьи
+    let finalBody = finalFormat(result.body || "");
+    if (!finalBody.includes('<p')) {
+      finalBody = finalBody.split('\n\n').map(p => `<p style="margin-bottom: 24px;">${p}</p>`).join('');
+    }
 
-${getMiningSponsorBlock()}`;
+    const fullHtml = `
+      ${finalBody}
+      ${getBtcAnalysisBlock(finalFormat(result.analysis || "Market sentiment is shifting."), character as any)}
+      ${getMiningSponsorBlock()}
+    `;
 
-    // 5. Image Generation
-    const bannerPrompt = encodeURIComponent(`GTA style illustration of Cyber-Ghoul: ${result.bannerSceneDescription}, vibrant neon lighting, high contrast, 16:9`);
-    const generatedBannerUrl = `https://image.pollinations.ai/prompt/${bannerPrompt}?width=1280&height=720&nologo=true&seed=${Math.floor(Math.random() * 1000000)}`;
+    const visualPrompt = getCharacterVisualPrompt(result.banner || finalTitle, mood as any, character as any);
+    const bannerUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(visualPrompt)}?width=1280&height=720&nologo=true&seed=${Math.floor(Math.random() * 1000000)}`;
 
-    console.log("✅ [AI Process] Success!");
     return NextResponse.json({
-      title: result.rewrittenTitle,
-      content: finalContent,
-      image_url: generatedBannerUrl
+      title: finalTitle,
+      content: fullHtml,
+      image_url: bannerUrl
     });
 
   } catch (error: any) {
-    console.error("❌ [API AI Process Error]:", error.message);
-    return NextResponse.json({ 
-      error: error.message,
-      type: error.name
-    }, { status: 500 });
+    console.error("❌ [AI API ERROR]:", error.message);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

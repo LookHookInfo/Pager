@@ -42,6 +42,7 @@ export default function WritePage() {
   const [imageUrl, setImageUrl] = useState("");
   const [externalUrl, setExternalUrl] = useState("");
   const [mood, setMood] = useState("sarcastic");
+  const [character, setCharacter] = useState<"ghoul" | "nana">("ghoul");
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [status, setStatus] = useState<"idle" | "paying" | "publishing" | "success" | "error">("idle");
@@ -92,6 +93,7 @@ export default function WritePage() {
           content: scrapeData.textContent,
           title: scrapeData.title,
           mood,
+          character,
           userApiKey: profile?.ai_api_key
         })
       });
@@ -368,6 +370,16 @@ export default function WritePage() {
                 <option key={m.id} value={m.id}>{m.icon} {m.label}</option>
               ))}
             </select>
+            <select 
+              value={character}
+              onChange={e => setCharacter(e.target.value as any)}
+              disabled={!profile?.ai_api_key}
+              className="flex-1 px-3 py-3 text-sm border border-gray-200 outline-none bg-white cursor-pointer disabled:opacity-50 disabled:bg-gray-100"
+              title={!profile?.ai_api_key ? "Set API Key in profile to change character" : ""}
+            >
+              <option value="ghoul">🤖 Ghoul</option>
+              <option value="nana">🍌 Nana</option>
+            </select>
             <button 
               onClick={handleAiRewrite}
               disabled={isAiProcessing || !externalUrl}
@@ -385,7 +397,10 @@ export default function WritePage() {
           </div>
           <div className="flex items-center justify-between">
             <p className="text-[10px] text-gray-400">
-              Cyber-Ghoul will rewrite the content, generate a GTA-style banner, and add BTC market analysis.
+              {character === "ghoul" 
+                ? "Cyber-Ghoul will rewrite the content, generate a GTA-style banner, and add BTC market analysis."
+                : "Nana Banana will rewrite the content in a pop-art style, generate a vibrant banner, and add BTC market analysis."
+              }
             </p>
             {processingStep !== "idle" && (
                <div className="text-[10px] font-black uppercase tracking-tighter text-black animate-pulse">

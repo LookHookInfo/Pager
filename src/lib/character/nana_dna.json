@@ -1,0 +1,30 @@
+{
+  "name": "Nana Banana",
+  "version": "2.0",
+  "physical_attributes": {
+    "species": "banana-themed humanoid cyborg",
+    "skin_color": "bright vibrant yellow",
+    "eyes": "large expressive black cartoon eyes with sparkles",
+    "mouth": "mischievous toothy grin, banana-peel chin details",
+    "neck": "sleek white high-tech robotic neck"
+  },
+  "outfit": {
+    "headwear": "banana peel shaped crown with neon fiber-optics",
+    "jacket": "oversized white cyberpunk streetwear hoodie",
+    "details": "banana logo on chest, yellow and green accents, holographic patches"
+  },
+  "art_style": {
+    "base": "Modern pop-art cyberpunk style",
+    "lines": "clean bold black outlines",
+    "lighting": "sunlight yellow glow, soft pastel neon shadows",
+    "keywords": [
+      "pop art", 
+      "urban cyberpunk", 
+      "vibrant colors", 
+      "3D-style 2D illustration",
+      "kawaii tech aesthetic"
+    ],
+    "reference_image": "/nana-reference.png",
+    "branding_rules": "Include banana-themed patterns and the '$HASH' symbol as fruit stickers or graffiti tags. The vibe should be more playful and energetic than Cyber-Ghoul."
+  }
+}
