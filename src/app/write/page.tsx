@@ -19,8 +19,8 @@ import { upload, resolveScheme } from "thirdweb/storage";
 const PROJECT_WALLET = "0x39adfb3eb6ff7f56bd5c09c62b4ab1d61997193a";
 const POST_PRICE = "10";
 const COMPRESSION_OPTIONS = {
-  maxSizeMB: 0.2,
-  maxWidthOrHeight: 1200,
+  maxSizeMB: 0.4, // Target HD quality (approx 400KB)
+  maxWidthOrHeight: 1280, // Target 720p/HD width
   useWebWorker: true,
 };
 
@@ -68,16 +68,18 @@ export default function WritePage() {
       const blob = await response.blob();
       const file = new File([blob], "ai-banner.png", { type: "image/png" });
 
+      // Apply compression to AI images to save weight (target HD/720p)
+      const compressedBlob = await imageCompression(file, COMPRESSION_OPTIONS);
+      const fileToUpload = new File([compressedBlob], `ai-${Date.now()}.png`, { type: "image/png" });
+
       const clientId = profile?.thirdweb_client_id;
       if (clientId) {
         // Premium: IPFS
         const customClient = createThirdwebClient({ clientId });
-        const uri = await upload({ client: customClient, files: [file] });
+        const uri = await upload({ client: customClient, files: [fileToUpload] });
         return resolveScheme({ client: customClient, uri });
       } else {
         // Standard: Supabase
-        const compressedBlob = await imageCompression(file, COMPRESSION_OPTIONS);
-        const fileToUpload = new File([compressedBlob], `ai-${Date.now()}.png`, { type: "image/png" });
         const { data, error } = await supabase.storage.from('banners').upload(`banners/${fileToUpload.name}`, fileToUpload);
         if (error) throw error;
         const { data: { publicUrl } } = supabase.storage.from('banners').getPublicUrl(data.path);
@@ -85,7 +87,7 @@ export default function WritePage() {
       }
     } catch (e) {
       console.error("❌ [Persist] Failed to save AI image:", e);
-      return url; // Return original if persistence fails
+      return url;
     }
   };
 
@@ -102,6 +104,10 @@ export default function WritePage() {
       });
       const scrapeData = await scrapeRes.json();
 
+      if (!scrapeRes.ok) {
+        throw new Error(scrapeData.error || scrapeData.details || "Scraping failed");
+      }
+
       setProcessingStep("rewriting");
       const processRes = await fetch("/api/ai/process", {
         method: "POST",
@@ -109,13 +115,19 @@ export default function WritePage() {
         body: JSON.stringify({ 
           content: scrapeData.textContent,
           title: scrapeData.title,
+          sourceImage: scrapeData.mainImage,
           mood,
           character,
-          userApiKey: profile?.ai_api_key
+          userApiKey: profile?.ai_api_key,
+          imageModel: profile?.ai_image_model
         })
       });
       const data = await processRes.json();
       
+      if (!processRes.ok) {
+        throw new Error(data.error || data.details || "Rewriting failed");
+      }
+
       setTitle(data.title);
       if (editorRef.current) editorRef.current.innerHTML = data.content;
 
@@ -128,7 +140,7 @@ export default function WritePage() {
       setProcessingStep("done");
       setTimeout(() => setProcessingStep("idle"), 2000);
     } catch (err: any) {
-      alert(err.message);
+      alert("AI Error: " + err.message);
       setProcessingStep("idle");
     } finally {
       setIsAiProcessing(false);
@@ -142,7 +154,7 @@ export default function WritePage() {
     try {
       const { data } = await supabase
         .from('profiles')
-        .select('thirdweb_client_id, ai_api_key')
+        .select('thirdweb_client_id, ai_api_key, ai_image_model')
         .eq('address', account.address.toLowerCase())
         .maybeSingle();
       if (data) setProfile(data);
@@ -179,14 +191,15 @@ export default function WritePage() {
     if (!file) return;
     try {
       setIsUploading(true);
+      const compressedBlob = await imageCompression(file, COMPRESSION_OPTIONS);
+      const fileToUpload = new File([compressedBlob], `${Date.now()}-${file.name}`, { type: file.type });
+
       const clientId = profile?.thirdweb_client_id;
       if (clientId) {
         const customClient = createThirdwebClient({ clientId });
-        const uri = await upload({ client: customClient, files: [file] });
+        const uri = await upload({ client: customClient, files: [fileToUpload] });
         setImageUrl(resolveScheme({ client: customClient, uri }));
       } else {
-        const compressedBlob = await imageCompression(file, COMPRESSION_OPTIONS);
-        const fileToUpload = new File([compressedBlob], `${Date.now()}-${file.name}`, { type: file.type });
         const { data, error } = await supabase.storage.from('banners').upload(`banners/${fileToUpload.name}`, fileToUpload);
         if (error) throw error;
         const { data: { publicUrl } } = supabase.storage.from('banners').getPublicUrl(data.path);
@@ -326,14 +339,14 @@ export default function WritePage() {
           <div className="flex items-center gap-4">
             <div className="flex-1 flex items-center gap-3 text-gray-400 focus-within:text-black">
               <ImageIcon size={20} />
-              <input type="text" placeholder={profile?.thirdweb_client_id ? "IPFS Persistence Active..." : "Local Persistence..."} value={imageUrl} onChange={e => setImageUrl(e.target.value)} className="w-full text-xs font-medium border-none focus:outline-none bg-transparent" />
+              <input type="text" placeholder="Cinematic Banner (Rec: 1280x720 or 1200x514)" value={imageUrl} onChange={e => setImageUrl(e.target.value)} className="w-full text-xs font-medium border-none focus:outline-none bg-transparent" />
             </div>
             <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-black transition-colors">
               {isUploading ? <Loader2 size={16} className="animate-spin" /> : <><Upload size={16} /> Upload</>}
             </button>
             <input ref={fileInputRef} type="file" onChange={handleFileUpload} className="hidden" accept="image/*" />
           </div>
-          {imageUrl && <div className="aspect-[21/9] bg-gray-50 overflow-hidden border border-gray-100 rounded-sm"><img src={imageUrl} alt="Preview" className="w-full h-full object-cover" /></div>}
+          {imageUrl && <div className="aspect-[21/9] bg-gray-50 overflow-hidden border border-gray-100 rounded-sm shadow-sm"><img src={imageUrl} alt="Preview" className="w-full h-full object-cover" /></div>}
         </div>
 
         <div ref={editorRef} contentEditable data-placeholder="Start your story here..." className="w-full min-h-[500px] text-xl outline-none prose prose-stone max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-gray-200 empty:before:pointer-events-none leading-[1.8]" />

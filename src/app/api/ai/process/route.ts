@@ -1,156 +1,142 @@
-import { NextResponse } from 'next/server';
-import { getCharacterSystemPrompt, getBtcAnalysisBlock, getMiningSponsorBlock, getCharacterVisualPrompt } from '@/lib/character';
+import { NextResponse } from "next/server";
+import { getCharacterSystemPrompt, getBtcAnalysisBlock, getMiningSponsorBlock, getCharacterVisualPrompt } from "@/lib/character";
 
 export const maxDuration = 30; 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
-/**
- * Финальная очистка и превращение остатков Markdown в чистый HTML.
- */
 function finalFormat(text: string): string {
   if (!text) return "";
   return text
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/__(.*?)__/g, '<strong>$1</strong>')
-    .replace(/_(.*?)_/g, '<em>$1</em>')
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.*?)\*/g, "<em>$1</em>")
+    .replace(/__(.*?)__/g, "<strong>$1</strong>")
+    .replace(/_(.*?)_/g, "<em>$1</em>")
     .trim();
+}
+
+function extractJson(text: string) {
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) return JSON.parse(jsonMatch[0]);
+    return JSON.parse(text);
+  } catch (e) {
+    console.error("❌ [AI Process] JSON Parse Error:", e, "Raw text:", text);
+    throw new Error("Failed to parse AI response as JSON");
+  }
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { mood = "neutral", character = "ghoul", userApiKey, content: providedContent, title: providedTitle } = body;
+    const { 
+      mood = "neutral", 
+      character = "ghoul", 
+      userApiKey, 
+      content: providedContent, 
+      title: providedTitle, 
+      imageModel: providedImageModel
+    } = body;
 
-    // СТРОГИЙ МИНИМАЛИЗМ: Только по ключу пользователя
-    if (!userApiKey) {
-      return NextResponse.json({ error: 'OpenRouter API Key required in profile.' }, { status: 403 });
+    if (!userApiKey) return NextResponse.json({ error: "API Key required" }, { status: 403 });
+    if (!providedContent) {
+      console.error("❌ [AI Process] Missing content in request body");
+      return NextResponse.json({ error: "No content provided for rewriting" }, { status: 400 });
     }
 
-    const textModel = 'google/gemini-2.0-flash-001';
-    const imageModel = 'google/gemini-3.1-flash-image-preview';
+    const textModel = "google/gemini-2.0-flash-001";
+    const imageModel = providedImageModel || "google/gemini-2.0-flash-001";
     const systemPrompt = getCharacterSystemPrompt(mood, character as any);
-    const charName = character === 'nana' ? 'Nana Banana' : 'Cyber-Ghoul';
+    const charName = character === "nana" ? "Nana Banana" : "Cyber-Ghoul";
 
     const userPrompt = `
       ACT AS A PROFESSIONAL WEB3 EDITOR. 
-      Rewrite the article below in ${charName} style.
+      Rewrite the following article in ${charName} style.
       
-      CRITICAL RULES:
-      1. TITLE: Explosive, provocative, under 50 chars. NO QUOTES.
-      2. CONTENT: Professional HTML only. 
-         - Wrap every paragraph in <p style="margin-bottom: 24px; line-height: 1.6;">.
-         - Use <strong> for tickers ($BTC, $HASH) and key concepts.
-         - 3-4 paragraphs max. 
-      3. BTC ANALYSIS: 2-3 sentences of expert market view.
-      4. BANNER: Describe a cinematic scene with ${charName}.
+      RULES:
+      1. TITLE: Explosive, under 50 chars.
+      2. CONTENT: HTML only. Use <p style="margin-bottom: 24px;"> and <strong>. 3-4 paragraphs.
+      3. BTC ANALYSIS: 2 sentences.
+      4. BANNER DESCRIPTION: Describe a cinematic banner scene with ${charName} in a Rick and Morty style illustrating the article topic. Include his robotic memecoin friends (Pepe-bot, Doge-bot). 
+         IMPORTANT: The scene must be optimized for a wide CINEMATIC horizontal aspect ratio (16:9 or 21:9).
       
-      JSON OUTPUT FORMAT:
-      {
-        "title": "...",
-        "body": "...",
-        "analysis": "...",
-        "banner": "..."
-      }
+      JSON FORMAT: { "title": "...", "body": "...", "analysis": "...", "banner": "..." }
       
-      ARTICLE TO REWRITE:
-      ${providedContent}
+      ARTICLE: ${providedContent.slice(0, 10000)}
     `;
 
-    // 1. GENERATE TEXT
-    const aiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${userApiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://pager.lookhook.info',
+    console.log(`📡 [AI Process] Calling OpenRouter (${textModel})...`);
+
+    const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: { 
+        "Authorization": "Bearer " + userApiKey, 
+        "Content-Type": "application/json", 
+        "HTTP-Referer": "https://pager.lookhook.info" 
       },
-      body: JSON.stringify({
-        model: textModel,
+      body: JSON.stringify({ 
+        model: textModel, 
         messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        response_format: { type: "json_object" }
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ], 
+        response_format: { type: "json_object" } 
       })
     });
 
-    if (!aiResponse.ok) {
-      const err = await aiResponse.json().catch(() => ({}));
-      throw new Error(err.error?.message || "OpenRouter API Error");
+    if (!aiRes.ok) {
+      const err = await aiRes.json().catch(() => ({}));
+      console.error("❌ [AI Process] OpenRouter Error:", aiRes.status, err);
+      return NextResponse.json({ error: "AI Failed", details: err.error?.message || "Check your API key" }, { status: aiRes.status });
     }
 
-    const aiData = await aiResponse.json();
-    const aiContent = aiData.choices?.[0]?.message?.content;
-    if (!aiContent) throw new Error("AI returned empty content");
+    const aiData = await aiRes.json();
+    const result = extractJson(aiData.choices[0].message.content);
 
-    let result;
-    try {
-      result = JSON.parse(aiContent);
-    } catch (e) {
-      const match = aiContent.match(/\{[\s\S]*\}/);
-      if (!match) throw new Error("JSON Parse Error");
-      result = JSON.parse(match[0]);
-    }
-
-    const finalTitle = (result.title || providedTitle || "New Intel").replace(/["']/g, '').trim();
+    const finalTitle = (result.title || providedTitle || "New Intel").replace(/["']/g, "").trim();
     let finalBody = finalFormat(result.body || "");
-    if (!finalBody.includes('<p')) {
-      finalBody = finalBody.split('\n\n').map(p => `<p style="margin-bottom: 24px;">${p}</p>`).join('');
+    if (!finalBody.includes("<p")) {
+      finalBody = finalBody.split("\n\n").map((p: string) => `<p style="margin-bottom: 24px;">${p}</p>`).join("");
     }
 
-    const fullHtml = `
-      ${finalBody}
-      ${getBtcAnalysisBlock(finalFormat(result.analysis || "Market sentiment is shifting."), character as any)}
-      ${getMiningSponsorBlock()}
-    `;
-
-    // 2. GENERATE BANNER (STRICT GEMINI 3.1)
+    const fullHtml = finalBody + getBtcAnalysisBlock(finalFormat(result.analysis || "Market sentiment is shifting."), character as any) + getMiningSponsorBlock();
     const visualPrompt = getCharacterVisualPrompt(result.banner || finalTitle, mood, character as any, finalTitle);
-    let bannerUrl = "";
     
+    let bannerUrl = "";
     try {
-      console.log(`🚀 [Minimalist-AI] Generating image with: ${imageModel}`);
-      
-      const imgAiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${userApiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://pager.lookhook.info',
+      console.log(`📡 [AI Process] Generating banner (${imageModel})...`);
+      const imgRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: { 
+          "Authorization": "Bearer " + userApiKey, 
+          "Content-Type": "application/json", 
+          "HTTP-Referer": "https://pager.lookhook.info" 
         },
         body: JSON.stringify({
           model: imageModel,
           modalities: ["image", "text"],
-          messages: [
-            { 
-              role: 'user', 
-              content: [{ type: "text", text: visualPrompt }] 
-            }
-          ]
+          messages: [{ role: "user", content: [{ type: "text", text: visualPrompt }] }]
         })
       });
-
-      if (imgAiResponse.ok) {
-        const imgData = await imgAiResponse.json();
-        const choice = imgData.choices?.[0];
-        bannerUrl = choice?.message?.images?.[0]?.image_url?.url || "";
+      if (imgRes.ok) {
+        const imgData = await imgRes.json();
+        bannerUrl = imgData?.choices?.[0]?.message?.images?.[0]?.image_url?.url || "";
+        console.log("✅ [AI Process] Banner generated!");
       } else {
-        const errData = await imgAiResponse.json().catch(() => ({}));
-        console.error("❌ [Minimalist-AI] Image Error:", errData.error?.message);
+        const imgErr = await imgRes.json().catch(() => ({}));
+        console.warn("⚠️ [AI Process] Banner generation failed:", imgRes.status, imgErr);
       }
-    } catch (err: any) {
-      console.error("❌ [Minimalist-AI] Critical Error:", err.message);
+    } catch (e) {
+      console.error("⚠️ [AI Process] Image generation error:", e);
     }
 
-    return NextResponse.json({
-      title: finalTitle,
-      content: fullHtml,
-      image_url: bannerUrl
+    return NextResponse.json({ 
+      title: finalTitle, 
+      content: fullHtml, 
+      image_url: bannerUrl 
     });
 
   } catch (error: any) {
-    console.error("❌ [AI API ERROR]:", error.message);
+    console.error("❌ [AI Process] Internal Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

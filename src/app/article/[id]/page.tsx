@@ -114,11 +114,11 @@ export default async function ArticlePage({ params }: { params: { id: string } }
 
         {article.image_url && (
           <div className="w-full mb-16 flex justify-center">
-            <div className="w-full max-w-5xl aspect-[21/9] overflow-hidden bg-gray-100 border border-[var(--border-soft)] rounded-sm">
+            <div className="w-full max-w-5xl aspect-[21/9] overflow-hidden bg-gray-100 border border-[var(--border-soft)] rounded-sm shadow-xl">
               <img 
                 src={article.image_url} 
                 alt={article.title} 
-                className="w-full h-full object-cover object-center grayscale-[0.1] hover:grayscale-0 transition-all duration-700" 
+                className="w-full h-full object-cover object-center grayscale-[0.05] hover:grayscale-0 transition-all duration-1000 ease-in-out" 
               />
             </div>
           </div>

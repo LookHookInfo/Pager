@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { Globe, Settings2, Save, X, Loader2, Database, ShieldCheck, Camera, Eye, EyeOff, HelpCircle, ExternalLink, CheckCircle2 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
@@ -35,7 +35,8 @@ export default function ProfileHeader({
     website: profile.website || "",
     thirdweb_client_id: profile.thirdweb_client_id || "",
     avatar_url: profile.avatar_url || "",
-    ai_api_key: profile.ai_api_key || ""
+    ai_api_key: profile.ai_api_key || "",
+    ai_image_model: profile.ai_image_model || "google/gemini-3.1-flash-image-preview"
   });
 
   const [displayData, setDisplayData] = useState({
@@ -44,7 +45,8 @@ export default function ProfileHeader({
     website: profile.website || "",
     thirdweb_client_id: profile.thirdweb_client_id || "",
     avatar_url: profile.avatar_url || "",
-    ai_api_key: profile.ai_api_key || ""
+    ai_api_key: profile.ai_api_key || "",
+    ai_image_model: profile.ai_image_model || "google/gemini-3.1-flash-image-preview"
   });
 
   useEffect(() => {
@@ -54,7 +56,8 @@ export default function ProfileHeader({
       website: profile.website || "",
       thirdweb_client_id: profile.thirdweb_client_id || "",
       avatar_url: profile.avatar_url || "",
-      ai_api_key: profile.ai_api_key || ""
+      ai_api_key: profile.ai_api_key || "",
+      ai_image_model: profile.ai_image_model || "google/gemini-3.1-flash-image-preview"
     };
     setFormData(data);
     setDisplayData({
@@ -91,8 +94,7 @@ export default function ProfileHeader({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           address: profile.address.toLowerCase(),
-          ...formData,
-          ai_image_model: "google/gemini-3.1-flash-image-preview" // Форсируем лучшую модель
+          ...formData
         }),
         cache: 'no-store'
       });
@@ -214,7 +216,29 @@ export default function ProfileHeader({
                         </div>
                     </div>
                 </div>
-                <p className="text-[9px] text-gray-400 font-bold uppercase text-center italic">Gemini 3.1 Image enabled automatically with your API key.</p>
+
+                <div className="space-y-3">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-black flex items-center gap-2">
+                        <Camera size={14} /> Image Production Engine
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        <button 
+                            onClick={() => setFormData({...formData, ai_image_model: "google/gemini-3.1-flash-image-preview"})}
+                            className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border transition-all ${formData.ai_image_model === "google/gemini-3.1-flash-image-preview" ? "bg-black text-white border-black" : "bg-white text-gray-400 border-gray-200 hover:border-black"}`}
+                        >
+                            Gemini 3.1 (Pro)
+                        </button>
+                        <button 
+                            onClick={() => setFormData({...formData, ai_image_model: "google/gemini-2.5-flash-image"})}
+                            className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border transition-all ${formData.ai_image_model === "google/gemini-2.5-flash-image" ? "bg-black text-white border-black" : "bg-white text-gray-400 border-gray-200 hover:border-black"}`}
+                        >
+                            Nano Banana (2.5 Flash)
+                        </button>
+                    </div>
+                    <p className="text-[9px] text-gray-400 font-bold uppercase italic">
+                        {formData.ai_image_model === "google/gemini-2.5-flash-image" ? "Ultra-fast generation optimized for characters." : "High-fidelity cinematic generation."}
+                    </p>
+                </div>
               </div>
             ) : (
               <p className="text-xl text-gray-500 typography-body leading-relaxed">{displayData.bio}</p>
