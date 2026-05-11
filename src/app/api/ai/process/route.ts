@@ -22,10 +22,13 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { mood = "neutral", character = "ghoul", userApiKey, content: providedContent, title: providedTitle } = body;
 
-    const apiKey = userApiKey || process.env.OPENROUTER_API_KEY || process.env.AI_API_KEY;
-    if (!apiKey) return NextResponse.json({ error: 'API Key missing' }, { status: 400 });
+    // СТРОГИЙ МИНИМАЛИЗМ: Только по ключу пользователя
+    if (!userApiKey) {
+      return NextResponse.json({ error: 'OpenRouter API Key required in profile.' }, { status: 403 });
+    }
 
-    const model = process.env.AI_MODEL || 'google/gemini-2.0-flash-001';
+    const textModel = 'google/gemini-2.0-flash-001';
+    const imageModel = 'google/gemini-3.1-flash-image-preview';
     const systemPrompt = getCharacterSystemPrompt(mood, character as any);
     const charName = character === 'nana' ? 'Nana Banana' : 'Cyber-Ghoul';
 
@@ -54,15 +57,16 @@ export async function POST(req: Request) {
       ${providedContent}
     `;
 
+    // 1. GENERATE TEXT
     const aiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${userApiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://pager.lookhook.info',
       },
       body: JSON.stringify({
-        model,
+        model: textModel,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
@@ -73,7 +77,7 @@ export async function POST(req: Request) {
 
     if (!aiResponse.ok) {
       const err = await aiResponse.json().catch(() => ({}));
-      throw new Error(err.error?.message || "AI Provider Error");
+      throw new Error(err.error?.message || "OpenRouter API Error");
     }
 
     const aiData = await aiResponse.json();
@@ -89,10 +93,7 @@ export async function POST(req: Request) {
       result = JSON.parse(match[0]);
     }
 
-    // --- ASSEMBLY ---
     const finalTitle = (result.title || providedTitle || "New Intel").replace(/["']/g, '').trim();
-    
-    // Форматируем тело статьи
     let finalBody = finalFormat(result.body || "");
     if (!finalBody.includes('<p')) {
       finalBody = finalBody.split('\n\n').map(p => `<p style="margin-bottom: 24px;">${p}</p>`).join('');
@@ -104,8 +105,43 @@ export async function POST(req: Request) {
       ${getMiningSponsorBlock()}
     `;
 
-    const visualPrompt = getCharacterVisualPrompt(result.banner || finalTitle, mood as any, character as any);
-    const bannerUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(visualPrompt)}?width=1280&height=720&nologo=true&seed=${Math.floor(Math.random() * 1000000)}`;
+    // 2. GENERATE BANNER (STRICT GEMINI 3.1)
+    const visualPrompt = getCharacterVisualPrompt(result.banner || finalTitle, mood, character as any, finalTitle);
+    let bannerUrl = "";
+    
+    try {
+      console.log(`🚀 [Minimalist-AI] Generating image with: ${imageModel}`);
+      
+      const imgAiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${userApiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://pager.lookhook.info',
+        },
+        body: JSON.stringify({
+          model: imageModel,
+          modalities: ["image", "text"],
+          messages: [
+            { 
+              role: 'user', 
+              content: [{ type: "text", text: visualPrompt }] 
+            }
+          ]
+        })
+      });
+
+      if (imgAiResponse.ok) {
+        const imgData = await imgAiResponse.json();
+        const choice = imgData.choices?.[0];
+        bannerUrl = choice?.message?.images?.[0]?.image_url?.url || "";
+      } else {
+        const errData = await imgAiResponse.json().catch(() => ({}));
+        console.error("❌ [Minimalist-AI] Image Error:", errData.error?.message);
+      }
+    } catch (err: any) {
+      console.error("❌ [Minimalist-AI] Critical Error:", err.message);
+    }
 
     return NextResponse.json({
       title: finalTitle,

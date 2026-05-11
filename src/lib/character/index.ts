@@ -16,13 +16,14 @@ export const MINING_DNA = miningDna;
 type CharacterType = 'ghoul' | 'nana';
 
 function getDna(type: CharacterType = 'ghoul') {
-  return type === 'nana' ? nanaDna : dna;
+  return type === 'nana' ? (nanaDna as any) : (dna as any);
 }
 
 export function getCharacterVisualPrompt(
   scene: string, 
-  mood: "happy" | "sad" | "angry" | "surprised" | "bullish" | "bearish" = "happy",
-  characterType: CharacterType = 'ghoul'
+  mood: string = "happy",
+  characterType: CharacterType = 'ghoul',
+  articleTitle?: string
 ): string {
   const selectedDna = getDna(characterType);
   const { physical_attributes, outfit, art_style } = selectedDna;
@@ -43,16 +44,25 @@ export function getCharacterVisualPrompt(
 
   const moodKey = mood.toLowerCase();
   const eyeDesc = moodMap[moodKey] || physical_attributes.eyes;
-  const physicalDesc = `${physical_attributes.species} with ${physical_attributes.skin_color} skin, ${eyeDesc}, and a ${physical_attributes.neck}.`;
+  const physicalDesc = `${physical_attributes.species} with ${physical_attributes.skin_color} skin, ${eyeDesc}, and a ${physical_attributes.neck}. ${physical_attributes.features || ""}`;
   const outfitDesc = `Wearing a ${outfit.headwear}, ${outfit.jacket} with ${outfit.details}.`;
   const styleDesc = `Style: ${art_style.base}, ${art_style.lines}, ${art_style.lighting}. Keywords: ${art_style.keywords.join(', ')}.`;
-  const brandingDesc = selectedDna.art_style.branding_rules;
+  
+  // Креативный бэкграунд: друзья гуля (мемкоины) и суть статьи
+  const titleText = articleTitle ? `Organically integrate the text "${articleTitle.toUpperCase()}" into the environment as a cinematic neon sign, holographic display, or etched surface.` : "";
+  
+  const backgroundLogic = `
+    The scene should be a high-detail cinematic masterpiece illustrating the core theme: "${scene}". 
+    Fill the world with life and dynamic characters. For example, you can include Cyber-Ghoul's robotic friends that embody popular memecoins (like a robotic Shiba Inu, a cyber-Pepe frog, or a stylized Floki). 
+    These companions should be interacting with Cyber-Ghoul or the environment. 
+    Let the article's logic dictate the setting (e.g., a futuristic trading hub, a neon-lit data center, or a sprawling cyberpunk bazaar).
+  `;
 
-  // Добавляем ссылку на референс
+  // Ссылка на референс для точности
   const referenceUrl = process.env.NEXT_PUBLIC_SITE_URL ? `${process.env.NEXT_PUBLIC_SITE_URL}${art_style.reference_image}` : "";
   const imageRefPrefix = referenceUrl ? `${referenceUrl} ` : "";
 
-  return `${imageRefPrefix}Illustration featuring ${selectedDna.name}: ${physicalDesc} ${outfitDesc} Scene: ${scene}. ${styleDesc} Branding: ${brandingDesc}`;
+  return `${imageRefPrefix}Professional masterpiece digital concept art. ${physicalDesc} ${outfitDesc} ${backgroundLogic} ${titleText} ${styleDesc} Branding: ${art_style.branding_rules}`;
 }
 
 export function getCharacterSystemPrompt(mood: string = "neutral", characterType: CharacterType = 'ghoul'): string {
