@@ -8,7 +8,8 @@ import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { 
   Image as ImageIcon, Send, X, AlertCircle, 
-  Bold, Italic, Link as LinkIcon, Loader2, Upload 
+  Bold, Italic, Link as LinkIcon, Loader2, Upload,
+  Sparkles, PenLine, Lock
 } from "lucide-react";
 import Link from "next/link";
 import { client, HASH_TOKEN_ADDRESS } from "@/lib/web3";
@@ -19,9 +20,11 @@ import { upload, resolveScheme } from "thirdweb/storage";
 const PROJECT_WALLET = "0x39adfb3eb6ff7f56bd5c09c62b4ab1d61997193a";
 const POST_PRICE = "10";
 const COMPRESSION_OPTIONS = {
-  maxSizeMB: 0.4, // Target HD quality (approx 400KB)
-  maxWidthOrHeight: 1280, // Target 720p/HD width
+  maxSizeMB: 0.7,
+  maxWidthOrHeight: 1920,
   useWebWorker: true,
+  fileType: "image/webp",
+  initialQuality: 0.9,
 };
 
 interface ToolbarPos {
@@ -47,6 +50,7 @@ export default function WritePage() {
   const [isUploading, setIsUploading] = useState(false);
   const [status, setStatus] = useState<"idle" | "paying" | "publishing" | "success" | "error">("idle");
   const [profile, setProfile] = useState<any>(null);
+  const [activeMode, setActiveMode] = useState<"manual" | "ai">("manual");
 
   const moods = [
     { id: "sarcastic", label: "Sarcastic", icon: "🎭" },
@@ -58,6 +62,8 @@ export default function WritePage() {
 
   const [processingStep, setProcessingStep] = useState<"idle" | "scraping" | "rewriting" | "persisting" | "done">("idle");
 
+  const isEligibleForAi = !!profile?.ai_api_key;
+
   // --- Persistence Logic ---
   const persistAiImage = async (url: string) => {
     if (!url || url.startsWith('https://gateway.ipn.io') || url.includes('supabase.co')) return url;
@@ -66,28 +72,33 @@ export default function WritePage() {
       setProcessingStep("persisting");
       const response = await fetch(url);
       const blob = await response.blob();
-      const file = new File([blob], "ai-banner.png", { type: "image/png" });
-
-      // Apply compression to AI images to save weight (target HD/720p)
-      const compressedBlob = await imageCompression(file, COMPRESSION_OPTIONS);
-      const fileToUpload = new File([compressedBlob], `ai-${Date.now()}.png`, { type: "image/png" });
-
-      const clientId = profile?.thirdweb_client_id;
-      if (clientId) {
-        // Premium: IPFS
-        const customClient = createThirdwebClient({ clientId });
-        const uri = await upload({ client: customClient, files: [fileToUpload] });
-        return resolveScheme({ client: customClient, uri });
-      } else {
-        // Standard: Supabase
-        const { data, error } = await supabase.storage.from('banners').upload(`banners/${fileToUpload.name}`, fileToUpload);
-        if (error) throw error;
-        const { data: { publicUrl } } = supabase.storage.from('banners').getPublicUrl(data.path);
-        return publicUrl;
+      
+      if (blob.size < (COMPRESSION_OPTIONS.maxSizeMB * 1024 * 1024) * 0.8) {
+        const fileToUpload = new File([blob], `ai-${Date.now()}.png`, { type: blob.type });
+        return await uploadToStorage(fileToUpload);
       }
+
+      const file = new File([blob], "ai-banner.png", { type: blob.type });
+      const compressedBlob = await imageCompression(file, COMPRESSION_OPTIONS);
+      const fileToUpload = new File([compressedBlob], `ai-${Date.now()}.webp`, { type: "image/webp" });
+      return await uploadToStorage(fileToUpload);
     } catch (e) {
       console.error("❌ [Persist] Failed to save AI image:", e);
       return url;
+    }
+  };
+
+  const uploadToStorage = async (file: File) => {
+    const clientId = profile?.thirdweb_client_id;
+    if (clientId) {
+      const customClient = createThirdwebClient({ clientId });
+      const uri = await upload({ client: customClient, files: [file] });
+      return resolveScheme({ client: customClient, uri });
+    } else {
+      const { data, error } = await supabase.storage.from('banners').upload(`banners/${file.name}`, file);
+      if (error) throw error;
+      const { data: { publicUrl } } = supabase.storage.from('banners').getPublicUrl(data.path);
+      return publicUrl;
     }
   };
 
@@ -104,9 +115,7 @@ export default function WritePage() {
       });
       const scrapeData = await scrapeRes.json();
 
-      if (!scrapeRes.ok) {
-        throw new Error(scrapeData.error || scrapeData.details || "Scraping failed");
-      }
+      if (!scrapeRes.ok) throw new Error(scrapeData.error || scrapeData.details || "Scraping failed");
 
       setProcessingStep("rewriting");
       const processRes = await fetch("/api/ai/process", {
@@ -124,21 +133,21 @@ export default function WritePage() {
       });
       const data = await processRes.json();
       
-      if (!processRes.ok) {
-        throw new Error(data.error || data.details || "Rewriting failed");
-      }
+      if (!processRes.ok) throw new Error(data.error || data.details || "Rewriting failed");
 
       setTitle(data.title);
       if (editorRef.current) editorRef.current.innerHTML = data.content;
 
-      // Auto-Persist Image
       if (data.image_url) {
         const permanentUrl = await persistAiImage(data.image_url);
         setImageUrl(permanentUrl);
       }
       
       setProcessingStep("done");
-      setTimeout(() => setProcessingStep("idle"), 2000);
+      setTimeout(() => {
+        setProcessingStep("idle");
+        setActiveMode("manual");
+      }, 2000);
     } catch (err: any) {
       alert("AI Error: " + err.message);
       setProcessingStep("idle");
@@ -192,19 +201,10 @@ export default function WritePage() {
     try {
       setIsUploading(true);
       const compressedBlob = await imageCompression(file, COMPRESSION_OPTIONS);
-      const fileToUpload = new File([compressedBlob], `${Date.now()}-${file.name}`, { type: file.type });
-
-      const clientId = profile?.thirdweb_client_id;
-      if (clientId) {
-        const customClient = createThirdwebClient({ clientId });
-        const uri = await upload({ client: customClient, files: [fileToUpload] });
-        setImageUrl(resolveScheme({ client: customClient, uri }));
-      } else {
-        const { data, error } = await supabase.storage.from('banners').upload(`banners/${fileToUpload.name}`, fileToUpload);
-        if (error) throw error;
-        const { data: { publicUrl } } = supabase.storage.from('banners').getPublicUrl(data.path);
-        setImageUrl(publicUrl);
-      }
+      const fileName = file.name.split('.')[0] || 'upload';
+      const fileToUpload = new File([compressedBlob], `${Date.now()}-${fileName}.webp`, { type: "image/webp" });
+      const url = await uploadToStorage(fileToUpload);
+      setImageUrl(url);
     } catch (error: any) {
       alert(error.message || "Upload failed");
     } finally {
@@ -278,9 +278,10 @@ export default function WritePage() {
       <nav className="border-b border-[var(--border-soft)] h-16 flex items-center justify-between px-6 md:px-12 sticky top-0 bg-white z-50">
         <div className="flex items-center gap-4">
           <Link href="/" className="text-xl font-black uppercase tracking-tighter">Pager</Link>
-          <div className="h-4 w-[1px] bg-gray-200 hidden md:block" />
-          <span className="text-[10px] text-gray-400 uppercase font-bold tracking-widest hidden md:block">Draft</span>
+          <div className="h-4 w-[1px] bg-gray-200" />
+          <span className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Draft</span>
         </div>
+        
         <div className="flex items-center gap-6">
           <div className="hidden sm:flex flex-col items-end mr-4">
             <span className="text-[9px] text-gray-400 uppercase font-bold">Balance</span>
@@ -291,6 +292,79 @@ export default function WritePage() {
           </button>
         </div>
       </nav>
+
+      {/* Mode Switcher - Centered on Page */}
+      <div className="flex justify-center mt-8">
+        <div className="flex items-center bg-gray-50 p-1.5 rounded-full border border-gray-100 shadow-sm">
+           <button 
+             onClick={() => setActiveMode("manual")}
+             className={`flex items-center gap-2 px-6 py-2 text-[10px] font-bold uppercase tracking-widest rounded-full transition-all ${activeMode === "manual" ? 'bg-white text-black shadow-md' : 'text-gray-400 hover:text-gray-600'}`}
+           >
+             <PenLine size={14} /> Standard
+           </button>
+           <button 
+             onClick={() => setActiveMode("ai")}
+             className={`flex items-center gap-2 px-6 py-2 text-[10px] font-bold uppercase tracking-widest rounded-full transition-all ${activeMode === "ai" ? 'bg-white text-black shadow-md' : 'text-gray-400 hover:text-gray-600'}`}
+           >
+             {isEligibleForAi ? <Sparkles size={14} /> : <Lock size={14} />} Magic
+           </button>
+        </div>
+      </div>
+
+      {/* AI Production "Shutter" */}
+      <div className={`overflow-hidden transition-all duration-500 ease-in-out bg-gray-50 border-y border-gray-100 mt-8 ${activeMode === "ai" ? 'max-h-[400px] opacity-100 py-12' : 'max-h-0 opacity-0 pointer-events-none'}`}>
+        <div className="max-w-3xl mx-auto px-6 space-y-6">
+          {!isEligibleForAi ? (
+            <div className="text-center py-4">
+              <div className="flex justify-center mb-3 text-gray-300"><Lock size={32} /></div>
+              <p className="text-sm font-medium text-gray-500">AI Magic is locked. Add your OpenRouter API Key in profile settings.</p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-black">
+                <Sparkles size={14} className="animate-pulse" /> AI Production Protocol
+              </div>
+              <div className="flex flex-col md:flex-row gap-3">
+                <input 
+                  type="text" 
+                  placeholder="Paste source article URL..." 
+                  value={externalUrl} 
+                  onChange={e => setExternalUrl(e.target.value)} 
+                  className="flex-[3] px-4 py-3 text-sm border border-gray-200 focus:border-black outline-none bg-white transition-colors" 
+                />
+                <select 
+                  value={mood} 
+                  onChange={e => setMood(e.target.value)} 
+                  className="flex-1 px-3 py-3 text-sm border border-gray-200 outline-none bg-white cursor-pointer"
+                >
+                  {moods.map(m => <option key={m.id} value={m.id}>{m.icon} {m.label}</option>)}
+                </select>
+                <select 
+                  value={character} 
+                  onChange={e => setCharacter(e.target.value as any)} 
+                  className="flex-1 px-3 py-3 text-sm border border-gray-200 outline-none bg-white cursor-pointer"
+                >
+                  <option value="ghoul">🤖 Ghoul</option>
+                  <option value="nana">🍌 Nana</option>
+                </select>
+                <button 
+                  onClick={handleAiRewrite} 
+                  disabled={isAiProcessing || !externalUrl} 
+                  className="flex-1 bg-black text-white text-[10px] font-bold uppercase tracking-widest py-3 px-6 hover:bg-gray-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isAiProcessing ? <Loader2 size={14} className="animate-spin" /> : "Execute"}
+                </button>
+              </div>
+              {processingStep !== "idle" && (
+                <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-tighter text-black">
+                   <div className="w-1.5 h-1.5 bg-black rounded-full animate-ping" />
+                   Status: {processingStep}...
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
 
       {toolbarPos.visible && (
         <div className="fixed z-[100] flex items-center bg-black text-white rounded-full px-2 py-1 shadow-xl animate-in fade-in zoom-in-95 duration-200" style={{ top: toolbarPos.top, left: toolbarPos.left, transform: "translateX(-50%)" }}>
@@ -307,49 +381,54 @@ export default function WritePage() {
           </div>
         )}
 
-        <div className="bg-gray-50 p-6 rounded-sm border border-gray-100 space-y-4">
-          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">
-            <div className="w-2 h-2 bg-black rounded-full animate-pulse" />
-            AI Production Protocol
-          </div>
-          <div className="flex flex-col md:flex-row gap-3">
-            <input type="text" placeholder="Paste article URL..." value={externalUrl} onChange={e => setExternalUrl(e.target.value)} className="flex-[3] px-4 py-3 text-sm border border-gray-200 focus:border-black outline-none bg-white transition-colors" />
-            <select value={mood} onChange={e => setMood(e.target.value)} className="flex-1 px-3 py-3 text-sm border border-gray-200 outline-none bg-white cursor-pointer">
-              {moods.map(m => <option key={m.id} value={m.id}>{m.icon} {m.label}</option>)}
-            </select>
-            <select value={character} onChange={e => setCharacter(e.target.value as any)} disabled={!profile?.ai_api_key} className="flex-1 px-3 py-3 text-sm border border-gray-200 outline-none bg-white cursor-pointer disabled:opacity-50 disabled:bg-gray-100">
-              <option value="ghoul">🤖 Ghoul</option>
-              <option value="nana">🍌 Nana</option>
-            </select>
-            <button onClick={handleAiRewrite} disabled={isAiProcessing || !externalUrl} className="flex-1 bg-black text-white text-xs font-bold uppercase tracking-widest py-3 px-6 hover:bg-gray-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
-              {isAiProcessing ? (
-                <div className="flex items-center gap-2">
-                  <Loader2 size={14} className="animate-spin" />
-                  <span>{processingStep === "scraping" ? "Reading..." : processingStep === "rewriting" ? "Rewriting..." : "Saving..."}</span>
-                </div>
-              ) : "Magic Rewrite"}
-            </button>
-          </div>
-          {processingStep !== "idle" && <div className="text-[10px] font-black uppercase tracking-tighter text-black animate-pulse">Status: {processingStep}</div>}
-        </div>
-
-        <input type="text" placeholder="Story Title" value={title} onChange={e => setTitle(e.target.value)} className="w-full text-4xl md:text-6xl font-bold border-none focus:outline-none placeholder:text-gray-100" />
+        <input 
+          type="text" 
+          placeholder="Story Title" 
+          value={title} 
+          onChange={e => setTitle(e.target.value)} 
+          className="w-full text-4xl md:text-6xl font-bold border-none focus:outline-none placeholder:text-gray-100" 
+        />
 
         <div className="border-y border-gray-50 py-4 space-y-4">
           <div className="flex items-center gap-4">
             <div className="flex-1 flex items-center gap-3 text-gray-400 focus-within:text-black">
               <ImageIcon size={20} />
-              <input type="text" placeholder="Cinematic Banner (Rec: 1280x720 or 1200x514)" value={imageUrl} onChange={e => setImageUrl(e.target.value)} className="w-full text-xs font-medium border-none focus:outline-none bg-transparent" />
+              <input 
+                type="text" 
+                placeholder="Cinematic Banner URL" 
+                value={imageUrl} 
+                onChange={e => setImageUrl(e.target.value)} 
+                className="w-full text-xs font-medium border-none focus:outline-none bg-transparent" 
+              />
             </div>
-            <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-black transition-colors">
+            <button 
+              onClick={() => fileInputRef.current?.click()} 
+              disabled={isUploading} 
+              className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-black transition-colors"
+            >
               {isUploading ? <Loader2 size={16} className="animate-spin" /> : <><Upload size={16} /> Upload</>}
             </button>
             <input ref={fileInputRef} type="file" onChange={handleFileUpload} className="hidden" accept="image/*" />
           </div>
-          {imageUrl && <div className="aspect-[21/9] bg-gray-50 overflow-hidden border border-gray-100 rounded-sm shadow-sm"><img src={imageUrl} alt="Preview" className="w-full h-full object-cover" /></div>}
+          {imageUrl && (
+            <div className="aspect-[21/9] bg-gray-50 overflow-hidden border border-gray-100 rounded-sm shadow-sm relative group">
+              <img src={imageUrl} alt="Preview" className="w-full h-full object-cover" />
+              <button 
+                onClick={() => setImageUrl("")} 
+                className="absolute top-2 right-2 p-1.5 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all hover:bg-black"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
         </div>
 
-        <div ref={editorRef} contentEditable data-placeholder="Start your story here..." className="w-full min-h-[500px] text-xl outline-none prose prose-stone max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-gray-200 empty:before:pointer-events-none leading-[1.8]" />
+        <div 
+          ref={editorRef} 
+          contentEditable 
+          data-placeholder="Start your story here..." 
+          className="w-full min-h-[500px] text-xl outline-none prose prose-stone max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-gray-200 empty:before:pointer-events-none leading-[1.8]" 
+        />
       </div>
 
       {status === "paying" && (
