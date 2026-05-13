@@ -34,7 +34,9 @@ export async function POST(req: Request) {
       userApiKey, 
       content: providedContent, 
       title: providedTitle, 
-      imageModel: providedImageModel
+      imageModel: providedImageModel,
+      atmosphere = "Rick and Morty",
+      customDna = null
     } = body;
 
     if (!userApiKey) return NextResponse.json({ error: "API Key required" }, { status: 403 });
@@ -45,8 +47,10 @@ export async function POST(req: Request) {
 
     const textModel = "google/gemini-2.0-flash-001";
     const imageModel = providedImageModel || "google/gemini-2.0-flash-001";
-    const systemPrompt = getCharacterSystemPrompt(mood, character as any);
-    const charName = character === "nana" ? "Nana Banana" : "Cyber-Ghoul";
+    const systemPrompt = getCharacterSystemPrompt(mood, character as any, customDna);
+    
+    let charName = character === "nana" ? "Nana Banana" : "Cyber-Ghoul";
+    if (character === "custom" && customDna) charName = customDna.name;
 
     const userPrompt = `
       ACT AS A PROFESSIONAL WEB3 EDITOR. 
@@ -56,7 +60,7 @@ export async function POST(req: Request) {
       1. TITLE: Explosive, under 50 chars.
       2. CONTENT: HTML only. Use <p style="margin-bottom: 24px;"> and <strong>. 3-4 paragraphs.
       3. BTC ANALYSIS: 2 sentences.
-      4. BANNER DESCRIPTION: Describe a cinematic banner scene with ${charName} in a Rick and Morty style illustrating the article topic. Include his robotic memecoin friends (Pepe-bot, Doge-bot). 
+      4. BANNER DESCRIPTION: Describe a cinematic scene with ${charName} in ${atmosphere} style illustrating the article topic. Include his robotic memecoin friends.
          IMPORTANT: The scene must be optimized for a wide CINEMATIC horizontal aspect ratio (16:9 or 21:9).
       
       JSON FORMAT: { "title": "...", "body": "...", "analysis": "...", "banner": "..." }
@@ -98,8 +102,8 @@ export async function POST(req: Request) {
       finalBody = finalBody.split("\n\n").map((p: string) => `<p style="margin-bottom: 24px;">${p}</p>`).join("");
     }
 
-    const fullHtml = finalBody + getBtcAnalysisBlock(finalFormat(result.analysis || "Market sentiment is shifting."), character as any) + getMiningSponsorBlock();
-    const visualPrompt = getCharacterVisualPrompt(result.banner || finalTitle, mood, character as any, finalTitle);
+    const fullHtml = finalBody + getBtcAnalysisBlock(finalFormat(result.analysis || "Market sentiment is shifting."), character as any, customDna) + getMiningSponsorBlock();
+    const visualPrompt = getCharacterVisualPrompt(result.banner || finalTitle, mood, character as any, finalTitle, atmosphere, customDna);
     
     let bannerUrl = "";
     try {

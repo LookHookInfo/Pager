@@ -45,7 +45,7 @@ export default function WritePage() {
   const [imageUrl, setImageUrl] = useState("");
   const [externalUrl, setExternalUrl] = useState("");
   const [mood, setMood] = useState("sarcastic");
-  const [character, setCharacter] = useState<"ghoul" | "nana">("ghoul");
+  const [character, setCharacter] = useState<"ghoul" | "nana" | "custom">("ghoul");
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [status, setStatus] = useState<"idle" | "paying" | "publishing" | "success" | "error">("idle");
@@ -128,7 +128,13 @@ export default function WritePage() {
           mood,
           character,
           userApiKey: profile?.ai_api_key,
-          imageModel: profile?.ai_image_model
+          imageModel: profile?.ai_image_model,
+          atmosphere: profile?.ai_atmosphere || "Rick and Morty",
+          customDna: character === "custom" ? {
+            name: profile.ai_custom_dna_name,
+            description: profile.ai_custom_dna_description,
+            reference: profile.ai_custom_dna_reference
+          } : null
         })
       });
       const data = await processRes.json();
@@ -163,7 +169,7 @@ export default function WritePage() {
     try {
       const { data } = await supabase
         .from('profiles')
-        .select('thirdweb_client_id, ai_api_key, ai_image_model')
+        .select('thirdweb_client_id, ai_api_key, ai_image_model, ai_atmosphere, ai_custom_dna_name, ai_custom_dna_description, ai_custom_dna_reference')
         .eq('address', account.address.toLowerCase())
         .maybeSingle();
       if (data) setProfile(data);
@@ -346,6 +352,9 @@ export default function WritePage() {
                 >
                   <option value="ghoul">🤖 Ghoul</option>
                   <option value="nana">🍌 Nana</option>
+                  {profile?.ai_custom_dna_name && (
+                    <option value="custom">👤 {profile.ai_custom_dna_name}</option>
+                  )}
                 </select>
                 <button 
                   onClick={handleAiRewrite} 

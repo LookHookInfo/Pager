@@ -13,67 +13,138 @@ export const NANA_DNA = nanaDna;
 export const BTC_DNA = btcDna;
 export const MINING_DNA = miningDna;
 
-type CharacterType = 'ghoul' | 'nana';
+export type CharacterType = 'ghoul' | 'nana' | 'custom';
+
+export interface CustomDna {
+  name: string;
+  description: string;
+  reference: string;
+}
 
 function getDna(type: CharacterType = 'ghoul') {
-  return type === 'nana' ? (nanaDna as any) : (dna as any);
+  if (type === 'nana') return nanaDna as any;
+  return dna as any;
 }
 
 export function getCharacterVisualPrompt(
   scene: string, 
   mood: string = "happy",
   characterType: CharacterType = 'ghoul',
-  articleTitle?: string
+  articleTitle?: string,
+  customAtmosphere: string = "Rick and Morty",
+  customDna?: CustomDna
 ): string {
-  const selectedDna = getDna(characterType);
-  const { physical_attributes, outfit, art_style } = selectedDna;
-  
-  // Динамические эмоции для ИИ
-  const moodMap: Record<string, string> = {
-    happy: "wide expressive smile, joyful eyes",
-    sad: "droopy eyes, somber expression",
-    angry: "sharp teeth bared, intense glowing eyes",
-    surprised: "wide open eyes, slightly open robotic jaw",
-    bullish: "confident grin, eyes glowing with green data patterns",
-    bearish: "worried squint, dim lighting",
-    sarcastic: "smirking expression, one eye slightly narrowed, cynical look",
-    humorous: "laughing face, squinting eyes, wide toothy grin",
-    negative: "frowning, glowing red eyes, aggressive posture",
-    neutral: "calm robotic expression, steady glowing eyes"
-  };
+  let selectedDna = getDna(characterType);
+  let referenceUrl = "";
+  let foregroundBlock = "";
+  let brandingRules = selectedDna.art_style?.branding_rules || "";
 
-  const moodKey = mood.toLowerCase();
-  const eyeDesc = moodMap[moodKey] || physical_attributes.eyes;
-  const physicalDesc = `${physical_attributes.species} with ${physical_attributes.skin_color} skin, ${eyeDesc}, and a ${physical_attributes.neck}. ${physical_attributes.features || ""}`;
-  const outfitDesc = `Wearing a ${outfit.headwear}, ${outfit.jacket} with ${outfit.details}.`;
+  if (characterType === 'custom' && customDna) {
+    // ЛОГИКА ДЛЯ ПОЛЬЗОВАТЕЛЬСКОГО DNA
+    referenceUrl = customDna.reference;
+    foregroundBlock = `
+      [LAYER 1: IMMUTABLE FOREGROUND ASSET]
+      Subject: ${customDna.name}.
+      Technical DNA Specification: ${customDna.description}.
+      MANDATORY: The subject MUST remain visually identical to the provided REFERENCE_IMAGE. 
+      STYLE ISOLATION: This is a unique custom mascot. Do NOT apply any cartoon style from the background to this subject.
+      RENDER PROTOCOL: High-fidelity stylized digital art, clean bold outlines, cinematic rim lighting.
+    `;
+    brandingRules = "Maintain visual consistency with the unique traits of this custom mascot.";
+  } else {
+    // ЛОГИКА ДЛЯ ШТАТНЫХ ПЕРСОНАЖЕЙ (GHOUL/NANA)
+    const { physical_attributes, outfit, art_style } = selectedDna;
+    
+    const moodKey = mood.toLowerCase();
+    let emotionalExpression = "";
+    
+    if (characterType === 'ghoul' && selectedDna.emotions) {
+      const emo = selectedDna.emotions[moodKey] || selectedDna.emotions.joy;
+      emotionalExpression = `Mouth: ${emo.mouth}. Brows: ${emo.brows}.`;
+    } else {
+      const moodMap: Record<string, string> = {
+        happy: "wide expressive smile, joyful eyes",
+        sad: "droopy eyes, somber expression",
+        angry: "sharp teeth bared, intense glowing eyes",
+        neutral: "calm robotic expression"
+      };
+      emotionalExpression = moodMap[moodKey] || moodMap.neutral;
+    }
+
+    const physicalDesc = `
+      - Head Anatomy: ${physical_attributes.head_shape}.
+      - Epidermis: ${physical_attributes.skin_color}.
+      - Optical Sensors: ${physical_attributes.eyes}.
+      - Chassis Details: ${physical_attributes.features}.
+      - Structural Connector: ${physical_attributes.neck}.
+    `;
+
+    const outfitDesc = `
+      - Head Gear: ${outfit.headwear}.
+      - Torso Protection: ${outfit.jacket}.
+      - External Modules: ${outfit.details}.
+    `;
+    
+    referenceUrl = process.env.NEXT_PUBLIC_SITE_URL 
+      ? `${process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '')}${art_style.reference_image}` 
+      : `https://pager.lookhook.info${art_style.reference_image}`;
+
+    foregroundBlock = `
+      [LAYER 1: IMMUTABLE FOREGROUND ASSET]
+      Subject: ${selectedDna.name}.
+      MANDATORY: The subject MUST remain visually identical to the provided REFERENCE_IMAGE. 
+      STYLE ISOLATION: Do NOT apply any style from the background or other layers to this subject.
+      TECHNICAL ANATOMY:
+      ${physicalDesc}
+      EXPRESSION STATE: ${emotionalExpression}
+      EQUIPMENT SPEC:
+      ${outfitDesc}
+      RENDER PROTOCOL: 
+      - Style: ${art_style.base}. 
+      - Outlines: Technical clean bold black paths. 
+      - Illumination: ${art_style.lighting}.
+      - RESTRICTION: No pupils, no iris, no organic human features.
+    `;
+  }
+
+  const atmosphereStyle = customAtmosphere || "Rick and Morty";
+
+  // 2. LAYER 2: THE DECORATIVE ENVIRONMENT (CUSTOM WORLD)
+  const backgroundBlock = `
+    [LAYER 2: DECORATIVE BACKGROUND WORLD]
+    Theme: "${atmosphereStyle}".
+    Aesthetic: Authentic "${atmosphereStyle}" cartoon world.
+    Content: ${scene}.
+    Atmosphere: Highly saturated, chaotic, and detailed environment specific to the "${atmosphereStyle}" universe.
+    NPCs: Re-imagine secondary robotic friends (Pepe, Shiba Inu) strictly in the "${atmosphereStyle}" drawing style.
+    Technical: Flat colors, simple cel-shading, clean outlines for everything in Layer 2.
+  `;
   
-  // Принудительный стиль Рика и Морти
-  const rickAndMortyStyle = "Rick and Morty adult swim cartoon style, high-detail sci-fi illustration, clean bold black outlines, flat colors with simple cel-shading, expressive and slightly absurd character designs. Proportions should be slightly exaggerated, with noodle-like arms and expressive eyes.";
-  const styleDesc = `Style: ${rickAndMortyStyle} ${art_style.lighting}. Keywords: ${art_style.keywords.join(', ')}, Rick and Morty aesthetic, multiversal portal vibes.`;
-  
-  // Креативный бэкграунд: друзья гуля (мемкоины) и суть статьи
-  const titleText = articleTitle ? `Organically integrate the text "${articleTitle.toUpperCase()}" into the environment as a cinematic neon sign, holographic display, or carved stone.` : "";
-  
-  const backgroundLogic = `
-    The scene should be a high-detail masterpiece illustrating the core theme: "${scene}". 
-    The environment must strictly follow the Rick and Morty art style (intricate tech with glowing buttons, organic-robotic hybrids, and bizarre alien plants).
-    Fill the world with life and dynamic characters. 
-    ESSENTIAL: Include Cyber-Ghoul's robotic friends as secondary characters: 
-    1. A robotic Pepe frog (green, robotic limbs, sad but cool eyes).
-    2. A cybernetic Shiba Inu (metallic fur, neon collar).
-    3. A stylized Floki viking-bot. 
-    These companions should be interacting with Cyber-Ghoul or the crazy environment (e.g., using a portal gun, trading holographic tokens, or drinking alien juice).
-    Let the article logic dictate the setting: a futuristic trading hub, a neon-lit data center, or a sprawling cyberpunk bazaar on a giant asteroid.
+  const compositionRules = `
+    [COMPOSITION SPECIFICATION]
+    1. SUBJECT SCALE & SHOT: Render the subject [LAYER 1] as a medium-long shot. The character should occupy approximately 35% of the total canvas height, positioned slightly to the side or center.
+    2. STYLE CONTRAST: Maintain a sharp 100% style isolation. The subject [LAYER 1] must NOT inherit the visual traits or character design style of [LAYER 2].
+    3. BRANDING: ${brandingRules}.
   `;
 
-  // Ссылка на референс для точности
-  const referenceUrl = process.env.NEXT_PUBLIC_SITE_URL ? `${process.env.NEXT_PUBLIC_SITE_URL}${art_style.reference_image}` : "";
-  const imageRefPrefix = referenceUrl ? `${referenceUrl} ` : "";
-
-  return `${imageRefPrefix}Professional masterpiece digital art. ${physicalDesc} ${outfitDesc} ${backgroundLogic} ${titleText} ${styleDesc} Branding: ${art_style.branding_rules}`;
+  return `
+    REFERENCE_URL: ${referenceUrl}
+    TASK: Professional Composite Illustration.
+    ${foregroundBlock}
+    ${backgroundBlock}
+    ${compositionRules}
+    ${articleTitle ? `OVERLAY TEXT: "${articleTitle.toUpperCase()}"` : ""}
+  `.trim();
 }
 
-export function getCharacterSystemPrompt(mood: string = "neutral", characterType: CharacterType = 'ghoul'): string {
+export function getCharacterSystemPrompt(mood: string = "neutral", characterType: CharacterType = 'ghoul', customDna?: CustomDna): string {
+  if (characterType === 'custom' && customDna) {
+    return `You are ${customDna.name}, the mascot of Pager. 
+    Your DNA Description: ${customDna.description}.
+    Current Mood: ${mood}.
+    Always speak in the context of Web3 and Base network.`;
+  }
+
   const selectedDna = getDna(characterType);
   return `You are ${selectedDna.name}, the mascot of Pager (Web3 media). 
   Description: ${selectedDna.physical_attributes.species}, ${selectedDna.physical_attributes.skin_color} skin.
@@ -85,8 +156,10 @@ export function getCharacterSystemPrompt(mood: string = "neutral", characterType
   Mining Hash Info: ${JSON.stringify(MINING_DNA.ecosystem_details)}`;
 }
 
-export function getBtcAnalysisBlock(analysis: string, characterType: CharacterType = 'ghoul'): string {
-  const charName = characterType === 'nana' ? 'Nana' : 'Cyber-Ghoul';
+export function getBtcAnalysisBlock(analysis: string, characterType: CharacterType = 'ghoul', customDna?: CustomDna): string {
+  let charName = characterType === 'nana' ? 'Nana' : 'Cyber-Ghoul';
+  if (characterType === 'custom' && customDna) charName = customDna.name;
+
   return `
 <div style="margin-top: 48px; padding: 24px; background-color: #f9fafb; border-left: 4px solid #000;">
   <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #6b7280;">
@@ -105,7 +178,7 @@ export function getMiningSponsorBlock(): string {
   <p style="margin: 0 0 8px 0; font-size: 10px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; color: #9ca3af;">
     ${MINING_DNA.formatting.block_title}
   </p>
-  <p style="margin: 0 0 12px 0; font-size: 14px; color: #4b5563;">
+  <p style="margin: 0; font-size: 14px; color: #4b5563;">
     ${MINING_DNA.mission}
   </p>
   <code style="font-size: 11px; background: #000; color: #fff; padding: 2px 8px; border-radius: 2px;">

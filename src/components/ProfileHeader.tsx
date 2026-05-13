@@ -1,6 +1,6 @@
-﻿"use client";
+"use client";
 
-import { Globe, Settings2, Save, X, Loader2, Database, ShieldCheck, Camera, Eye, EyeOff, HelpCircle, ExternalLink, CheckCircle2 } from "lucide-react";
+import { Globe, Settings2, Save, X, Loader2, Database, ShieldCheck, Camera, Eye, EyeOff, HelpCircle, ExternalLink, CheckCircle2, UserPlus, Palette } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useActiveAccount } from "thirdweb/react";
@@ -20,10 +20,12 @@ export default function ProfileHeader({
   const account = useActiveAccount();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dnaRefInputRef = useRef<HTMLInputElement>(null);
   
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isUploadingDna, setIsUploadingDna] = useState(false);
   const [showClientId, setShowClientId] = useState(false);
   const [showAiKey, setShowAiKey] = useState(false);
   
@@ -36,7 +38,11 @@ export default function ProfileHeader({
     thirdweb_client_id: profile.thirdweb_client_id || "",
     avatar_url: profile.avatar_url || "",
     ai_api_key: profile.ai_api_key || "",
-    ai_image_model: profile.ai_image_model || "google/gemini-3.1-flash-image-preview"
+    ai_image_model: profile.ai_image_model || "google/gemini-3.1-flash-image-preview",
+    ai_atmosphere: profile.ai_atmosphere || "Rick and Morty",
+    ai_custom_dna_name: profile.ai_custom_dna_name || "",
+    ai_custom_dna_description: profile.ai_custom_dna_description || "",
+    ai_custom_dna_reference: profile.ai_custom_dna_reference || ""
   });
 
   const [displayData, setDisplayData] = useState({
@@ -46,7 +52,11 @@ export default function ProfileHeader({
     thirdweb_client_id: profile.thirdweb_client_id || "",
     avatar_url: profile.avatar_url || "",
     ai_api_key: profile.ai_api_key || "",
-    ai_image_model: profile.ai_image_model || "google/gemini-3.1-flash-image-preview"
+    ai_image_model: profile.ai_image_model || "google/gemini-3.1-flash-image-preview",
+    ai_atmosphere: profile.ai_atmosphere || "Rick and Morty",
+    ai_custom_dna_name: profile.ai_custom_dna_name || "",
+    ai_custom_dna_description: profile.ai_custom_dna_description || "",
+    ai_custom_dna_reference: profile.ai_custom_dna_reference || ""
   });
 
   useEffect(() => {
@@ -57,7 +67,11 @@ export default function ProfileHeader({
       thirdweb_client_id: profile.thirdweb_client_id || "",
       avatar_url: profile.avatar_url || "",
       ai_api_key: profile.ai_api_key || "",
-      ai_image_model: profile.ai_image_model || "google/gemini-3.1-flash-image-preview"
+      ai_image_model: profile.ai_image_model || "google/gemini-3.1-flash-image-preview",
+      ai_atmosphere: profile.ai_atmosphere || "Rick and Morty",
+      ai_custom_dna_name: profile.ai_custom_dna_name || "",
+      ai_custom_dna_description: profile.ai_custom_dna_description || "",
+      ai_custom_dna_reference: profile.ai_custom_dna_reference || ""
     };
     setFormData(data);
     setDisplayData({
@@ -82,6 +96,24 @@ export default function ProfileHeader({
       alert("Failed to upload avatar to IPFS.");
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleDnaRefUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !formData.thirdweb_client_id) return;
+
+    try {
+      setIsUploadingDna(true);
+      const customClient = createThirdwebClient({ clientId: formData.thirdweb_client_id });
+      const uri = await upload({ client: customClient, files: [file] });
+      const url = resolveScheme({ client: customClient, uri });
+      setFormData({ ...formData, ai_custom_dna_reference: url });
+    } catch (error: any) {
+      console.error("DNA ref upload error:", error);
+      alert("Failed to upload reference image to IPFS.");
+    } finally {
+      setIsUploadingDna(false);
     }
   };
 
@@ -217,6 +249,68 @@ export default function ProfileHeader({
                     </div>
                 </div>
 
+                <div className="p-5 bg-gray-50 border border-gray-100 rounded-sm space-y-3">
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-black"><Palette size={14} /> Custom Atmosphere</div>
+                    <input 
+                        type="text" 
+                        value={formData.ai_atmosphere} 
+                        onChange={e => setFormData({...formData, ai_atmosphere: e.target.value})} 
+                        placeholder="e.g. Rick and Morty, The Simpsons, Cyberpunk" 
+                        className="w-full text-xs font-mono p-3 border border-gray-200 focus:border-black outline-none bg-white" 
+                    />
+                    <p className="text-[9px] text-gray-400 font-bold uppercase italic">Defines the background world style for your AI banners.</p>
+                </div>
+
+                {/* --- CUSTOM DNA SECTION --- */}
+                <div className="p-6 border-2 border-dashed border-gray-200 rounded-sm space-y-6">
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-600">
+                        <UserPlus size={14} /> Private DNA Protocol (Custom Mascot)
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold uppercase text-gray-400">Mascot Name</label>
+                                <input 
+                                    type="text" 
+                                    value={formData.ai_custom_dna_name} 
+                                    onChange={e => setFormData({...formData, ai_custom_dna_name: e.target.value})} 
+                                    placeholder="e.g. Robo-Cat" 
+                                    className="w-full text-xs font-mono p-3 border border-gray-200 focus:border-black outline-none bg-white" 
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold uppercase text-gray-400">Mascot Description (DNA)</label>
+                                <textarea 
+                                    value={formData.ai_custom_dna_description} 
+                                    onChange={e => setFormData({...formData, ai_custom_dna_description: e.target.value})} 
+                                    placeholder="Describe physical traits, colors, unique features..." 
+                                    className="w-full text-xs font-mono p-3 border border-gray-200 focus:border-black outline-none bg-white min-h-[100px] resize-none" 
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-4 text-center">
+                            <label className="text-[10px] font-bold uppercase text-gray-400 block text-left">Visual Reference</label>
+                            <div className="aspect-square w-32 mx-auto bg-gray-100 rounded-lg flex items-center justify-center border-2 border-white shadow-sm overflow-hidden relative group">
+                                {formData.ai_custom_dna_reference ? (
+                                    <img src={formData.ai_custom_dna_reference} alt="Custom DNA Ref" className="w-full h-full object-cover" />
+                                ) : (
+                                    <UserPlus size={32} className="text-gray-300" />
+                                )}
+                                {formData.thirdweb_client_id && (
+                                    <button onClick={() => dnaRefInputRef.current?.click()} className="absolute inset-0 bg-black/40 text-white flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                        {isUploadingDna ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
+                                        <span className="text-[8px] font-bold uppercase mt-1">Ref Image</span>
+                                    </button>
+                                )}
+                            </div>
+                            <input ref={dnaRefInputRef} type="file" className="hidden" accept="image/*" onChange={handleDnaRefUpload} />
+                            <p className="text-[9px] text-gray-400 font-bold uppercase">Upload a reference image to help AI stay consistent.</p>
+                        </div>
+                    </div>
+                </div>
+
                 <div className="space-y-3">
                     <div className="text-[10px] font-black uppercase tracking-widest text-black flex items-center gap-2">
                         <Camera size={14} /> Image Production Engine
@@ -241,7 +335,25 @@ export default function ProfileHeader({
                 </div>
               </div>
             ) : (
-              <p className="text-xl text-gray-500 typography-body leading-relaxed">{displayData.bio}</p>
+              <div className="space-y-8">
+                <p className="text-xl text-gray-500 typography-body leading-relaxed">{displayData.bio}</p>
+                
+                {displayData.ai_custom_dna_name && (
+                    <div className="p-4 bg-blue-50 border border-blue-100 rounded-sm flex items-center gap-4">
+                        <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center border border-blue-200 overflow-hidden shrink-0">
+                            {displayData.ai_custom_dna_reference ? (
+                                <img src={displayData.ai_custom_dna_reference} alt="DNA" className="w-full h-full object-cover" />
+                            ) : (
+                                <UserPlus size={20} className="text-blue-400" />
+                            )}
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-black uppercase text-blue-600 tracking-widest">Active Custom DNA</p>
+                            <h4 className="font-bold text-lg leading-tight">{displayData.ai_custom_dna_name}</h4>
+                        </div>
+                    </div>
+                )}
+              </div>
             )}
           </div>
         </div>
