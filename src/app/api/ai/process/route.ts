@@ -21,7 +21,7 @@ function extractJson(text: string) {
     return JSON.parse(text);
   } catch (e) {
     console.error("❌ [AI Process] JSON Parse Error:", e, "Raw text:", text);
-    throw new Error("Failed to parse AI response as JSON");
+    throw new Error("AI returned invalid data format. Please try again.");
   }
 }
 
@@ -42,33 +42,33 @@ export async function POST(req: Request) {
     if (!userApiKey) return NextResponse.json({ error: "API Key required" }, { status: 403 });
     if (!providedContent) {
       console.error("❌ [AI Process] Missing content in request body");
-      return NextResponse.json({ error: "No content provided for rewriting" }, { status: 400 });
+      return NextResponse.json({ error: "No content provided" }, { status: 400 });
     }
 
     const textModel = "google/gemini-2.0-flash-001";
     const imageModel = providedImageModel || "google/gemini-2.0-flash-001";
     const systemPrompt = getCharacterSystemPrompt(mood, character as any, customDna);
-    
+
     let charName = character === "nana" ? "Nana Banana" : "Cyber-Ghoul";
     if (character === "custom" && customDna) charName = customDna.name;
 
     const userPrompt = `
       ACT AS A PROFESSIONAL WEB3 EDITOR. 
       Rewrite the following article in ${charName} style.
-      
+
       RULES:
       1. TITLE: Explosive, under 50 chars.
       2. CONTENT: HTML only. Use <p style="margin-bottom: 24px;"> and <strong>. 3-4 paragraphs.
       3. BTC ANALYSIS: 2 sentences.
       4. BANNER DESCRIPTION: Describe a cinematic scene with ${charName} in ${atmosphere} style illustrating the article topic. Include his robotic memecoin friends.
          IMPORTANT: The scene must be optimized for a wide CINEMATIC horizontal aspect ratio (16:9 or 21:9).
-      
+
       JSON FORMAT: { "title": "...", "body": "...", "analysis": "...", "banner": "..." }
-      
+
       ARTICLE: ${providedContent.slice(0, 10000)}
     `;
 
-    console.log(`📡 [AI Process] Calling OpenRouter (${textModel})...`);
+    console.log(`📡 [AI Process] Calling OpenRouter for text (${textModel})...`);
 
     const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -104,7 +104,7 @@ export async function POST(req: Request) {
 
     const fullHtml = finalBody + getBtcAnalysisBlock(finalFormat(result.analysis || "Market sentiment is shifting."), character as any, customDna) + getMiningSponsorBlock();
     const visualPrompt = getCharacterVisualPrompt(result.banner || finalTitle, mood, character as any, finalTitle, atmosphere, customDna);
-    
+
     let bannerUrl = "";
     try {
       console.log(`📡 [AI Process] Generating banner (${imageModel})...`);
@@ -131,6 +131,10 @@ export async function POST(req: Request) {
       }
     } catch (e) {
       console.error("⚠️ [AI Process] Image generation error:", e);
+    }
+
+    if (!bannerUrl) {
+        return NextResponse.json({ error: "Banner Generation Failed", details: "AI failed to create a cinematic banner. Try again or change model." }, { status: 500 });
     }
 
     return NextResponse.json({ 

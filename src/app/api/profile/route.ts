@@ -7,7 +7,8 @@ export async function POST(req: Request) {
     const { 
       address, name, bio, website, thirdweb_client_id, 
       avatar_url, ai_api_key, ai_image_model, ai_atmosphere,
-      ai_custom_dna_name, ai_custom_dna_description, ai_custom_dna_reference
+      ai_custom_dna_name, ai_custom_dna_description, ai_custom_dna_reference,
+      binance_accounts, telegram_channels, telegram_chat_id
     } = body;
 
     if (!address) {
@@ -35,7 +36,10 @@ export async function POST(req: Request) {
         ai_atmosphere,
         ai_custom_dna_name,
         ai_custom_dna_description,
-        ai_custom_dna_reference
+        ai_custom_dna_reference,
+        binance_accounts,
+        telegram_channels,
+        telegram_chat_id
       }, { onConflict: 'address' })
       .select()
       .single();

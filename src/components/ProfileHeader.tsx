@@ -42,7 +42,9 @@ export default function ProfileHeader({
     ai_atmosphere: profile.ai_atmosphere || "Rick and Morty",
     ai_custom_dna_name: profile.ai_custom_dna_name || "",
     ai_custom_dna_description: profile.ai_custom_dna_description || "",
-    ai_custom_dna_reference: profile.ai_custom_dna_reference || ""
+    ai_custom_dna_reference: profile.ai_custom_dna_reference || "",
+    binance_accounts: profile.binance_accounts || [],
+    telegram_channels: profile.telegram_channels || []
   });
 
   const [displayData, setDisplayData] = useState({
@@ -56,7 +58,9 @@ export default function ProfileHeader({
     ai_atmosphere: profile.ai_atmosphere || "Rick and Morty",
     ai_custom_dna_name: profile.ai_custom_dna_name || "",
     ai_custom_dna_description: profile.ai_custom_dna_description || "",
-    ai_custom_dna_reference: profile.ai_custom_dna_reference || ""
+    ai_custom_dna_reference: profile.ai_custom_dna_reference || "",
+    binance_accounts: profile.binance_accounts || [],
+    telegram_channels: profile.telegram_channels || []
   });
 
   useEffect(() => {
@@ -71,7 +75,9 @@ export default function ProfileHeader({
       ai_atmosphere: profile.ai_atmosphere || "Rick and Morty",
       ai_custom_dna_name: profile.ai_custom_dna_name || "",
       ai_custom_dna_description: profile.ai_custom_dna_description || "",
-      ai_custom_dna_reference: profile.ai_custom_dna_reference || ""
+      ai_custom_dna_reference: profile.ai_custom_dna_reference || "",
+      binance_accounts: profile.binance_accounts || [],
+      telegram_channels: profile.telegram_channels || []
     };
     setFormData(data);
     setDisplayData({
@@ -245,6 +251,153 @@ export default function ProfileHeader({
                         <div className="relative">
                             <input type={showAiKey ? "text" : "password"} value={formData.ai_api_key} onChange={e => setFormData({...formData, ai_api_key: e.target.value})} placeholder="sk-or-v1-..." className="w-full text-xs font-mono p-3 pr-10 border border-gray-200 focus:border-black outline-none bg-white" />
                             <button type="button" onClick={() => setShowAiKey(!showAiKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black">{showAiKey ? <EyeOff size={14} /> : <Eye size={14} />}</button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* --- DISTRIBUTION PROTOCOL --- */}
+                <div className="p-6 border-2 border-black rounded-sm space-y-8 bg-white">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-black">
+                            <Globe size={14} /> Distribution Protocol
+                        </div>
+                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter">Auto-Posting Engine</span>
+                    </div>
+
+                    {/* Binance Square Accounts */}
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-orange-500">
+                             Binance Square Accounts
+                        </div>
+                        <div className="space-y-3">
+                            {formData.binance_accounts.map((acc: any, idx: number) => (
+                                <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-100 rounded-sm group">
+                                    <div className="flex-1">
+                                        <div className="text-[10px] font-black uppercase">{acc.label}</div>
+                                        <div className="text-[9px] font-mono text-gray-400 truncate">KEY: {acc.apiKey.slice(0, 8)}...</div>
+                                    </div>
+                                    <button 
+                                        onClick={() => {
+                                            const newAccs = [...formData.binance_accounts];
+                                            newAccs.splice(idx, 1);
+                                            setFormData({...formData, binance_accounts: newAccs});
+                                        }}
+                                        className="text-gray-300 hover:text-red-500 transition-colors"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                </div>
+                            ))}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <input 
+                                    type="text" 
+                                    id="bn-label"
+                                    placeholder="Account Label (e.g. Main)" 
+                                    className="text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white" 
+                                />
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="password" 
+                                        id="bn-key"
+                                        placeholder="Binance Square API Key" 
+                                        className="flex-1 text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white font-mono" 
+                                    />
+                                    <button 
+                                        onClick={() => {
+                                            const labelInput = document.getElementById('bn-label') as HTMLInputElement;
+                                            const keyInput = document.getElementById('bn-key') as HTMLInputElement;
+                                            if (!labelInput.value || !keyInput.value) return;
+                                            setFormData({
+                                                ...formData, 
+                                                binance_accounts: [...formData.binance_accounts, { label: labelInput.value, apiKey: keyInput.value }]
+                                            });
+                                            labelInput.value = '';
+                                            keyInput.value = '';
+                                        }}
+                                        className="bg-black text-white px-4 text-[10px] font-bold uppercase hover:bg-gray-800 transition-all"
+                                    >
+                                        Add
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="h-[1px] bg-gray-100" />
+
+                    {/* Telegram Channels */}
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-blue-500">
+                             Telegram Channels
+                        </div>
+                        <div className="space-y-3">
+                            {formData.telegram_channels?.map((ch: any, idx: number) => (
+                                <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-100 rounded-sm group">
+                                    <div className="flex-1">
+                                        <div className="text-[10px] font-black uppercase">{ch.label}</div>
+                                        <div className="text-[9px] font-mono text-gray-400">ID: {ch.chatId} {ch.topicId ? `| TOPIC: ${ch.topicId}` : ''}</div>
+                                    </div>
+                                    <button 
+                                        onClick={() => {
+                                            const newChs = [...(formData.telegram_channels || [])];
+                                            newChs.splice(idx, 1);
+                                            setFormData({...formData, telegram_channels: newChs});
+                                        }}
+                                        className="text-gray-300 hover:text-red-500 transition-colors"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                </div>
+                            ))}
+                            
+                            <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-sm mb-2">
+                                <p className="text-[9px] text-blue-700 leading-relaxed uppercase tracking-tighter font-bold">
+                                    1. Add @lookhookbot as Admin to channel.<br/>
+                                    2. Paste Chat ID (starts with -100).<br/>
+                                    3. Topic ID is optional for Forum groups.
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                <input 
+                                    type="text" 
+                                    id="tg-label"
+                                    placeholder="Channel Name" 
+                                    className="text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white" 
+                                />
+                                <input 
+                                    type="text" 
+                                    id="tg-id"
+                                    placeholder="Chat ID (-100...)" 
+                                    className="text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white font-mono" 
+                                />
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        id="tg-topic"
+                                        placeholder="Topic ID (Opt)" 
+                                        className="flex-1 text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white font-mono" 
+                                    />
+                                    <button 
+                                        onClick={() => {
+                                            const labelInput = document.getElementById('tg-label') as HTMLInputElement;
+                                            const idInput = document.getElementById('tg-id') as HTMLInputElement;
+                                            const topicInput = document.getElementById('tg-topic') as HTMLInputElement;
+                                            if (!labelInput.value || !idInput.value) return;
+                                            setFormData({
+                                                ...formData, 
+                                                telegram_channels: [...(formData.telegram_channels || []), { label: labelInput.value, chatId: idInput.value, topicId: topicInput.value }]
+                                            });
+                                            labelInput.value = '';
+                                            idInput.value = '';
+                                            topicInput.value = '';
+                                        }}
+                                        className="bg-black text-white px-4 text-[10px] font-bold uppercase hover:bg-gray-800 transition-all"
+                                    >
+                                        Add
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

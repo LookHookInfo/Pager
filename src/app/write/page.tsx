@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { 
   Image as ImageIcon, Send, X, AlertCircle, 
   Bold, Italic, Link as LinkIcon, Loader2, Upload,
-  Sparkles, PenLine, Lock
+  Sparkles, PenLine, Lock, CheckCircle2, Megaphone
 } from "lucide-react";
 import Link from "next/link";
 import { client, HASH_TOKEN_ADDRESS } from "@/lib/web3";
@@ -33,6 +33,12 @@ interface ToolbarPos {
   visible: boolean;
 }
 
+interface Notification {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
+
 export default function WritePage() {
   const account = useActiveAccount();
   const router = useRouter();
@@ -51,6 +57,7 @@ export default function WritePage() {
   const [status, setStatus] = useState<"idle" | "paying" | "publishing" | "success" | "error">("idle");
   const [profile, setProfile] = useState<any>(null);
   const [activeMode, setActiveMode] = useState<"manual" | "ai">("manual");
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const moods = [
     { id: "sarcastic", label: "Sarcastic", icon: "🎭" },
@@ -63,6 +70,14 @@ export default function WritePage() {
   const [processingStep, setProcessingStep] = useState<"idle" | "scraping" | "rewriting" | "persisting" | "done">("idle");
 
   const isEligibleForAi = !!profile?.ai_api_key;
+
+  const addNotification = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    const id = Math.random().toString(36).substr(2, 9);
+    setNotifications(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+    }, 4000);
+  };
 
   // --- Persistence Logic ---
   const persistAiImage = async (url: string) => {
@@ -244,9 +259,24 @@ export default function WritePage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ title, content, image_url: imageUrl || null, author_address: account.address.toLowerCase() })
               });
+              const resData = await res.json();
+              
               if (!res.ok) throw new Error("Failed to create article");
+
+              // Handle Distribution Popups
+              if (resData.distribution && Array.isArray(resData.distribution)) {
+                resData.distribution.forEach((dist: any) => {
+                  if (dist.success) {
+                    addNotification(`Posted to ${dist.label}`, 'success');
+                  } else {
+                    addNotification(`Failed to post to ${dist.label}`, 'error');
+                  }
+                });
+              }
+
               setStatus("success");
-              setTimeout(() => router.push("/"), 1500);
+              // Delay redirect to let user see the notifications
+              setTimeout(() => router.push("/"), resData.distribution?.length > 0 ? 3500 : 1500);
             } catch (err: any) { setStatus("error"); }
           },
           onError: () => { setStatus("error"); }
@@ -449,6 +479,28 @@ export default function WritePage() {
           </div>
         </div>
       )}
+
+      {/* Notifications / Popups */}
+      <div className="fixed bottom-8 right-8 z-[100] space-y-3 pointer-events-none">
+        {notifications.map(notif => (
+          <div 
+            key={notif.id} 
+            className={`flex items-center gap-3 px-6 py-4 rounded-sm shadow-2xl border-l-4 animate-in slide-in-from-right-full duration-300 pointer-events-auto ${
+              notif.type === 'success' ? 'bg-black text-white border-green-500' : 
+              notif.type === 'error' ? 'bg-red-600 text-white border-red-800' : 
+              'bg-gray-900 text-white border-blue-500'
+            }`}
+          >
+            {notif.type === 'success' && <CheckCircle2 size={18} className="text-green-500" />}
+            {notif.type === 'error' && <AlertCircle size={18} />}
+            {notif.type === 'info' && <Megaphone size={18} />}
+            <div className="flex flex-col">
+              <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Distribution</span>
+              <span className="text-sm font-bold">{notif.message}</span>
+            </div>
+          </div>
+        ))}
+      </div>
     </main>
   );
 }

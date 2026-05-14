@@ -27,10 +27,13 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   
   if (!article) return {};
 
-  const description = article.content.replace(/<[^>]*>?/gm, '').slice(0, 160) + '...';
+  const description = article.content
+    .replace(/<[^>]*>?/gm, '') // Remove HTML
+    .replace(/\s+/g, ' ')      // Normalize whitespace
+    .trim()
+    .slice(0, 160) + '...';
+    
   const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info').replace(/\/$/, '');
-  
-  // Используем наш новый API для генерации динамического OG-изображения
   const ogImageUrl = `${baseUrl}/api/og?id=${article.id}`;
 
   return {

@@ -5,6 +5,7 @@ import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import ProfileHeader from "@/components/ProfileHeader";
 import DeleteButton from "@/components/DeleteButton";
+import { Metadata } from 'next';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -46,6 +47,48 @@ async function getProfileData(address: string, page: number) {
     totalArticles: totalArticlesCount,
     totalRewards,
     totalPages: Math.ceil((count || 0) / ITEMS_PER_PAGE)
+  };
+}
+
+export async function generateMetadata({ params }: { params: { address: string } }): Promise<Metadata> {
+  const address = decodeURIComponent(params.address).toLowerCase();
+  
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("name, bio")
+    .eq('address', address)
+    .maybeSingle();
+
+  const name = profile?.name || "Anonymous Author";
+  const bio = profile?.bio || `Intel feed from ${address.slice(0, 6)}...${address.slice(-4)}`;
+  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info').replace(/\/$/, '');
+  const ogImageUrl = `${baseUrl}/api/og?address=${address}`;
+
+  return {
+    title: `${name} | Pager Tape`,
+    description: bio,
+    openGraph: {
+      title: `${name}'s Tape on Pager`,
+      description: bio,
+      url: `${baseUrl}/tape/${address}`,
+      siteName: 'Pager',
+      images: [
+        {
+          url: ogImageUrl,
+          width: 1200,
+          height: 630,
+          alt: `${name} on Pager`,
+        },
+      ],
+      locale: 'en_US',
+      type: 'profile',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `${name} on Pager`,
+      description: bio,
+      images: [ogImageUrl],
+    },
   };
 }
 
