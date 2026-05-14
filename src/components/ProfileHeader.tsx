@@ -402,15 +402,42 @@ export default function ProfileHeader({
                     </div>
                 </div>
 
-                <div className="p-5 bg-gray-50 border border-gray-100 rounded-sm space-y-3">
+                <div className="p-5 bg-gray-50 border border-gray-100 rounded-sm space-y-4">
                     <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-black"><Palette size={14} /> Custom Atmosphere</div>
-                    <input 
-                        type="text" 
-                        value={formData.ai_atmosphere} 
-                        onChange={e => setFormData({...formData, ai_atmosphere: e.target.value})} 
-                        placeholder="e.g. Rick and Morty, The Simpsons, Cyberpunk" 
-                        className="w-full text-xs font-mono p-3 border border-gray-200 focus:border-black outline-none bg-white" 
-                    />
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        {[
+                            { id: 'Rick and Morty', label: 'Rick & Morty' },
+                            { id: 'Pirates of the Caribbean', label: 'Pirates' },
+                            { id: 'Minions', label: 'Minions' }
+                        ].map((style) => (
+                            <button
+                                key={style.id}
+                                onClick={() => setFormData({...formData, ai_atmosphere: style.id})}
+                                className={`py-2 px-3 text-[10px] font-bold uppercase tracking-tighter border transition-all ${
+                                    formData.ai_atmosphere === style.id 
+                                    ? 'bg-black text-white border-black' 
+                                    : 'bg-white text-gray-500 border-gray-200 hover:border-black hover:text-black'
+                                }`}
+                            >
+                                {style.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="relative">
+                        <input 
+                            type="text" 
+                            value={formData.ai_atmosphere} 
+                            onChange={e => setFormData({...formData, ai_atmosphere: e.target.value})} 
+                            placeholder="Or type custom style (e.g. Cyberpunk)" 
+                            className="w-full text-xs font-mono p-3 border border-gray-200 focus:border-black outline-none bg-white" 
+                        />
+                        {formData.ai_atmosphere && !['Rick and Morty', 'Pirates of the Caribbean', 'Minions'].includes(formData.ai_atmosphere) && (
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[8px] font-black uppercase text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-sm">Custom</div>
+                        )}
+                    </div>
+                    
                     <p className="text-[9px] text-gray-400 font-bold uppercase italic">Defines the background world style for your AI banners.</p>
                 </div>
 

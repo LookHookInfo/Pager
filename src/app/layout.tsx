@@ -29,7 +29,7 @@ export const metadata: Metadata = {
         alt: "Pager Web3 Media",
       },
     ],
-    locale: "ru_RU",
+    locale: "en_US",
     type: "website",
   },
   twitter: {
@@ -50,7 +50,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ru">
+    <html lang="en">
       <body className={`${inter.variable} ${serif.variable} font-sans selection:bg-black selection:text-white`}>
         <ThirdwebProvider>
           <AccountSync />

@@ -49,7 +49,7 @@ export async function POST(req: Request) {
       if (profile) {
         console.log("📡 [API Create Article] Initiating distribution for:", profile.address);
         // Ждем завершения дистрибуции, чтобы вернуть результаты клиенту
-        distributionResults = await distributeArticle(profile, title, content, image_url);
+        distributionResults = await distributeArticle(profile, title, content, image_url, data.id);
       }
     } catch (distError) {
       console.error("⚠️ [API Create Article] Distribution process error:", distError);

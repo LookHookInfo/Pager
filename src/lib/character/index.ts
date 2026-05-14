@@ -39,6 +39,20 @@ export function getCharacterVisualPrompt(
   let foregroundBlock = "";
   let brandingRules = selectedDna.art_style?.branding_rules || "";
 
+  const moodKey = mood.toLowerCase();
+  
+  // Define visual mood influence (colors, lighting)
+  const moodVisuals: Record<string, string> = {
+    happy: "bright vibrant colors, golden hour lighting, celebratory sparks",
+    sarcastic: "neon-noir lighting, high contrast shadows, smirk-inducing details",
+    bullish: "green matrix rain elements, rising glowing charts in sky, explosive energy",
+    bearish: "red stormy clouds, raining binary code, somber industrial aesthetic",
+    humorous: "wacky distorted physics, bright pastel palette, slapstick elements",
+    negative: "gritty dark grayscale with single red accent, glitch effects, dystopian fog",
+    neutral: "balanced clean lighting, technological atmosphere"
+  };
+  const visualMood = moodVisuals[moodKey] || moodVisuals.neutral;
+
   if (characterType === 'custom' && customDna) {
     // ЛОГИКА ДЛЯ ПОЛЬЗОВАТЕЛЬСКОГО DNA
     referenceUrl = customDna.reference;
@@ -55,7 +69,6 @@ export function getCharacterVisualPrompt(
     // ЛОГИКА ДЛЯ ШТАТНЫХ ПЕРСОНАЖЕЙ (GHOUL/NANA)
     const { physical_attributes, outfit, art_style } = selectedDna;
     
-    const moodKey = mood.toLowerCase();
     let emotionalExpression = "";
     
     if (characterType === 'ghoul' && selectedDna.emotions) {
@@ -64,8 +77,11 @@ export function getCharacterVisualPrompt(
     } else {
       const moodMap: Record<string, string> = {
         happy: "wide expressive smile, joyful eyes",
-        sad: "droopy eyes, somber expression",
-        angry: "sharp teeth bared, intense glowing eyes",
+        sarcastic: "one eyebrow raised, smirking expression",
+        bullish: "intense determined eyes, confident posture",
+        bearish: "lowered head, sad digital eyes",
+        humorous: "goofy wide-eyed look",
+        negative: "sharp teeth bared, intense glowing red eyes",
         neutral: "calm robotic expression"
       };
       emotionalExpression = moodMap[moodKey] || moodMap.neutral;
@@ -115,8 +131,8 @@ export function getCharacterVisualPrompt(
     Theme: "${atmosphereStyle}".
     Aesthetic: Authentic "${atmosphereStyle}" cartoon world.
     Content: ${scene}.
-    Atmosphere: Highly saturated, chaotic, and detailed environment specific to the "${atmosphereStyle}" universe.
-    NPCs: Re-imagine secondary robotic friends (Pepe, Shiba Inu) strictly in the "${atmosphereStyle}" drawing style.
+    Mood Influence: ${visualMood}.
+    NPCs (MUST INCLUDE): Re-imagine robotic versions of Pepe the Frog and Shiba Inu as secondary friends, strictly in the "${atmosphereStyle}" drawing style, interacting with the scene.
     Technical: Flat colors, simple cel-shading, clean outlines for everything in Layer 2.
   `;
   

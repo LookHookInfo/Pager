@@ -39,6 +39,9 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   return {
     title: article.title,
     description: description,
+    alternates: {
+      canonical: `/article/${article.id}`,
+    },
     openGraph: {
       title: article.title,
       description: description,
@@ -71,8 +74,25 @@ export default async function ArticlePage({ params }: { params: { id: string } }
     notFound();
   }
 
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "NewsArticle",
+    "headline": article.title,
+    "image": [article.image_url],
+    "datePublished": article.created_at,
+    "author": [{
+        "@type": "Person",
+        "name": article.author_address,
+        "url": `${process.env.NEXT_PUBLIC_SITE_URL}/tape/${article.author_address}`
+    }]
+  };
+
   return (
     <main className="min-h-screen bg-[var(--bg-main)]">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <Navbar />
 
       <article className="max-w-3xl mx-auto px-6 pt-16 md:pt-24 pb-24">

@@ -81,8 +81,8 @@ export async function GET(req: Request) {
                 width: '100%',
                 height: '100%',
                 objectFit: 'cover',
-                opacity: 0.2,
-                filter: 'grayscale(1)',
+                opacity: 0.3,
+                filter: 'grayscale(0.5)',
               }}
             />
           )}

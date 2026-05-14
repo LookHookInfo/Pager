@@ -49,6 +49,7 @@ export default function WritePage() {
   
   const [title, setTitle] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [bannerDescription, setBannerDescription] = useState("");
   const [externalUrl, setExternalUrl] = useState("");
   const [mood, setMood] = useState("sarcastic");
   const [character, setCharacter] = useState<"ghoul" | "nana" | "custom">("ghoul");
@@ -58,6 +59,7 @@ export default function WritePage() {
   const [profile, setProfile] = useState<any>(null);
   const [activeMode, setActiveMode] = useState<"manual" | "ai">("manual");
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [isRegenerating, setIsRegenerating] = useState(false);
 
   const moods = [
     { id: "sarcastic", label: "Sarcastic", icon: "🎭" },
@@ -158,10 +160,14 @@ export default function WritePage() {
 
       setTitle(data.title);
       if (editorRef.current) editorRef.current.innerHTML = data.content;
+      if (data.banner_description) setBannerDescription(data.banner_description);
 
       if (data.image_url) {
         const permanentUrl = await persistAiImage(data.image_url);
         setImageUrl(permanentUrl);
+        addNotification("Article & Banner produced", "success");
+      } else if (data.warning) {
+        addNotification(data.warning, "info");
       }
       
       setProcessingStep("done");
@@ -170,10 +176,60 @@ export default function WritePage() {
         setActiveMode("manual");
       }, 2000);
     } catch (err: any) {
-      alert("AI Error: " + err.message);
+      addNotification(err.message, "error");
       setProcessingStep("idle");
     } finally {
       setIsAiProcessing(false);
+    }
+  };
+
+  const handleRegenerateBanner = async () => {
+    if (!profile?.ai_api_key) return;
+    setIsRegenerating(true);
+    addNotification("Regenerating cinematic banner...", "info");
+    
+    try {
+        const res = await fetch("/api/ai/process", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              onlyBanner: true,
+              bannerDescription,
+              title,
+              mood,
+              character,
+              userApiKey: profile?.ai_api_key,
+              imageModel: profile?.ai_image_model,
+              atmosphere: profile?.ai_atmosphere || "Rick and Morty",
+              customDna: character === "custom" ? {
+                name: profile.ai_custom_dna_name,
+                description: profile.ai_custom_dna_description,
+                reference: profile.ai_custom_dna_reference
+              } : null
+            })
+        });
+        
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Regeneration failed");
+        
+        if (data.image_url) {
+            // SAFE SYNC: Small delay to let OpenRouter/CDN stabilize
+            await new Promise(r => setTimeout(r, 1000));
+            addNotification("Persistence protocol initiated...", "info");
+            
+            const permanentUrl = await persistAiImage(data.image_url);
+            
+            // Explicitly clear and set for React to trigger re-render
+            setImageUrl("");
+            await new Promise(r => setTimeout(r, 100));
+            setImageUrl(permanentUrl);
+            
+            addNotification("Banner synchronized!", "success");
+        }
+    } catch (err: any) {
+        addNotification(err.message, "error");
+    } finally {
+        setIsRegenerating(false);
     }
   };
 
@@ -447,6 +503,15 @@ export default function WritePage() {
             >
               {isUploading ? <Loader2 size={16} className="animate-spin" /> : <><Upload size={16} /> Upload</>}
             </button>
+            {isEligibleForAi && (
+                <button 
+                  onClick={handleRegenerateBanner} 
+                  disabled={isRegenerating || !title} 
+                  className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-blue-500 hover:text-blue-700 transition-colors"
+                >
+                  {isRegenerating ? <Loader2 size={14} className="animate-spin" /> : <><Sparkles size={14} /> Regenerate</>}
+                </button>
+            )}
             <input ref={fileInputRef} type="file" onChange={handleFileUpload} className="hidden" accept="image/*" />
           </div>
           {imageUrl && (
