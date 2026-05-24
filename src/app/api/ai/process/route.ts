@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getCharacterSystemPrompt, getBtcAnalysisBlock, getMiningSponsorBlock, getCharacterVisualPrompt } from "@/lib/character";
+import { getSupabaseServer } from "@/lib/supabase";
 
-export const maxDuration = 60; // Increase to 60s for slow image models
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 function finalFormat(text: string): string {
@@ -16,13 +17,12 @@ function finalFormat(text: string): string {
 
 function extractJson(text: string) {
   try {
-    // Attempt to find JSON block if AI wrapped it in markdown or text
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) return JSON.parse(jsonMatch[0]);
     return JSON.parse(text);
   } catch (e) {
-    console.error("❌ [AI Process] JSON Parse Error. Raw text:", text.slice(0, 200) + "...");
-    throw new Error("AI returned invalid data format. Please try again.");
+    console.error("❌ [AI Process] JSON Parse Error. Raw text head:", text.slice(0, 300));
+    throw new Error("AI returned invalid JSON. Please try again.");
   }
 }
 
@@ -39,10 +39,27 @@ export async function POST(req: Request) {
       atmosphere = "Rick and Morty",
       customDna = null,
       onlyBanner = false,
-      bannerDescription = ""
+      bannerDescription = "",
+      userAddress = ""
     } = body;
 
     if (!userApiKey) return NextResponse.json({ error: "API Key required" }, { status: 403 });
+
+    // Fetch user profile for CTA links
+    let userProfile = null;
+    if (userAddress) {
+      try {
+        const supabaseServer = getSupabaseServer();
+        const { data } = await supabaseServer
+          .from('profiles')
+          .select('*')
+          .eq('address', userAddress.toLowerCase())
+          .maybeSingle();
+        userProfile = data;
+      } catch (e) {
+        console.warn("⚠️ [AI Process] Profile fetch failed, using defaults.");
+      }
+    }
 
     // --- 1. CONFIGURATION ---
     const textModel = "google/gemini-2.0-flash-001";
@@ -50,10 +67,23 @@ export async function POST(req: Request) {
 
     if (onlyBanner) {
       // MODE: REGENERATE ONLY BANNER
-      const visualPrompt = getCharacterVisualPrompt(bannerDescription || providedTitle || "Action scene", mood, character as any, providedTitle, atmosphere, customDna);
+      const visualPrompt = getCharacterVisualPrompt(
+        bannerDescription || providedTitle || "Action scene", 
+        mood, 
+        character as any, 
+        providedTitle, 
+        atmosphere, 
+        customDna || undefined
+      );
       let bannerUrl = "";
       try {
-        console.log(`📡 [AI Process] Regenerating banner (${imageModel})...`);
+        console.log(`📡 [AI Process] Regenerating banner...`);
+        const payload: any = {
+          model: imageModel,
+          messages: [{ role: "user", content: [{ type: "text", text: visualPrompt }] }],
+          image_config: { aspect_ratio: "16:9" }
+        };
+
         const imgRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: { 
@@ -61,11 +91,7 @@ export async function POST(req: Request) {
             "Content-Type": "application/json", 
             "HTTP-Referer": "https://pager.lookhook.info" 
           },
-          body: JSON.stringify({
-            model: imageModel,
-            modalities: ["image", "text"],
-            messages: [{ role: "user", content: [{ type: "text", text: visualPrompt }] }]
-          })
+          body: JSON.stringify(payload)
         });
         if (imgRes.ok) {
           const imgData = await imgRes.json();
@@ -77,32 +103,37 @@ export async function POST(req: Request) {
       return NextResponse.json({ image_url: bannerUrl });
     }
 
-    if (!providedContent) {
-      return NextResponse.json({ error: "No content provided" }, { status: 400 });
-    }
-    const systemPrompt = getCharacterSystemPrompt(mood, character as any, customDna);
+    if (!providedContent) return NextResponse.json({ error: "No content provided" }, { status: 400 });
+    
+    const systemPrompt = getCharacterSystemPrompt(mood, character as any, customDna || undefined);
 
     let charName = character === "nana" ? "Nana Banana" : "Cyber-Ghoul";
-    if (character === "custom" && customDna) charName = customDna.name;
+    if (character === "custom" && customDna) charName = (customDna as any).name;
+
+    const charVoice = character === "nana" ? "optimistic, fruity, and slightly chaotic" : "cynical, witty, and tech-savvy ghoul";
 
     const userPrompt = `
-      ACT AS A PROFESSIONAL WEB3 EDITOR. 
-      Rewrite the following article in ${charName} style.
+      ACT AS A PROFESSIONAL SENIOR WEB3 EDITOR. 
+      Task: Rewrite the provided article in ${charName} style (${charVoice}).
 
-      RULES:
-      1. TITLE: Explosive, under 50 chars.
-      2. CONTENT: HTML only. Use <p style="margin-bottom: 24px;"> and <strong>. 3-4 paragraphs.
-      3. BTC ANALYSIS: 2 sentences max.
-      4. BANNER DESCRIPTION: Describe a cinematic scene with ${charName} in ${atmosphere} style illustrating the article topic. Include his robotic memecoin friends.
-         IMPORTANT: Focus on visual composition for a horizontal 21:9 ratio.
+      CRITICAL RULES FOR CONTENT RICHNESS:
+      1. LENGTH: Aim for 1500-2000 characters. Do NOT be brief.
+      2. STRUCTURE: Use 5-8 detailed paragraphs. Each paragraph should be meaty.
+      3. HTML ONLY: Use ONLY <p style="margin-bottom: 24px;"> and <strong> for highlights.
+      4. CONTENT DEPTH: Don't just summarize. Add market context, technical implications for the Base network/Ethereum, and character-driven commentary.
+      5. TITLE: Explosive, clickbaity, under 60 chars.
+      6. BTC ANALYSIS: 2-3 insightful sentences from ${charName}'s perspective.
+      7. BANNER: Describe a complex 16:9 cinematic scene with ${charName} and friends illustrating the news.
+      8. NO LINKS: Delete ALL external URLs and calls to action from the source.
 
-      JSON FORMAT: { "title": "...", "body": "...", "analysis": "...", "banner": "..." }
+      ARTICLE TO PROCESS: ${providedContent.slice(0, 8000)}
 
-      ARTICLE: ${providedContent.slice(0, 10000)}
+      RESPONSE FORMAT: JSON ONLY.
+      { "title": "...", "body": "...", "analysis": "...", "banner": "..." }
     `;
 
     // --- 2. TEXT GENERATION ---
-    console.log(`📡 [AI Process] Calling OpenRouter for text (${textModel})...`);
+    console.log(`📡 [AI Process] Calling OpenRouter for RICH content (${textModel})...`);
     const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: { 
@@ -116,34 +147,54 @@ export async function POST(req: Request) {
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
         ], 
-        response_format: { type: "json_object" } 
+        response_format: { type: "json_object" },
+        max_tokens: 2500,
+        temperature: 0.8
       })
     });
 
     if (!aiRes.ok) {
-      const err = await aiRes.json().catch(() => ({}));
-      return NextResponse.json({ error: "AI Text Generation Failed", details: err.error?.message || "Check your API key" }, { status: aiRes.status });
+      const errData = await aiRes.json().catch(() => ({}));
+      const msg = errData.error?.message || "OpenRouter Connection Failed";
+      console.error("❌ [AI Process] OpenRouter Error:", msg);
+      return NextResponse.json({ error: "AI Generation Failed", details: msg }, { status: aiRes.status });
     }
 
     const aiData = await aiRes.json();
-    const result = extractJson(aiData.choices[0].message.content);
+    const contentText = aiData.choices[0]?.message?.content;
+    if (!contentText) throw new Error("AI returned empty response");
+
+    const result = extractJson(contentText);
 
     // --- 3. FORMATTING ---
-    const finalTitle = (result.title || providedTitle || "New Intel").replace(/["']/g, "").trim();
+    const finalTitle = (result.title || "New Intel").replace(/["']/g, "").trim();
     let finalBody = finalFormat(result.body || "");
     if (!finalBody.includes("<p")) {
       finalBody = finalBody.split("\n\n").map((p: string) => `<p style="margin-bottom: 24px;">${p}</p>`).join("");
     }
 
-    const fullHtml = finalBody + getBtcAnalysisBlock(finalFormat(result.analysis || "Market sentiment is shifting."), character as any, customDna) + getMiningSponsorBlock();
-    
-    // --- 4. BANNER GENERATION (WITH GRACEFUL DEGRADATION) ---
-    const visualPrompt = getCharacterVisualPrompt(result.banner || finalTitle, mood, character as any, finalTitle, atmosphere, customDna);
-    let bannerUrl = "";
-    let bannerError = null;
+    const fullHtml = finalBody + getBtcAnalysisBlock(
+      finalFormat(result.analysis || "Market sentiment is shifting."), 
+      {
+        characterType: character as any, 
+        customDna: customDna || undefined, 
+        profile: userProfile
+      }
+    ) + getMiningSponsorBlock();
 
+    // --- 4. BANNER GENERATION ---
+    const visualPrompt = getCharacterVisualPrompt(
+      result.banner || finalTitle, 
+      mood, 
+      character as any, 
+      finalTitle, 
+      atmosphere, 
+      customDna || undefined
+    ) + " (16:9 widescreen)";
+    
+    let bannerUrl = "";
+    
     try {
-      console.log(`📡 [AI Process] Generating banner (${imageModel})...`);
       const imgRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: { 
@@ -153,40 +204,26 @@ export async function POST(req: Request) {
         },
         body: JSON.stringify({
           model: imageModel,
-          modalities: ["image", "text"],
-          messages: [{ role: "user", content: [{ type: "text", text: visualPrompt }] }]
+          messages: [{ role: "user", content: [{ type: "text", text: visualPrompt }] }],
+          image_config: { aspect_ratio: "16:9" }
         })
       });
 
       if (imgRes.ok) {
         const imgData = await imgRes.json();
         bannerUrl = imgData?.choices?.[0]?.message?.images?.[0]?.image_url?.url || "";
-        if (!bannerUrl) {
-            console.warn("⚠️ [AI Process] Image model returned no URL. Raw:", JSON.stringify(imgData).slice(0, 200));
-            bannerError = "Image model returned no URL. Try Gemini 3.1 Pro.";
-        }
-      } else {
-        const imgErr = await imgRes.json().catch(() => ({}));
-        console.error("⚠️ [AI Process] Banner model error:", imgRes.status, imgErr);
-        bannerError = imgErr.error?.message || "Image model failure.";
       }
-    } catch (e: any) {
-      console.error("⚠️ [AI Process] Image generation network error:", e.message);
-      bannerError = "Network error during image generation.";
-    }
+    } catch (e) {}
 
-    // --- 5. RESPONSE ---
-    // If we have text but no banner, we still return the text so the user doesn't lose their work.
     return NextResponse.json({ 
       title: finalTitle, 
       content: fullHtml, 
       image_url: bannerUrl,
-      banner_description: result.banner || finalTitle,
-      warning: bannerError // Client can handle this warning
+      banner_description: result.banner || finalTitle
     });
 
   } catch (error: any) {
-    console.error("❌ [AI Process] Critical Internal Error:", error);
+    console.error("❌ [AI Process] Critical Error:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

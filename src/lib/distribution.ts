@@ -38,7 +38,7 @@ function formatForBinance(title: string, html: string, articleId: string): strin
  * Formats content for Telegram using HTML support.
  * Optimized for 1024 character limit (captions).
  */
-function formatForTelegram(title: string, html: string, articleId: string): string {
+function formatForTelegram(title: string, html: string, articleId: string, authorInfo?: string): string {
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info';
   const articleUrl = `${baseUrl}/article/${articleId}`;
 
@@ -66,11 +66,12 @@ function formatForTelegram(title: string, html: string, articleId: string): stri
   const footer = `\n\n🔗 <a href="${articleUrl}">Read full story on Pager</a>\n💎 <a href="${HASH_TOKEN_LINK}">Get $HASH</a>`;
 
   // Construct message
-  let message = `<b>${title.toUpperCase()}</b>\n\n${formattedFirstPara}...\n\n${cleanBtc}\n\n${cleanMining}${footer}`;
+  const authorLine = authorInfo ? `✍️ <b>Author:</b> ${authorInfo}\n\n` : "";
+  let message = `${authorLine}<b>${title.toUpperCase()}</b>\n\n${formattedFirstPara}...\n\n${cleanBtc}\n\n${cleanMining}${footer}`;
 
   // 4. Final safety truncate if still too long (Telegram caption limit is 1024)
   if (message.length > 1000) {
-    message = `<b>${title.toUpperCase()}</b>\n\n${formattedFirstPara.slice(0, 300)}...\n\n🔗 <a href="${articleUrl}">Read full story on Pager</a>\n💎 <a href="${HASH_TOKEN_LINK}">Get $HASH</a>`;
+    message = `${authorLine}<b>${title.toUpperCase()}</b>\n\n${formattedFirstPara.slice(0, 300)}...\n\n🔗 <a href="${articleUrl}">Read full story on Pager</a>\n💎 <a href="${HASH_TOKEN_LINK}">Get $HASH</a>`;
   }
 
   return message;
@@ -112,7 +113,7 @@ export async function postToBinance(account: BinanceAccount, title: string, cont
 /**
  * Posts an article to Telegram via Bot API.
  */
-export async function postToTelegram(chatId: string, title: string, content: string, articleId: string, imageUrl?: string) {
+export async function postToTelegram(chatId: string, title: string, content: string, articleId: string, imageUrl?: string, authorInfo?: string) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
     console.warn("⚠️ [Distribution] TELEGRAM_BOT_TOKEN is missing in .env");
@@ -120,7 +121,7 @@ export async function postToTelegram(chatId: string, title: string, content: str
   }
 
   try {
-    const message = formatForTelegram(title, content, articleId);
+    const message = formatForTelegram(title, content, articleId, authorInfo);
     
     // Split chatId if it contains thread ID (e.g. "-100123:456")
     const parts = String(chatId).split(':');
@@ -182,9 +183,21 @@ export async function postToTelegram(chatId: string, title: string, content: str
  * Returns a list of results for the client UI.
  */
 export async function distributeArticle(profile: any, title: string, content: string, imageUrl: string | undefined, articleId: string) {
-  const tasks: Promise<{ label: string, success: boolean, type: 'binance' | 'telegram' }>[] = [];
+  const tasks: Promise<{ label: string, success: boolean, type: 'binance' | 'telegram' | 'global' }>[] = [];
 
   console.log("📡 [Distribution] Starting distribution for profile:", profile.address);
+
+  const authorDisplayName = profile.name || `${profile.address.slice(0, 6)}...${profile.address.slice(-4)}`;
+
+  // 0. Post to GLOBAL Pager Feed (Bonus for all writers)
+  const globalChannel = process.env.NEXT_PUBLIC_GLOBAL_TELEGRAM_CHANNEL;
+  if (globalChannel) {
+    tasks.push((async () => {
+      console.log("📡 [Distribution] Posting to Global Feed...");
+      const res = await postToTelegram(globalChannel, title, content, articleId, imageUrl, authorDisplayName);
+      return { label: "Global Feed", success: res.success, type: 'global' as const };
+    })());
+  }
 
   // 1. Post to Binance Square Accounts
   if (profile.binance_accounts && Array.isArray(profile.binance_accounts)) {

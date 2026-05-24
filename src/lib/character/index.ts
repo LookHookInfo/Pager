@@ -172,9 +172,41 @@ export function getCharacterSystemPrompt(mood: string = "neutral", characterType
   Mining Hash Info: ${JSON.stringify(MINING_DNA.ecosystem_details)}`;
 }
 
-export function getBtcAnalysisBlock(analysis: string, characterType: CharacterType = 'ghoul', customDna?: CustomDna): string {
+/**
+ * Генерирует блок анализа BTC с персональными ссылками автора.
+ */
+export function getBtcAnalysisBlock(
+  analysis: string, 
+  options: {
+    characterType?: CharacterType, 
+    customDna?: CustomDna, 
+    profile?: any 
+  } = {}
+): string {
+  const { characterType = 'ghoul', customDna, profile } = options;
+
   let charName = characterType === 'nana' ? 'Nana' : 'Cyber-Ghoul';
   if (characterType === 'custom' && customDna) charName = customDna.name;
+
+  // --- CTA & REF LINKS LOGIC ---
+  const tgLink = profile?.cta_telegram || "https://t.me/CoinPager";
+  const forumLink = profile?.cta_forum || "https://t.me/ChainInside";
+  
+  // Default Ref Links
+  const defaultRefs = [
+    { label: "ByBit", url: "https://www.bybit.com/invite?ref=QMXPMD" },
+    { label: "OKX", url: "https://www.okx.com/join/91607600" },
+    { label: "Binance", url: "https://www.binance.info/ru/activity/referral-entry/CPA/together?ref=CPA_00KIBLGG5W" }
+  ];
+
+  const userRefs = profile?.ref_links && Array.isArray(profile.ref_links) && profile.ref_links.length > 0 
+    ? profile.ref_links 
+    : defaultRefs;
+
+  const refHtml = userRefs
+    .filter((ref: any) => ref && ref.label && ref.url)
+    .map((ref: any) => `<a href="${ref.url}" target="_blank" style="color: #000; font-weight: bold; text-decoration: underline; margin: 0 8px;">${ref.label}</a>`)
+    .join(" | ");
 
   return `
 <div style="margin-top: 48px; padding: 24px; background-color: #f9fafb; border-left: 4px solid #000;">
@@ -184,6 +216,17 @@ export function getBtcAnalysisBlock(analysis: string, characterType: CharacterTy
   <p style="margin: 0; font-style: italic; color: #374151; line-height: 1.6;">
     <strong>${charName} Insights:</strong> ${analysis}
   </p>
+  
+  <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+    <p style="margin: 0 0 12px 0; font-size: 12px; font-weight: bold; color: #000;">
+      FOLLOW FOR MORE INTEL:
+      <a href="${tgLink}" target="_blank" style="margin-left: 12px; color: #000; text-decoration: none; border-bottom: 2px solid #000;">Telegram</a>
+      <a href="${forumLink}" target="_blank" style="margin-left: 12px; color: #000; text-decoration: none; border-bottom: 2px solid #000;">Blockchain Forum</a>
+    </p>
+    <p style="margin: 0; font-size: 11px; color: #6b7280;">
+      TRADING REWARDS: ${refHtml}
+    </p>
+  </div>
 </div>
 `;
 }

@@ -147,6 +147,7 @@ export default function WritePage() {
           userApiKey: profile?.ai_api_key,
           imageModel: profile?.ai_image_model,
           atmosphere: profile?.ai_atmosphere || "Rick and Morty",
+          userAddress: account?.address,
           customDna: character === "custom" ? {
             name: profile.ai_custom_dna_name,
             description: profile.ai_custom_dna_description,

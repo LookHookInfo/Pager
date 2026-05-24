@@ -44,7 +44,14 @@ export default function ProfileHeader({
     ai_custom_dna_description: profile.ai_custom_dna_description || "",
     ai_custom_dna_reference: profile.ai_custom_dna_reference || "",
     binance_accounts: profile.binance_accounts || [],
-    telegram_channels: profile.telegram_channels || []
+    telegram_channels: profile.telegram_channels || [],
+    cta_telegram: profile.cta_telegram || "",
+    cta_forum: profile.cta_forum || "",
+    ref_links: profile.ref_links || [
+      { label: "", url: "" },
+      { label: "", url: "" },
+      { label: "", url: "" }
+    ]
   });
 
   const [displayData, setDisplayData] = useState({
@@ -77,7 +84,14 @@ export default function ProfileHeader({
       ai_custom_dna_description: profile.ai_custom_dna_description || "",
       ai_custom_dna_reference: profile.ai_custom_dna_reference || "",
       binance_accounts: profile.binance_accounts || [],
-      telegram_channels: profile.telegram_channels || []
+      telegram_channels: profile.telegram_channels || [],
+      cta_telegram: profile.cta_telegram || "",
+      cta_forum: profile.cta_forum || "",
+      ref_links: profile.ref_links || [
+        { label: "", url: "" },
+        { label: "", url: "" },
+        { label: "", url: "" }
+      ]
     };
     setFormData(data);
     setDisplayData({
@@ -251,6 +265,72 @@ export default function ProfileHeader({
                         <div className="relative">
                             <input type={showAiKey ? "text" : "password"} value={formData.ai_api_key} onChange={e => setFormData({...formData, ai_api_key: e.target.value})} placeholder="sk-or-v1-..." className="w-full text-xs font-mono p-3 pr-10 border border-gray-200 focus:border-black outline-none bg-white" />
                             <button type="button" onClick={() => setShowAiKey(!showAiKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black">{showAiKey ? <EyeOff size={14} /> : <Eye size={14} />}</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-6 border-2 border-black rounded-sm space-y-8 bg-white">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-black">
+                            <ExternalLink size={14} /> Monetization & Social
+                        </div>
+                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter">Personal CTA Block</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold uppercase text-gray-400">Your Telegram Channel</label>
+                            <input 
+                                type="text" 
+                                value={formData.cta_telegram} 
+                                onChange={e => setFormData({...formData, cta_telegram: e.target.value})} 
+                                placeholder="https://t.me/yourchannel" 
+                                className="w-full text-xs font-mono p-3 border border-gray-100 focus:border-black outline-none bg-white" 
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold uppercase text-gray-400">Your Forum Link</label>
+                            <input 
+                                type="text" 
+                                value={formData.cta_forum} 
+                                onChange={e => setFormData({...formData, cta_forum: e.target.value})} 
+                                placeholder="https://t.me/yourforum" 
+                                className="w-full text-xs font-mono p-3 border border-gray-100 focus:border-black outline-none bg-white" 
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-green-600">
+                             Referral Network (Up to 3)
+                        </div>
+                        <div className="space-y-3">
+                            {[0, 1, 2].map((idx) => (
+                                <div key={idx} className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <input 
+                                        type="text" 
+                                        placeholder={`Ref Name (e.g. ByBit #${idx+1})`}
+                                        value={formData.ref_links[idx]?.label || ""}
+                                        onChange={e => {
+                                            const newRefs = [...formData.ref_links];
+                                            newRefs[idx] = { ...newRefs[idx], label: e.target.value };
+                                            setFormData({...formData, ref_links: newRefs});
+                                        }}
+                                        className="text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white" 
+                                    />
+                                    <input 
+                                        type="text" 
+                                        placeholder="Referral URL"
+                                        value={formData.ref_links[idx]?.url || ""}
+                                        onChange={e => {
+                                            const newRefs = [...formData.ref_links];
+                                            newRefs[idx] = { ...newRefs[idx], url: e.target.value };
+                                            setFormData({...formData, ref_links: newRefs});
+                                        }}
+                                        className="text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white font-mono" 
+                                    />
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
@@ -500,17 +580,23 @@ export default function ProfileHeader({
                             onClick={() => setFormData({...formData, ai_image_model: "google/gemini-3.1-flash-image-preview"})}
                             className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border transition-all ${formData.ai_image_model === "google/gemini-3.1-flash-image-preview" ? "bg-black text-white border-black" : "bg-white text-gray-400 border-gray-200 hover:border-black"}`}
                         >
-                            Gemini 3.1 (Pro)
+                            Gemini 3 (0.06$)
+                        </button>
+                        <button 
+                            onClick={() => setFormData({...formData, ai_image_model: "black-forest-labs/flux.2-klein-4b"})}
+                            className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border transition-all ${formData.ai_image_model === "black-forest-labs/flux.2-klein-4b" ? "bg-black text-white border-black" : "bg-white text-gray-400 border-gray-200 hover:border-black"}`}
+                        >
+                            FLUX.2 (0.02$)
                         </button>
                         <button 
                             onClick={() => setFormData({...formData, ai_image_model: "google/gemini-2.5-flash-image"})}
                             className={`px-4 py-2 text-[10px] font-bold uppercase tracking-widest border transition-all ${formData.ai_image_model === "google/gemini-2.5-flash-image" ? "bg-black text-white border-black" : "bg-white text-gray-400 border-gray-200 hover:border-black"}`}
                         >
-                            Nano Banana (2.5 Flash)
+                            Gemini 2 (0.04$)
                         </button>
                     </div>
                     <p className="text-[9px] text-gray-400 font-bold uppercase italic">
-                        {formData.ai_image_model === "google/gemini-2.5-flash-image" ? "Ultra-fast generation optimized for characters." : "High-fidelity cinematic generation."}
+                        {formData.ai_image_model === "google/gemini-2.5-flash-image" ? "Ultra-fast generation optimized for characters." : formData.ai_image_model.includes("flux") ? "Next-gen FLUX.2 Klein: High quality, cheap and native 16:9." : "High-fidelity cinematic generation."}
                     </p>
                 </div>
               </div>

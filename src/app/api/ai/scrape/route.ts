@@ -10,7 +10,15 @@ export async function POST(req: Request) {
     if (!url) return NextResponse.json({ error: "URL is required" }, { status: 400 });
 
     const targetUrl: string = url.trim();
-    const cleanUrl: string = targetUrl.startsWith("http") ? targetUrl : "https://" + targetUrl;
+    let cleanUrl: string = targetUrl.startsWith("http") ? targetUrl : "https://" + targetUrl;
+
+    // --- TELEGRAM OPTIMIZATION ---
+    // Исправленная регулярка: [a-zA-Z0-9_]
+    const isTelegramMessage = /t\.me\/[a-zA-Z0-9_]+\/\d+/.test(cleanUrl);
+    if (isTelegramMessage && !cleanUrl.includes("?embed=")) {
+      cleanUrl += (cleanUrl.includes("?") ? "&" : "?") + "embed=1";
+    }
+
     const jinaUrl: string = "https://r.jina.ai/" + cleanUrl;
     
     console.log("📡 [Scraper] Calling Jina:", jinaUrl);
@@ -46,7 +54,30 @@ export async function POST(req: Request) {
       }, { status: res.status });
     }
 
-    const markdown = await res.text();
+    let markdown = await res.text();
+    
+    // --- TELEGRAM CLEANUP ---
+    if (cleanUrl.includes("t.me")) {
+      markdown = markdown
+        .replace(/\[View in Telegram\]\(.*?\)/gi, "")
+        .replace(/\[View Context\]\(.*?\)/gi, "")
+        .replace(/\[Join Channel\]\(.*?\)/gi, "")
+        .replace(/If you have Telegram, you can view and join.*?right away\./gi, "")
+        .replace(/!\[.*?\]\(https:\/\/cdn4\.cdn-telegram\.org\/img\/.*?\)/gi, "") // Remove TG channel avatars
+        .trim();
+    }
+
+    // --- GLOBAL LINK STRIPPING ---
+    // Удаляем все ссылки из текста, чтобы ИИ не вставлял их в статью.
+    // Оставляем только текст внутри [текст](ссылка) -> текст
+    markdown = markdown.replace(/\[([^\]]+)\]\(https?:\/\/[^\)]+\)/gi, "$1");
+    // Удаляем голые ссылки
+    markdown = markdown.replace(/https?:\/\/[^\s\)]+/gi, "");
+
+    const siteName = new URL(cleanUrl).hostname;
+    // Добавляем контекст источника для ИИ в начало текста
+    const textWithSource = `SOURCE: ${siteName}\n\n${markdown}`;
+
     if (!markdown || markdown.length < 50) {
       return NextResponse.json({ error: "Content extraction failed (too short)" }, { status: 422 });
     }
@@ -68,8 +99,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       title: title,
-      textContent: markdown,
-      siteName: new URL(cleanUrl).hostname,
+      textContent: textWithSource,
+      siteName: siteName,
       mainImage: mainImage
     });
 
