@@ -49,8 +49,8 @@ export async function POST(req: Request) {
       .single();
 
     if (error) {
-      console.error("❌ [API Profile] Supabase Error:", error.message);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("❌ [API Profile] Supabase Error:", JSON.stringify(error));
+      return NextResponse.json({ error: error.message || "Database error" }, { status: 500 });
     }
 
     console.log("✅ [API Profile] Profile synced successfully:", normalizedAddress);

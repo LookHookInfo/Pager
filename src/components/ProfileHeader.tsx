@@ -45,6 +45,7 @@ export default function ProfileHeader({
     ai_custom_dna_reference: profile.ai_custom_dna_reference || "",
     binance_accounts: profile.binance_accounts || [],
     telegram_channels: profile.telegram_channels || [],
+    telegram_chat_id: profile.telegram_chat_id || "",
     cta_telegram: profile.cta_telegram || "",
     cta_forum: profile.cta_forum || "",
     ref_links: profile.ref_links || [
@@ -85,6 +86,7 @@ export default function ProfileHeader({
       ai_custom_dna_reference: profile.ai_custom_dna_reference || "",
       binance_accounts: profile.binance_accounts || [],
       telegram_channels: profile.telegram_channels || [],
+      telegram_chat_id: profile.telegram_chat_id || "",
       cta_telegram: profile.cta_telegram || "",
       cta_forum: profile.cta_forum || "",
       ref_links: profile.ref_links || [
@@ -138,7 +140,6 @@ export default function ProfileHeader({
   };
 
   const handleSave = async () => {
-    setIsEditing(false);
     setIsSaving(true);
     try {
       const res = await fetch("/api/profile", {
@@ -150,13 +151,20 @@ export default function ProfileHeader({
         }),
         cache: 'no-store'
       });
-      if (!res.ok) throw new Error("Failed to save profile");
+      
+      const data = await res.json().catch(() => ({ error: "Network error" }));
+      
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to save profile");
+      }
+      
+      setIsEditing(false);
       await new Promise(r => setTimeout(r, 800));
       router.refresh();
       setIsSaving(false);
     } catch (e: any) {
       console.error("Save Error:", e.message);
-      alert("Error saving profile.");
+      alert(`Error saving profile: ${e.message}`);
       setIsSaving(false);
     }
   };
@@ -233,8 +241,8 @@ export default function ProfileHeader({
 
              {isEditing && (
                 <div className="flex items-center gap-2">
-                  <button onClick={handleSave} className="flex items-center gap-2 px-4 py-2 bg-black text-white text-xs font-bold uppercase tracking-widest hover:bg-gray-800 transition-all shadow-md">
-                    <Save size={16} /> Save
+                  <button onClick={handleSave} disabled={isSaving} className="flex items-center gap-2 px-4 py-2 bg-black text-white text-xs font-bold uppercase tracking-widest hover:bg-gray-800 transition-all shadow-md disabled:opacity-50">
+                    {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save
                   </button>
                   <button onClick={() => setIsEditing(false)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"><X size={20} /></button>
                 </div>
@@ -351,53 +359,84 @@ export default function ProfileHeader({
                         </div>
                         <div className="space-y-3">
                             {formData.binance_accounts.map((acc: any, idx: number) => (
-                                <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-100 rounded-sm group">
-                                    <div className="flex-1">
+                                <div key={idx} className="flex flex-col p-3 bg-gray-50 border border-gray-100 rounded-sm group relative">
+                                    <div className="flex items-center justify-between mb-1">
                                         <div className="text-[10px] font-black uppercase">{acc.label}</div>
-                                        <div className="text-[9px] font-mono text-gray-400 truncate">KEY: {acc.apiKey.slice(0, 8)}...</div>
+                                        <button 
+                                            onClick={() => {
+                                                const newAccs = [...formData.binance_accounts];
+                                                newAccs.splice(idx, 1);
+                                                setFormData({...formData, binance_accounts: newAccs});
+                                            }}
+                                            className="text-gray-300 hover:text-red-500 transition-colors"
+                                        >
+                                            <X size={14} />
+                                        </button>
                                     </div>
-                                    <button 
-                                        onClick={() => {
-                                            const newAccs = [...formData.binance_accounts];
-                                            newAccs.splice(idx, 1);
-                                            setFormData({...formData, binance_accounts: newAccs});
-                                        }}
-                                        className="text-gray-300 hover:text-red-500 transition-colors"
-                                    >
-                                        <X size={14} />
-                                    </button>
+                                    <div className="text-[9px] font-mono text-gray-400 truncate mb-2">KEY: {acc.apiKey.slice(0, 8)}...</div>
+                                    {(acc.language || acc.style) && (
+                                        <div className="flex gap-2">
+                                            {acc.language && <span className="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold uppercase">{acc.language}</span>}
+                                            {acc.style && <span className="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-bold uppercase">{acc.style}</span>}
+                                        </div>
+                                    )}
                                 </div>
                             ))}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                <input 
-                                    type="text" 
-                                    id="bn-label"
-                                    placeholder="Account Label (e.g. Main)" 
-                                    className="text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white" 
-                                />
-                                <div className="flex gap-2">
+                            <div className="space-y-2 border-t pt-4 border-gray-100">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <input 
+                                        type="text" 
+                                        id="bn-label"
+                                        placeholder="Label (e.g. English Acc)" 
+                                        className="text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white" 
+                                    />
                                     <input 
                                         type="password" 
                                         id="bn-key"
                                         placeholder="Binance Square API Key" 
-                                        className="flex-1 text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white font-mono" 
+                                        className="text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white font-mono" 
                                     />
-                                    <button 
-                                        onClick={() => {
-                                            const labelInput = document.getElementById('bn-label') as HTMLInputElement;
-                                            const keyInput = document.getElementById('bn-key') as HTMLInputElement;
-                                            if (!labelInput.value || !keyInput.value) return;
-                                            setFormData({
-                                                ...formData, 
-                                                binance_accounts: [...formData.binance_accounts, { label: labelInput.value, apiKey: keyInput.value }]
-                                            });
-                                            labelInput.value = '';
-                                            keyInput.value = '';
-                                        }}
-                                        className="bg-black text-white px-4 text-[10px] font-bold uppercase hover:bg-gray-800 transition-all"
-                                    >
-                                        Add
-                                    </button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <input 
+                                        type="text" 
+                                        id="bn-lang"
+                                        placeholder="Language (e.g. English)" 
+                                        className="text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white" 
+                                    />
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            id="bn-style"
+                                            placeholder="Style (e.g. Professional)" 
+                                            className="flex-1 text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white" 
+                                        />
+                                        <button 
+                                            onClick={() => {
+                                                const labelInput = document.getElementById('bn-label') as HTMLInputElement;
+                                                const keyInput = document.getElementById('bn-key') as HTMLInputElement;
+                                                const langInput = document.getElementById('bn-lang') as HTMLInputElement;
+                                                const styleInput = document.getElementById('bn-style') as HTMLInputElement;
+                                                if (!labelInput.value || !keyInput.value) return;
+                                                setFormData({
+                                                    ...formData, 
+                                                    binance_accounts: [...formData.binance_accounts, { 
+                                                        label: labelInput.value, 
+                                                        apiKey: keyInput.value,
+                                                        language: langInput.value,
+                                                        style: styleInput.value
+                                                    }]
+                                                });
+                                                labelInput.value = '';
+                                                keyInput.value = '';
+                                                langInput.value = '';
+                                                styleInput.value = '';
+                                            }}
+                                            className="bg-black text-white px-4 text-[10px] font-bold uppercase hover:bg-gray-800 transition-all"
+                                        >
+                                            Add
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -412,21 +451,27 @@ export default function ProfileHeader({
                         </div>
                         <div className="space-y-3">
                             {formData.telegram_channels?.map((ch: any, idx: number) => (
-                                <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-100 rounded-sm group">
-                                    <div className="flex-1">
+                                <div key={idx} className="flex flex-col p-3 bg-gray-50 border border-gray-100 rounded-sm group relative">
+                                    <div className="flex items-center justify-between mb-1">
                                         <div className="text-[10px] font-black uppercase">{ch.label}</div>
-                                        <div className="text-[9px] font-mono text-gray-400">ID: {ch.chatId} {ch.topicId ? `| TOPIC: ${ch.topicId}` : ''}</div>
+                                        <button 
+                                            onClick={() => {
+                                                const newChs = [...(formData.telegram_channels || [])];
+                                                newChs.splice(idx, 1);
+                                                setFormData({...formData, telegram_channels: newChs});
+                                            }}
+                                            className="text-gray-300 hover:text-red-500 transition-colors"
+                                        >
+                                            <X size={14} />
+                                        </button>
                                     </div>
-                                    <button 
-                                        onClick={() => {
-                                            const newChs = [...(formData.telegram_channels || [])];
-                                            newChs.splice(idx, 1);
-                                            setFormData({...formData, telegram_channels: newChs});
-                                        }}
-                                        className="text-gray-300 hover:text-red-500 transition-colors"
-                                    >
-                                        <X size={14} />
-                                    </button>
+                                    <div className="text-[9px] font-mono text-gray-400 mb-2">ID: {ch.chatId} {ch.topicId ? `| TOPIC: ${ch.topicId}` : ''}</div>
+                                    {(ch.language || ch.style) && (
+                                        <div className="flex gap-2">
+                                            {ch.language && <span className="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold uppercase">{ch.language}</span>}
+                                            {ch.style && <span className="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full font-bold uppercase">{ch.style}</span>}
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                             
@@ -438,44 +483,70 @@ export default function ProfileHeader({
                                 </p>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                                <input 
-                                    type="text" 
-                                    id="tg-label"
-                                    placeholder="Channel Name" 
-                                    className="text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white" 
-                                />
-                                <input 
-                                    type="text" 
-                                    id="tg-id"
-                                    placeholder="Chat ID (-100...)" 
-                                    className="text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white font-mono" 
-                                />
-                                <div className="flex gap-2">
+                            <div className="space-y-2 border-t pt-4 border-gray-100">
+                                <div className="grid grid-cols-3 gap-2">
+                                    <input 
+                                        type="text" 
+                                        id="tg-label"
+                                        placeholder="Channel Name" 
+                                        className="text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white" 
+                                    />
+                                    <input 
+                                        type="text" 
+                                        id="tg-id"
+                                        placeholder="Chat ID (-100...)" 
+                                        className="text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white font-mono" 
+                                    />
                                     <input 
                                         type="text" 
                                         id="tg-topic"
                                         placeholder="Topic ID (Opt)" 
-                                        className="flex-1 text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white font-mono" 
+                                        className="text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white font-mono" 
                                     />
-                                    <button 
-                                        onClick={() => {
-                                            const labelInput = document.getElementById('tg-label') as HTMLInputElement;
-                                            const idInput = document.getElementById('tg-id') as HTMLInputElement;
-                                            const topicInput = document.getElementById('tg-topic') as HTMLInputElement;
-                                            if (!labelInput.value || !idInput.value) return;
-                                            setFormData({
-                                                ...formData, 
-                                                telegram_channels: [...(formData.telegram_channels || []), { label: labelInput.value, chatId: idInput.value, topicId: topicInput.value }]
-                                            });
-                                            labelInput.value = '';
-                                            idInput.value = '';
-                                            topicInput.value = '';
-                                        }}
-                                        className="bg-black text-white px-4 text-[10px] font-bold uppercase hover:bg-gray-800 transition-all"
-                                    >
-                                        Add
-                                    </button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <input 
+                                        type="text" 
+                                        id="tg-lang"
+                                        placeholder="Language (e.g. Russian)" 
+                                        className="text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white" 
+                                    />
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            id="tg-style"
+                                            placeholder="Style (e.g. Humorous)" 
+                                            className="flex-1 text-xs p-3 border border-gray-100 focus:border-black outline-none bg-white" 
+                                        />
+                                        <button 
+                                            onClick={() => {
+                                                const labelInput = document.getElementById('tg-label') as HTMLInputElement;
+                                                const idInput = document.getElementById('tg-id') as HTMLInputElement;
+                                                const topicInput = document.getElementById('tg-topic') as HTMLInputElement;
+                                                const langInput = document.getElementById('tg-lang') as HTMLInputElement;
+                                                const styleInput = document.getElementById('tg-style') as HTMLInputElement;
+                                                if (!labelInput.value || !idInput.value) return;
+                                                setFormData({
+                                                    ...formData, 
+                                                    telegram_channels: [...(formData.telegram_channels || []), { 
+                                                        label: labelInput.value, 
+                                                        chatId: idInput.value, 
+                                                        topicId: topicInput.value,
+                                                        language: langInput.value,
+                                                        style: styleInput.value
+                                                    }]
+                                                });
+                                                labelInput.value = '';
+                                                idInput.value = '';
+                                                topicInput.value = '';
+                                                langInput.value = '';
+                                                styleInput.value = '';
+                                            }}
+                                            className="bg-black text-white px-4 text-[10px] font-bold uppercase hover:bg-gray-800 transition-all"
+                                        >
+                                            Add
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>

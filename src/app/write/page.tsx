@@ -326,7 +326,7 @@ export default function WritePage() {
                   if (dist.success) {
                     addNotification(`Posted to ${dist.label}`, 'success');
                   } else {
-                    addNotification(`Failed to post to ${dist.label}`, 'error');
+                    addNotification(`Failed to post to ${dist.label}${dist.error ? ': ' + dist.error : ''}`, 'error');
                   }
                 });
               }
