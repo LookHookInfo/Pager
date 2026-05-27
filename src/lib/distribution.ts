@@ -1,6 +1,7 @@
 /**
  * Pager Distribution Engine
  * Handles cross-posting to external platforms like Binance Square and Telegram.
+ * Optimized for sequential delivery with localized teasers and custom OG previews.
  */
 
 export interface BinanceAccount {
@@ -20,99 +21,127 @@ export interface TelegramChannel {
 
 const HASH_TOKEN_LINK = "https://web3.binance.com/en/token/base/0xa9b631abcc4fd0bc766d7c0c8fcbf866e2bb0445";
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Resolves IPFS URLs to HTTP gateway URLs for external platform compatibility.
+ */
+function resolveIpfs(url: string | undefined): string {
+  if (!url) return "";
+  if (url.startsWith('ipfs://')) {
+    return url.replace('ipfs://', 'https://gateway.ipn.io/ipfs/');
+  }
+  return url;
+}
+
 /**
  * Strips HTML tags and formats content for Binance Square.
- * Optimized for "Read More" engagement.
+ * Focused on short "Post" format (max 700-1000 chars for PGC, but we aim for safe 800).
  */
-function formatForBinance(title: string, html: string, articleId: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info';
+function formatForBinance(title: string, content: string, articleId: string, index: number = 0): string {
+  const rawBaseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info';
+  const baseUrl = rawBaseUrl.replace(/\/$/, '');
   const articleUrl = `${baseUrl}/article/${articleId}`;
 
-  // Process special blocks
-  let text = html
-    .replace(/<h3.*?>⚡ BTC IMPACT ANALYSIS<\/h3>/gi, '\n\n⚡ BTC IMPACT ANALYSIS')
-    .replace(/<p.*?>POWERED BY MINING HASH<\/p>/gi, '\n\n────────────────────\nPOWERED BY MINING HASH')
-    .replace(/<code.*?>(.*?)<\/code>/gi, '$1');
+  // Clean HTML
+  let text = content
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/g, '\n\n')
+    .replace(/<[^>]*>?/gm, '');
 
-  // Standard cleanup
-  text = text.replace(/<\/p>/g, '\n\n');
-  text = text.replace(/<[^>]*>?/gm, '');
-  text = text.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  // Remove any hashtags AI might have generated to avoid exceeding limits
+  text = text.replace(/#\w+/g, '');
+
+  // Resolve HTML entities
+  text = text
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+
+  const header = `🔥 ${title.toUpperCase()}\n\n`;
+  // Minimal set of hashtags (Binance Square is sensitive to counts > 3-5)
+  const footer = `\n\n🔗 Full story: ${articleUrl}\n💎 $HASH: ${HASH_TOKEN_LINK}\n\n#Base #HASH #BinanceSquare`;
   
-  let finalContent = `🔥 ${title.toUpperCase()}\n\n${text.trim()}`;
+  // Binance PGC posts actually support up to 2000-5000 chars, but short "Feed" posts 
+  // are best around 500-800 chars. Let's aim for 700 total.
+  const maxBodyLength = 700 - header.length - footer.length - 20;
   
-  // Strict Binance Square Limit for "Teaser" posts
-  const MAX_TEXT_LENGTH = 1000;
-  if (finalContent.length > MAX_TEXT_LENGTH) {
-    finalContent = finalContent.slice(0, MAX_TEXT_LENGTH) + "\n\n... [Read the full story on Pager]";
+  let cleanBody = text.trim();
+  if (cleanBody.length > maxBodyLength) {
+    cleanBody = cleanBody.slice(0, maxBodyLength) + "...";
   }
 
-  const footer = `\n\n🔗 Full story: ${articleUrl}\n💎 $HASH: ${HASH_TOKEN_LINK}\n\n#Base #HASH #Web3 #Crypto #BinanceSquare`;
+  // Add random variation to avoid duplicate content blocks
+  const variations = ["🚀", "📈", "⚡", "💎", "✨", "🌐", "🔥", "🛰️", "🛸", "🦾"];
+  const randomEmoji = variations[(Math.floor(Math.random() * variations.length) + index) % variations.length];
   
-  return finalContent + footer;
+  return header + cleanBody.trim() + footer + " " + randomEmoji;
 }
 
 /**
  * Formats content for Telegram using HTML support.
  */
-function formatForTelegram(title: string, html: string, articleId: string, authorInfo?: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info';
+function formatForTelegram(title: string, content: string, articleId: string, authorInfo?: string): string {
+  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info').replace(/\/$/, '');
   const articleUrl = `${baseUrl}/article/${articleId}`;
 
-  const paragraphs = html.split(/<\/p>/i);
-  const firstParagraph = paragraphs[0]?.replace(/<p.*?>/gi, '') || "";
+  const escapeHtml = (str: string) => str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 
-  const btcBlock = html.match(/<h3.*?>⚡ BTC IMPACT ANALYSIS<\/h3>.*?<\/p>/gi)?.[0] || "";
-  const miningBlock = html.match(/<p.*?>POWERED BY MINING HASH<\/p>.*?<code>.*?<\/code>/gi)?.[0] || "";
-
-  let formattedFirstPara = firstParagraph.replace(/<[^>]*>?/gm, '').trim();
-
-  const cleanBtc = btcBlock
-    .replace(/<h3.*?>⚡ BTC IMPACT ANALYSIS<\/h3>/gi, '<b>⚡ BTC IMPACT ANALYSIS</b>\n')
-    .replace(/<p.*?><strong>(.*?) Insights:<\/strong>(.*?)<\/p>/gi, '<i>$1 Insights:</i> $2')
-    .replace(/<[^>]*>?/gm, '');
-
-  const cleanMining = miningBlock
-    .replace(/<p.*?>POWERED BY MINING HASH<\/p>/gi, '────────────────────\n<b>POWERED BY MINING HASH</b>\n')
-    .replace(/<code.*?>(.*?)<\/code>/gi, '<code>$1</code>')
-    .replace(/<[^>]*>?/gm, '');
+  let cleanText = content.replace(/<[^>]*>?/gm, '').trim();
+  
+  const escapedTitle = escapeHtml(title.toUpperCase());
+  const escapedText = escapeHtml(cleanText);
+  const escapedAuthor = authorInfo ? escapeHtml(authorInfo) : "";
 
   const footer = `\n\n🔗 <a href="${articleUrl}">Read full story on Pager</a>\n💎 <a href="${HASH_TOKEN_LINK}">Get $HASH</a>`;
+  const authorLine = escapedAuthor ? `✍️ <b>Author:</b> ${escapedAuthor}\n\n` : "";
+  
+  let fullMessage = `${authorLine}<b>${escapedTitle}</b>\n\n${escapedText}${footer}`;
 
-  const authorLine = authorInfo ? `✍️ <b>Author:</b> ${authorInfo}\n\n` : "";
-  let message = `${authorLine}<b>${title.toUpperCase()}</b>\n\n${formattedFirstPara}...\n\n${cleanBtc}\n\n${cleanMining}${footer}`;
-
-  if (message.length > 1000) {
-    message = `${authorLine}<b>${title.toUpperCase()}</b>\n\n${formattedFirstPara.slice(0, 300)}...\n\n🔗 <a href="${articleUrl}">Read full story on Pager</a>\n💎 <a href="${HASH_TOKEN_LINK}">Get $HASH</a>`;
+  // If too long for a caption (1024 chars), trim the body
+  if (fullMessage.length > 1000) {
+    const overhead = authorLine.length + escapedTitle.length + footer.length + 20;
+    const maxBody = 1000 - overhead;
+    fullMessage = `${authorLine}<b>${escapedTitle}</b>\n\n${escapedText.slice(0, maxBody)}...${footer}`;
   }
-
-  return message;
+  
+  return fullMessage;
 }
 
 /**
- * AI Content Adaptation
- * Rewrites the article for a specific language and style.
+ * AI Content Adaptation.
+ * Dynamically creates localized and stylized versions of the article.
  */
-async function adaptContent(title: string, html: string, language: string, style: string, apiKey: string) {
-  if (!apiKey || (!language && !style)) return { title, html };
+export async function adaptContent(title: string, html: string, language: string, style: string, apiKey: string, platform: 'telegram' | 'binance') {
+  if (!apiKey) return { title, teaser: html, og_title: title };
+
+  // Explicitly force the target language in the prompt
+  const targetLanguage = language || 'English';
 
   try {
-    console.log(`📡 [Distribution] Adapting content to: ${language}, ${style}`);
-    
     const prompt = `
-      ACT AS A PROFESSIONAL CONTENT TRANSLATOR AND EDITOR.
+      ACT AS A PROFESSIONAL SMM MANAGER AND CONTENT EDITOR.
       Original Title: ${title}
-      Article HTML: ${html.slice(0, 5000)}
+      Article Content: ${html.replace(/<[^>]*>?/gm, '').slice(0, 3000)}
 
-      TASK: Rewrite and translate this article.
-      STRICT TARGET LANGUAGE: ${language || 'Original'}
-      TARGET STYLE: ${style || 'Keep as is'}
+      TASK: Create a localized, unique "TEASER" version of this article for ${platform.toUpperCase()}.
+      STRICT TARGET LANGUAGE: ${targetLanguage.toUpperCase()}
+      TARGET STYLE: ${style || 'Engaging and professional'}
 
-      RULES:
-      1. YOU MUST TRANSLATE EVERYTHING TO ${language || 'THE ORIGINAL LANGUAGE'}.
-      2. Keep the meaning but change the tone to ${style || 'normal'}.
-      3. Maintain all important technical blocks like BTC IMPACT and POWERED BY MINING HASH.
-      4. Return ONLY valid JSON: { "title": "...", "html": "..." }
+      CRITICAL RULES:
+      1. YOU MUST WRITE EVERYTHING IN ${targetLanguage.toUpperCase()}. DO NOT USE ENGLISH UNLESS THE TARGET IS ENGLISH.
+      2. The "teaser" MUST be between 500 and 700 characters. Be detailed, provocative and hook the reader.
+      3. Use emojis appropriate for ${platform} and ${targetLanguage} culture.
+      4. DO NOT USE HASHTAGS (#) IN THE TEASER TEXT.
+      5. Make it unique from the original content while preserving the facts.
+      6. "og_title" should be a very short, explosive version of the title (max 40 chars) IN ${targetLanguage.toUpperCase()}.
+      7. Return ONLY valid JSON: { "title": "...", "teaser": "...", "og_title": "..." }
     `;
 
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -125,29 +154,41 @@ async function adaptContent(title: string, html: string, language: string, style
       body: JSON.stringify({
         model: "google/gemini-2.0-flash-001",
         messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" }
+        response_format: { type: "json_object" },
+        temperature: 0.85
       })
     });
 
     const data = await res.json();
-    const result = JSON.parse(data.choices[0]?.message?.content || "{}");
+    if (!res.ok) throw new Error(data.error?.message || "OpenRouter error");
+    
+    const contentText = data.choices[0]?.message?.content || "{}";
+    const result = JSON.parse(contentText);
     
     return {
       title: result.title || title,
-      html: result.html || html
+      teaser: result.teaser || html,
+      og_title: result.og_title || result.title || title
     };
-  } catch (e) {
-    console.error("⚠️ [Distribution] Adaptation error:", e);
-    return { title, html };
+  } catch (e: any) {
+    console.error(`⚠️ [Distribution] Adaptation error for ${targetLanguage}:`, e.message);
+    return { title, teaser: html, og_title: title };
   }
 }
 
 /**
  * Posts to Binance Square.
  */
-export async function postToBinance(account: BinanceAccount, title: string, content: string, articleId: string) {
+export async function postToBinance(account: BinanceAccount, title: string, content: string, articleId: string, index: number = 0) {
   try {
-    const plainText = formatForBinance(title, content, articleId);
+    const plainText = formatForBinance(title, content, articleId, index);
+    
+    const payload = {
+      bodyTextOnly: plainText
+    };
+
+    console.log(`📡 [Binance Square] Sending to ${account.label} (${account.language}). Key prefix: ${account.apiKey?.slice(0, 4)}...`);
+
     const res = await fetch('https://www.binance.com/bapi/composite/v1/public/pgc/openApi/content/add', {
       method: 'POST',
       headers: {
@@ -156,13 +197,18 @@ export async function postToBinance(account: BinanceAccount, title: string, cont
         'clienttype': 'binanceSkill',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/120.0.0.0 Safari/537.36'
       },
-      body: JSON.stringify({ bodyTextOnly: plainText })
+      body: JSON.stringify(payload)
     });
+
     const data = await res.json();
-    if (!res.ok || data.code !== '000000') return { success: false, error: data.message || 'Binance Error' };
-    return { success: true, id: data.data?.id };
+    console.log(`📡 [Binance Square] Response for ${account.label}:`, data);
+
+    if (data.code === '000000') return { success: true, id: data.data?.id };
+    
+    return { success: false, error: `${account.label}: ${data.message || `Code ${data.code}`}` };
   } catch (e: any) {
-    return { success: false, error: e.message };
+    console.error(`❌ [Binance Square] Critical Error (${account.label}):`, e.message);
+    return { success: false, error: `${account.label}: ${e.message}` };
   }
 }
 
@@ -178,31 +224,34 @@ export async function postToTelegram(chatId: string, title: string, content: str
     const parts = String(chatId).split(':');
     const id = parts[0];
     const threadId = parts[1];
+    const resolvedImageUrl = resolveIpfs(imageUrl);
 
-    let endpoint = `https://api.telegram.org/bot${token}/sendMessage`;
-    let body: any = {
-      chat_id: id,
-      text: message,
-      parse_mode: 'HTML',
-      disable_web_page_preview: false
-    };
-
-    if (imageUrl) {
-      endpoint = `https://api.telegram.org/bot${token}/sendPhoto`;
-      body = {
-        chat_id: id,
-        photo: imageUrl,
-        caption: message.slice(0, 1024),
-        parse_mode: 'HTML'
-      };
+    if (resolvedImageUrl) {
+      const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: id,
+          photo: resolvedImageUrl,
+          caption: message,
+          parse_mode: 'HTML',
+          message_thread_id: threadId ? parseInt(threadId) : undefined
+        })
+      });
+      const data = await res.json();
+      if (data.ok) return { success: true };
     }
 
-    if (threadId) body.message_thread_id = parseInt(threadId);
-
-    const res = await fetch(endpoint, {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify({
+        chat_id: id,
+        text: message,
+        parse_mode: 'HTML',
+        message_thread_id: threadId ? parseInt(threadId) : undefined,
+        disable_web_page_preview: false
+      })
     });
 
     const data = await res.json();
@@ -210,6 +259,7 @@ export async function postToTelegram(chatId: string, title: string, content: str
 
     return { success: true };
   } catch (e: any) {
+    console.error("❌ [Telegram] Critical Error:", e.message);
     return { success: false, error: e.message };
   }
 }
@@ -218,57 +268,70 @@ export async function postToTelegram(chatId: string, title: string, content: str
  * Main orchestrator for distributing an article.
  */
 export async function distributeArticle(profile: any, title: string, content: string, imageUrl: string | undefined, articleId: string) {
-  const tasks: Promise<{ label: string, success: boolean, type: string, error?: string }>[] = [];
+  const results: any[] = [];
   const authorDisplayName = profile.name || `${profile.address.slice(0, 6)}...`;
   const aiKey = profile.ai_api_key;
+  const rawBaseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info';
+  const baseUrl = rawBaseUrl.replace(/\/$/, '');
 
-  // 0. Global Feed (Original Language)
+  console.log("🚀 [Distribution] Starting sequential distribution for article:", articleId);
+
+  // 0. Global Feed
   const globalChannel = process.env.NEXT_PUBLIC_GLOBAL_TELEGRAM_CHANNEL;
   if (globalChannel) {
-    tasks.push((async () => {
-      const res = await postToTelegram(globalChannel, title, content, articleId, imageUrl, authorDisplayName);
-      return { label: "Global Feed", success: res.success, type: 'global', error: res.error };
-    })());
+    const res = await postToTelegram(globalChannel, title, content, articleId, imageUrl, authorDisplayName);
+    results.push({ label: "Global Feed", success: res.success, type: 'global', error: res.error });
+    await sleep(2000);
   }
 
   // 1. Binance Square Accounts
   if (profile.binance_accounts && Array.isArray(profile.binance_accounts)) {
+    let accIndex = 0;
     for (const acc of profile.binance_accounts) {
-      tasks.push((async () => {
+      try {
         let t = title, c = content;
-        if (aiKey && (acc.language || acc.style)) {
-          const adapted = await adaptContent(title, content, acc.language, acc.style, aiKey);
-          t = adapted.title; c = adapted.html;
+        if (aiKey) {
+          const adapted = await adaptContent(title, content, acc.language || 'English', acc.style || 'Professional', aiKey, 'binance');
+          t = adapted.title;
+          c = adapted.teaser;
         }
-        const res = await postToBinance(acc, t, c, articleId);
-        return { label: acc.label, success: res.success, type: 'binance', error: res.error };
-      })());
+        const res = await postToBinance(acc, t, c, articleId, accIndex);
+        results.push({ label: acc.label, success: res.success, type: 'binance', error: res.error });
+      } catch (err: any) {
+        results.push({ label: acc.label, success: false, type: 'binance', error: err.message });
+      }
+      accIndex++;
+      await sleep(5000);
     }
   }
 
   // 2. Telegram Channels
   if (profile.telegram_channels && Array.isArray(profile.telegram_channels)) {
     for (const ch of profile.telegram_channels) {
-      tasks.push((async () => {
+      try {
         let t = title, c = content;
-        if (aiKey && (ch.language || ch.style)) {
-          const adapted = await adaptContent(title, content, ch.language, ch.style, aiKey);
-          t = adapted.title; c = adapted.html;
+        let currentImageUrl = imageUrl;
+
+        if (aiKey) {
+          const targetLang = ch.language || 'English';
+          const adapted = await adaptContent(title, content, targetLang, ch.style || 'Engaging', aiKey, 'telegram');
+          t = adapted.title;
+          c = adapted.teaser;
+          if (!currentImageUrl) {
+            currentImageUrl = `${baseUrl}/api/og?id=${articleId}&title=${encodeURIComponent(adapted.og_title)}`;
+          }
         }
+        
         const targetChat = ch.topicId ? `${ch.chatId}:${ch.topicId}` : ch.chatId;
-        const res = await postToTelegram(targetChat, t, c, articleId, imageUrl);
-        return { label: ch.label, success: res.success, type: 'telegram', error: res.error };
-      })());
+        const res = await postToTelegram(targetChat, t, c, articleId, currentImageUrl, authorDisplayName);
+        results.push({ label: ch.label, success: res.success, type: 'telegram', error: res.error });
+      } catch (err: any) {
+        results.push({ label: ch.label, success: false, type: 'telegram', error: err.message });
+      }
+      await sleep(5000);
     }
-  } else if (profile.telegram_chat_id) {
-    // Legacy support
-    tasks.push((async () => {
-      const res = await postToTelegram(profile.telegram_chat_id, title, content, articleId, imageUrl);
-      return { label: "Telegram (Legacy)", success: res.success, type: 'telegram', error: res.error };
-    })());
   }
 
-  const results = await Promise.all(tasks);
-  console.log("📡 [Distribution] Finished. Results:", results);
+  console.log("🏁 [Distribution] Finished. Results:", results);
   return results;
 }

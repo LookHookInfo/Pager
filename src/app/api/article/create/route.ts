@@ -37,8 +37,8 @@ export async function POST(req: Request) {
 
     console.log("✅ [API Create Article] Article created:", data.id);
 
-    // --- AUTO-POSTING (DISTRIBUTION) ---
-    let distributionResults: any[] = [];
+    // Fetch user profile to return distribution targets to the client
+    let distributionTargets: any = null;
     try {
       const { data: profile } = await supabaseServer
         .from('profiles')
@@ -47,18 +47,28 @@ export async function POST(req: Request) {
         .single();
 
       if (profile) {
-        console.log("📡 [API Create Article] Initiating distribution for:", profile.address);
-        // Ждем завершения дистрибуции, чтобы вернуть результаты клиенту
-        distributionResults = await distributeArticle(profile, title, content, image_url, data.id);
+        distributionTargets = {
+          binance: profile.binance_accounts || [],
+          telegram: profile.telegram_channels || [],
+          global: !!process.env.NEXT_PUBLIC_GLOBAL_TELEGRAM_CHANNEL
+        };
+
+        // Legacy support: if channels is empty but legacy ID exists, add it as a target
+        if (distributionTargets.telegram.length === 0 && profile.telegram_chat_id) {
+          distributionTargets.telegram.push({
+            label: "Telegram (Legacy)",
+            chatId: profile.telegram_chat_id
+          });
+        }
       }
-    } catch (distError) {
-      console.error("⚠️ [API Create Article] Distribution process error:", distError);
+    } catch (e: any) {
+      console.warn("⚠️ [API Create Article] Profile fetch failed for distribution:", e.message);
     }
 
     return NextResponse.json({ 
       success: true, 
       article: data,
-      distribution: distributionResults 
+      distributionTargets
     });
   } catch (e: any) {
     console.error("❌ [API Create Article] Critical Error:", e.message);

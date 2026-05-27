@@ -17,8 +17,9 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
     const address = searchParams.get('address');
+    const overrideTitle = searchParams.get('title');
 
-    let title = "Pager - Web3 Media";
+    let title = overrideTitle || "Pager - Web3 Media";
     let subTitle = "A minimalist decentralized news platform built on Base.";
     let imageUrl = "";
     let isProfile = false;
@@ -35,7 +36,7 @@ export async function GET(req: Request) {
         .single();
       
       if (data) {
-        title = data.title;
+        if (!overrideTitle) title = data.title;
         subTitle = data.content.replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim().slice(0, 100) + '...';
         imageUrl = resolveIpfs(data.image_url || "");
       }

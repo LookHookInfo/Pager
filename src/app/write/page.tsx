@@ -320,21 +320,62 @@ export default function WritePage() {
               
               if (!res.ok) throw new Error("Failed to create article");
 
-              // Handle Distribution Popups
-              if (resData.distribution && Array.isArray(resData.distribution)) {
-                resData.distribution.forEach((dist: any) => {
-                  if (dist.success) {
-                    addNotification(`Posted to ${dist.label}`, 'success');
+              const articleId = resData.article.id;
+              const targets = resData.article.distributionTargets || resData.distributionTargets;
+
+              // --- SEQUENTIAL DISTRIBUTION WITH STATUSES ---
+              if (targets) {
+                // 0. Global Feed
+                if (targets.global) {
+                  addNotification("Publishing to Global Feed...", "info");
+                  const gRes = await fetch("/api/distribution", {
+                    method: "POST",
+                    body: JSON.stringify({ articleId, channelType: 'global', account: {}, profileAddress: account.address })
+                  });
+                  const gData = await gRes.json();
+                  if (gData.success) addNotification("Global Feed updated!", "success");
+                  else addNotification(`Global Feed failed: ${gData.error || 'Unknown error'}`, "error");
+                  await new Promise(r => setTimeout(r, 2000));
+                }
+
+                // 1. Binance Square
+                for (const accObj of (targets.binance || [])) {
+                  addNotification(`Adapting for ${accObj.label}...`, "info");
+                  const bRes = await fetch("/api/distribution", {
+                    method: "POST",
+                    body: JSON.stringify({ articleId, channelType: 'binance', account: accObj, profileAddress: account.address })
+                  });
+                  const bData = await bRes.json();
+                  if (bData.success) addNotification(`Binance: ${accObj.label} posted`, "success");
+                  else addNotification(`Binance ${accObj.label} failed: ${bData.error || 'Unknown error'}`, "error");
+                  await new Promise(r => setTimeout(r, 3000));
+                }
+
+                // 2. Telegram Channels
+                for (const chObj of (targets.telegram || [])) {
+                  addNotification(`Adapting for ${chObj.label}...`, "info");
+                  const tRes = await fetch("/api/distribution", {
+                    method: "POST",
+                    body: JSON.stringify({ articleId, channelType: 'telegram', account: chObj, profileAddress: account.address })
+                  });
+                  const tData = await tRes.json();
+                  if (tData.success) {
+                    const msg = tData.warning ? `${chObj.label} posted (${tData.warning})` : `${chObj.label} posted`;
+                    addNotification(`Telegram: ${msg}`, tData.warning ? 'info' : 'success');
                   } else {
-                    addNotification(`Failed to post to ${dist.label}${dist.error ? ': ' + dist.error : ''}`, 'error');
+                    addNotification(`Telegram ${chObj.label} failed: ${tData.error || 'Unknown error'}`, "error");
                   }
-                });
+                  await new Promise(r => setTimeout(r, 3000));
+                }
               }
 
               setStatus("success");
-              // Delay redirect to let user see the notifications
-              setTimeout(() => router.push("/"), resData.distribution?.length > 0 ? 3500 : 1500);
-            } catch (err: any) { setStatus("error"); }
+              // Delay redirect to let user see the final notifications
+              setTimeout(() => router.push("/"), 3000);
+            } catch (err: any) { 
+              console.error("Publish Error:", err);
+              setStatus("error"); 
+            }
           },
           onError: () => { setStatus("error"); }
         });
