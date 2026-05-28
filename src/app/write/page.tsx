@@ -52,7 +52,7 @@ export default function WritePage() {
   const [bannerDescription, setBannerDescription] = useState("");
   const [externalUrl, setExternalUrl] = useState("");
   const [mood, setMood] = useState("sarcastic");
-  const [character, setCharacter] = useState<"ghoul" | "nana" | "custom">("ghoul");
+  const [character, setCharacter] = useState<"ghoul" | "banana" | "custom">("ghoul");
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [status, setStatus] = useState<"idle" | "paying" | "publishing" | "success" | "error">("idle");
@@ -67,6 +67,7 @@ export default function WritePage() {
     { id: "bearish", label: "Bearish", icon: "📉" },
     { id: "humorous", label: "Humorous", icon: "😆" },
     { id: "negative", label: "Negative", icon: "💀" },
+    { id: "fomo", label: "FOMO", icon: "🔥" },
   ];
 
   const [processingStep, setProcessingStep] = useState<"idle" | "scraping" | "rewriting" | "persisting" | "done">("idle");
@@ -479,7 +480,7 @@ export default function WritePage() {
                   className="flex-1 px-3 py-3 text-sm border border-gray-200 outline-none bg-white cursor-pointer"
                 >
                   <option value="ghoul">🤖 Ghoul</option>
-                  <option value="nana">🍌 Nana</option>
+                  <option value="banana">🍌 Banana</option>
                   {profile?.ai_custom_dna_name && (
                     <option value="custom">👤 {profile.ai_custom_dna_name}</option>
                   )}

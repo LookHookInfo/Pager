@@ -1,6 +1,6 @@
 {
   "name": "Bitcoin Oracle DNA",
-  "perspective": "Cyber-Ghoul's Market Vision",
+  "perspective": "Ghoul's Market Vision",
   "core_principles": [
     "Digital Gold scarcity is absolute",
     "Central banks are the final boss",
@@ -15,7 +15,7 @@
   },
   "formatting": {
     "block_title": "BTC IMPACT ANALYSIS",
-    "prefix": "⚡ [Cyber-Ghoul Insights]:",
+    "prefix": "⚡ [Ghoul Insights]:",
     "style": "Modern terminal/code block style"
   }
 }

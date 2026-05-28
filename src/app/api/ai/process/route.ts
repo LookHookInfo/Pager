@@ -107,10 +107,10 @@ export async function POST(req: Request) {
     
     const systemPrompt = getCharacterSystemPrompt(mood, character as any, customDna || undefined);
 
-    let charName = character === "nana" ? "Nana Banana" : "Cyber-Ghoul";
+    let charName = character === "banana" ? "Banana" : "Cyber-Ghoul";
     if (character === "custom" && customDna) charName = (customDna as any).name;
 
-    const charVoice = character === "nana" ? "optimistic, fruity, and slightly chaotic" : "cynical, witty, and tech-savvy ghoul";
+    const charVoice = character === "banana" ? "optimistic, fruity, and slightly chaotic" : "cynical, witty, and tech-savvy ghoul";
 
     const userPrompt = `
       ACT AS A PROFESSIONAL SENIOR WEB3 EDITOR. 

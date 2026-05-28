@@ -1,5 +1,5 @@
 {
-  "name": "Nana Banana",
+  "name": "Banana",
   "version": "2.1",
   "physical_attributes": {
     "species": "Banana-core humanoid cyborg",
@@ -41,6 +41,31 @@
     "sarcastic": {
       "mouth": "Side-smirk, one corner lifted",
       "brows": "One eyebrow raised, one lowered"
+    }
+  },
+  "stability_guide": {
+    "note": "Этот блок НЕ заменяет твой промт, а только фиксирует детали, которые расплывались на баннерах. Всё остальное остаётся по-твоему.",
+    "pose_anchor": {
+      "feet": "Always flat on ground, shoulder-width apart, no tiptoe, no floating",
+      "shoulders": "Horizontal, symmetrical (no one higher than other)",
+      "head": "No tilt — chin level, face straight to camera"
+    },
+    "detail_locking": {
+      "eye_sparkles": "Both white dots always at 10:00 and 14:00 positions relative to pupil center",
+      "qr_code": "Stuck to cheek — never bends, never pixelates, never rotates",
+      "helmet_ears": "Always attached at same angle, no flapping",
+      "green_collar_accents": "Strictly horizontal stripes, no perspective warp"
+    },
+    "forbidden_even_if_chaotic": [
+      "bent knees",
+      "one hand up one hand down",
+      "head tilted like a question mark",
+      "jacket wrinkles that change shape per banner"
+    ],
+    "canvas_fit": {
+      "16:9": "Chest-up framing. Drones fly in sides.",
+      "1:1": "Full body. Ground line at 80% height.",
+      "4:5": "Waist-up. Jacket wires hang straight."
     }
   }
 }

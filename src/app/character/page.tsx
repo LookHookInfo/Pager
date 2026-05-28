@@ -1,11 +1,11 @@
 import Navbar from "@/components/Navbar";
-import { GHOUL_DNA, NANA_DNA } from "@/lib/character";
+import { GHOUL_DNA, BANANA_DNA } from "@/lib/character";
 import { Cpu, Palette, Shirt, User, Zap } from "lucide-react";
 
 export default function CharacterPage() {
   const characters = [
     { dna: GHOUL_DNA, icon: <Cpu size={24} />, color: "bg-black" },
-    { dna: NANA_DNA, icon: <Zap size={24} />, color: "bg-yellow-400" }
+    { dna: BANANA_DNA, icon: <Zap size={24} />, color: "bg-yellow-400" }
   ];
 
   return (
