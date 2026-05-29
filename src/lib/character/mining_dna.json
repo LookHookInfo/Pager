@@ -6,7 +6,8 @@
     "network": "Base (L2)",
     "token": "$HASH",
     "utility": "Governance, publishing fees, and author rewards.",
-    "vision": "A world where information is mined like gold - with proof of value."
+    "vision": "A world where information is mined like gold - with proof of value.",
+    "buy_link": "https://www.cryptocompare.com/coins/hashcoin"
   },
   "messaging_rules": [
     "Emphasize low fees and high speed of Base.",
@@ -16,6 +17,11 @@
   "formatting": {
     "block_title": "POWERED BY MINING HASH",
     "signature": "Stay decentralized. Stay $HASH.",
-    "vibe": "Industrial-cyberpunk aesthetic"
+    "vibe": "Industrial-cyberpunk aesthetic",
+    "partner_link": {
+      "label": "CryptoCompare",
+      "url": "https://www.cryptocompare.com/coins/hashcoin",
+      "logo": "/Cryptocompare.png"
+    }
   }
 }

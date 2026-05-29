@@ -245,17 +245,36 @@ export function getBtcAnalysisBlock(
  * Генерирует стандартизированный блок спонсора Mining Hash.
  */
 export function getMiningSponsorBlock(): string {
+  const partner = (miningDna as any).formatting?.partner_link;
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL 
+    ? process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "") 
+    : "";
+  
+  let partnerHtml = "";
+  if (partner && partner.label) {
+    const logoSrc = partner.logo ? (partner.logo.startsWith('http') ? partner.logo : `${baseUrl}${partner.logo}`) : "";
+    
+    partnerHtml = `
+    <div style="margin-top: 16px; margin-bottom: 12px;">
+      <a href="${partner.url || '#'}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: #f3f4f6; padding: 6px 12px; border-radius: 4px; border: 1px solid #e5e7eb;">
+        ${logoSrc ? `<img src="${logoSrc}" width="16" height="16" style="display: inline-block; vertical-align: middle; border-radius: 2px;" alt="" />` : ""}
+        <span style="font-size: 11px; font-weight: 800; color: #1f2937; text-transform: uppercase; letter-spacing: 0.05em;">
+          ${partner.label}
+        </span>
+      </a>
+    </div>
+    `;
+  }
+
   return `
-<div style="margin-top: 40px; padding-top: 24px; border-top: 1px solid #e5e7eb; text-align: center;">
+<div style="margin-top: 40px; padding-top: 24px; border-top: 1px solid #e5e7eb; text-align: center; clear: both;">
   <p style="margin: 0 0 8px 0; font-size: 10px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; color: #9ca3af;">
-    ${MINING_DNA.formatting.block_title}
+    ${miningDna.formatting.block_title}
   </p>
-  <p style="margin: 0; font-size: 14px; color: #4b5563;">
-    ${MINING_DNA.mission}
+  <p style="margin: 0 0 16px 0; font-size: 14px; color: #4b5563; line-height: 1.5; max-width: 500px; margin-left: auto; margin-right: auto;">
+    ${miningDna.mission}
   </p>
-  <code style="font-size: 11px; background: #000; color: #fff; padding: 2px 8px; border-radius: 2px;">
-    ${MINING_DNA.formatting.signature}
-  </code>
+  ${partnerHtml}
 </div>
 `;
 }
