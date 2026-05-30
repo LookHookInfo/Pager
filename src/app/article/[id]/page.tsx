@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { ExternalLink, Radio } from 'lucide-react';
 import Link from 'next/link';
 import { Metadata } from 'next';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseServer } from '@/lib/supabase';
 import LikeButton from '@/components/LikeButton';
 import Navbar from '@/components/Navbar';
 import BackButton from '@/components/BackButton';
@@ -12,6 +12,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 async function getArticle(id: string) {
+  const supabase = getSupabaseServer();
   const { data, error } = await supabase.from('articles').select('*').eq('id', id).single();
   if (error || !data) return null;
   return data;
@@ -19,20 +20,36 @@ async function getArticle(id: string) {
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
   const article = await getArticle(params.id);
-  if (!article) return {};
-  const description = article.content.replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim().slice(0, 160) + '...';
-  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info').replace(/\/$/, '');
-  const ogImageUrl = `${baseUrl}/api/og?id=${article.id}`;
+  
+  if (!article) {
+    return {
+      title: 'Article Not Found - Pager',
+    };
+  }
+
+  const cleanContent = (article.content || '').replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim();
+  const description = cleanContent.slice(0, 160) + (cleanContent.length > 160 ? '...' : '');
+  const ogImageUrl = `/api/og?id=${article.id}`;
+  
   return {
     title: article.title,
     description: description,
-    alternates: { canonical: `/article/${article.id}` },
+    alternates: { 
+      canonical: `/article/${article.id}` 
+    },
     openGraph: {
       title: article.title,
       description: description,
-      url: `${baseUrl}/article/${article.id}`,
+      url: `/article/${article.id}`,
       siteName: 'Pager',
-      images: [{ url: ogImageUrl, width: 1200, height: 630, alt: article.title }],
+      images: [
+        { 
+          url: ogImageUrl, 
+          width: 1200, 
+          height: 630, 
+          alt: article.title 
+        }
+      ],
       locale: 'en_US',
       type: 'article',
     },
@@ -87,7 +104,7 @@ export default async function ArticlePage({ params }: { params: { id: string } }
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div className="flex items-center gap-8">
                  <LikeButton articleId={article.id} initialLikes={article.likes || 0} authorAddress={article.author_address} />
-                 <PostActions title={article.title} id={article.id} />
+                 <PostActions title={article.title} id={article.id} content={article.content} />
               </div>
               {article.source_url && (
                 <a href={article.source_url} target="_blank" rel="noopener noreferrer" className="text-xs font-bold uppercase tracking-widest text-[var(--text-secondary)] hover:text-black transition-colors flex items-center gap-2">Source <ExternalLink size={14} /></a>

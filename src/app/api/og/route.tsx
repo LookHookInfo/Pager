@@ -1,14 +1,32 @@
 import { ImageResponse } from 'next/og';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseServer } from '@/lib/supabase';
 
 export const runtime = 'edge';
 
-function resolveIpfs(url: string) {
+/**
+ * ОПТИМИЗИРОВАННЫЙ ГЕНЕРАТОР БАННЕРОВ С ПОДДЕРЖКОЙ КАРТИНОК
+ * 
+ * Мы используем прокси-сервис weserv.nl для мгновенной обработки картинок из IPFS.
+ * Это позволяет сжать тяжелую картинку до минимума перед тем, как Edge-функция 
+ * попытается её отрисовать.
+ */
+
+function getOptimizedImageUrl(url: string) {
   if (!url) return "";
+  
+  let rawUrl = url;
   if (url.startsWith('ipfs://')) {
-    return url.replace('ipfs://', 'https://gateway.ipn.io/ipfs/');
+    rawUrl = url.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
   }
-  return url;
+
+  // Используем wsrv.nl для ресайза и сжатия "на лету"
+  // w=1200 - ширина
+  // h=630 - высота
+  // fit=cover - обрезка
+  // output=jpg - формат
+  // q=70 - качество
+  // a=attention - фокус на важном (лицах и т.д.)
+  return `https://wsrv.nl/?url=${encodeURIComponent(rawUrl)}&w=1200&h=630&fit=cover&output=jpg&q=70&a=attention`;
 }
 
 export async function GET(req: Request) {
@@ -16,61 +34,142 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
     const address = searchParams.get('address');
-    const overrideTitle = searchParams.get('title');
-
-    let title = overrideTitle || "Pager - Web3 Media";
+    
+    let title = "Pager - Web3 Media";
     let subTitle = "A minimalist decentralized news platform built on Base.";
-    let imageUrl = "";
-    let isProfile = false;
+    let label = "Intel / Report";
+    let bannerUrl = "";
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = getSupabaseServer();
 
     if (id) {
-      const { data } = await supabase.from('articles').select('title, content, image_url, author_address').eq('id', id).single();
+      const { data } = await supabase.from('articles').select('title, content, image_url').eq('id', id).single();
       if (data) {
-        if (!overrideTitle) title = data.title;
-        subTitle = data.content.replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim().slice(0, 100) + '...';
-        imageUrl = resolveIpfs(data.image_url || "");
+        title = data.title;
+        subTitle = data.content.replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim().slice(0, 110) + '...';
+        label = "Intel / Report";
+        bannerUrl = getOptimizedImageUrl(data.image_url || "");
       }
     } else if (address) {
-      isProfile = true;
       const { data } = await supabase.from('profiles').select('name, bio, avatar_url').eq('address', address.toLowerCase()).single();
       if (data) {
         title = data.name || "Anonymous Author";
-        subTitle = data.bio || `View the Web3 feed of ${address.slice(0, 6)}...${address.slice(-4)}`;
-        imageUrl = resolveIpfs(data.avatar_url || "");
+        subTitle = data.bio || `Web3 feed of ${address.slice(0, 6)}...${address.slice(-4)}`;
+        label = "Protocol / Tape";
+        bannerUrl = getOptimizedImageUrl(data.avatar_url || "");
       }
     }
 
     return new ImageResponse(
       (
-        <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-end', backgroundColor: '#ffffff', padding: '80px', fontFamily: 'sans-serif', position: 'relative' }}>
-          {imageUrl && (
-            <img src={imageUrl} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.3, filter: 'grayscale(0.5)' }} />
+        <div style={{ 
+          height: '100%', 
+          width: '100%', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'flex-start', 
+          justifyContent: 'space-between', 
+          backgroundColor: '#000', 
+          padding: '80px', 
+          fontFamily: 'sans-serif',
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
+          {/* ФОНОВОЕ ИЗОБРАЖЕНИЕ (ОПТИМИЗИРОВАННОЕ) */}
+          {bannerUrl && (
+            <img 
+              src={bannerUrl} 
+              style={{ 
+                position: 'absolute', 
+                top: 0, 
+                left: 0, 
+                width: '100%', 
+                height: '100%', 
+                objectFit: 'cover', 
+                opacity: 0.5,
+              }} 
+            />
           )}
-          <div style={{ position: 'absolute', top: '80px', left: '80px', display: 'flex', alignItems: 'center' }}>
-            <div style={{ fontSize: '32px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '-0.05em', color: 'black' }}>Pager</div>
-            <div style={{ marginLeft: '12px', width: '2px', height: '24px', backgroundColor: '#000' }} />
-            <div style={{ marginLeft: '12px', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.2em', color: '#6b7280' }}>
-              {isProfile ? 'Protocol / Tape' : 'Intel / Report'}
+
+          {/* Затемнение фона для читаемости текста */}
+          <div style={{ 
+            position: 'absolute', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0, 
+            background: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.9) 100%)',
+            zIndex: 1
+          }} />
+
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', width: '100%', position: 'relative', zIndex: 10 }}>
+            <div style={{ fontSize: '36px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '-0.05em', color: 'white' }}>Pager</div>
+            <div style={{ marginLeft: '16px', width: '3px', height: '28px', backgroundColor: '#fff' }} />
+            <div style={{ marginLeft: '16px', fontSize: '14px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.3em', color: '#d1d5db' }}>
+              {label}
             </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', width: '100%', maxWidth: '900px', position: 'relative', zIndex: 10 }}>
-            <div style={{ fontSize: title.length > 40 ? '64px' : '84px', fontWeight: '900', color: 'black', marginBottom: '24px', lineHeight: 1.1, letterSpacing: '-0.02em' }}>{title}</div>
-            <div style={{ fontSize: '32px', color: '#374151', lineHeight: 1.4, marginBottom: '48px', fontWeight: 'bold' }}>{subTitle}</div>
+
+          {/* Main Content */}
+          <div style={{ display: 'flex', flexDirection: 'column', width: '100%', marginBottom: '40px', position: 'relative', zIndex: 10 }}>
+            <div style={{ 
+              fontSize: title.length > 50 ? '60px' : '74px', 
+              fontWeight: '900', 
+              color: 'white', 
+              marginBottom: '24px', 
+              lineHeight: 1.1, 
+              letterSpacing: '-0.02em',
+              textShadow: '0 4px 12px rgba(0,0,0,0.5)'
+            }}>
+              {title}
+            </div>
+            <div style={{ 
+              fontSize: '30px', 
+              color: '#e5e7eb', 
+              lineHeight: 1.5, 
+              fontWeight: '500', 
+              maxWidth: '950px',
+              textShadow: '0 2px 8px rgba(0,0,0,0.5)'
+            }}>
+              {subTitle}
+            </div>
           </div>
-          <div style={{ display: 'flex', width: '100%', borderTop: '4px solid black', paddingTop: '32px', alignItems: 'center', justifyContent: 'space-between', position: 'relative', zIndex: 10 }}>
+
+          {/* Footer */}
+          <div style={{ 
+            display: 'flex', 
+            width: '100%', 
+            borderTop: '5px solid white', 
+            paddingTop: '40px', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            position: 'relative',
+            zIndex: 10
+          }}>
             <div style={{ display: 'flex', alignItems: 'center' }}>
-               <div style={{ padding: '8px 16px', backgroundColor: 'black', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: '16px' }}><div style={{ color: 'white', fontSize: '14px', fontWeight: 'bold', textTransform: 'uppercase' }}>Base Network</div></div>
-               <div style={{ fontSize: '20px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.1em' }}>lookhook.info</div>
+               <div style={{ 
+                 padding: '10px 20px', 
+                 backgroundColor: 'white', 
+                 borderRadius: '6px', 
+                 display: 'flex', 
+                 alignItems: 'center', 
+                 justifyContent: 'center', 
+                 marginRight: '20px' 
+               }}>
+                 <div style={{ color: 'black', fontSize: '16px', fontWeight: 'bold', textTransform: 'uppercase' }}>Base Network</div>
+               </div>
+               <div style={{ fontSize: '24px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'white' }}>lookhook.info</div>
             </div>
-            <div style={{ fontSize: '18px', color: '#000', fontWeight: '900', textTransform: 'uppercase' }}>Web3 Media Protocol</div>
+            <div style={{ fontSize: '20px', color: '#fff', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Web3 Protocol
+            </div>
           </div>
         </div>
       ),
       { width: 1200, height: 630 }
     );
-  } catch (err: any) { return new Response(`OG Generation Error`, { status: 500 }); }
+  } catch (err: any) { 
+    return new Response(`Error`, { status: 500 }); 
+  }
 }

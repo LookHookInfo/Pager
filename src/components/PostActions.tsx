@@ -1,16 +1,16 @@
 "use client";
 
-import { Share2, Bookmark, Check, Copy, Twitter, Send } from "lucide-react";
+import { Share2, Bookmark, Twitter, Send } from "lucide-react";
 import { useState, useEffect } from "react";
 
 interface PostActionsProps {
   title: string;
   id: string;
+  content?: string;
 }
 
-export default function PostActions({ title, id }: PostActionsProps) {
+export default function PostActions({ title, id, content = "" }: PostActionsProps) {
   const [showShareModal, setShowShareModal] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
 
   useEffect(() => {
@@ -19,29 +19,29 @@ export default function PostActions({ title, id }: PostActionsProps) {
     }
   }, [id]);
 
-  const hashtags = "Pager,Web3,Base,Hash";
+  const hashtags = "Web3,Base,Hash";
   const formattedHashtags = `#${hashtags.split(',').join(' #')}`;
   
-  const shareText = `«${title}»\n\nRead on Pager:`;
-
-  const handleCopy = () => {
-    const fullText = `${shareText}\n${shareUrl}\n\n${formattedHashtags}`;
-    navigator.clipboard.writeText(fullText);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  // Очистка и обрезка контента до 80 символов
+  const cleanContent = content.replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim();
+  const shortDescription = cleanContent.length > 80 
+    ? cleanContent.slice(0, 80).trim() + "..." 
+    : cleanContent;
 
   const shareLinks = [
     {
       name: "Twitter",
       icon: <Twitter size={18} />,
-      url: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText + "\n" + shareUrl)}&hashtags=${hashtags}`,
+      // Твиттер: Заголовок -> Описание -> Ссылка -> (Отступ через \n\n) -> Хештеги (через параметр)
+      url: `https://twitter.com/intent/tweet?text=${encodeURIComponent(`${title}\n\n${shortDescription}\n\nContinue reading: ${shareUrl}\n\n`)}&hashtags=${hashtags}`,
       color: "hover:bg-sky-500"
     },
     {
       name: "Telegram",
       icon: <Send size={18} />,
-      url: `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText + "\n\n" + formattedHashtags)}`,
+      // Телеграм: Чтобы ссылка не дублировалась в начале, мы НЕ передаем параметр 'url',
+      // а вставляем всё сообщение целиком в параметр 'text' в нужном порядке.
+      url: `https://t.me/share/url?text=${encodeURIComponent(`${title}\n\n${shortDescription}\n\nContinue reading: ${shareUrl}\n\n${formattedHashtags}`)}`,
       color: "hover:bg-blue-500"
     }
   ];
@@ -59,7 +59,6 @@ export default function PostActions({ title, id }: PostActionsProps) {
                 {shareLinks.map((link) => (
                   <a key={link.name} href={link.url} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors hover:text-white rounded-sm ${link.color}`} onClick={() => setShowShareModal(false)}>{link.icon}<span>{link.name}</span></a>
                 ))}
-                <button onClick={handleCopy} className="flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors hover:bg-black hover:text-white rounded-sm">{copied ? <Check size={18} className="text-green-500" /> : <Copy size={18} />}<span>{copied ? "Copied!" : "Copy Link"}</span></button>
               </div>
               <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-b border-r border-[var(--border-soft)] rotate-45 shadow-sm" />
             </div>

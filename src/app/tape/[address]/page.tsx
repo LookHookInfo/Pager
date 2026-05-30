@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { getSupabaseServer } from "@/lib/supabase";
 import { Newspaper, Radio, ChevronLeft, ChevronRight } from "lucide-react";
 import LikeButton from "@/components/LikeButton";
 import Link from "next/link";
@@ -13,6 +13,7 @@ export const revalidate = 0;
 const ITEMS_PER_PAGE = 12;
 
 async function getProfileData(address: string, page: number) {
+  const supabase = getSupabaseServer();
   const cleanAddress = address.toLowerCase();
   const from = (page - 1) * ITEMS_PER_PAGE;
   const to = from + ITEMS_PER_PAGE - 1;
@@ -51,6 +52,7 @@ async function getProfileData(address: string, page: number) {
 }
 
 export async function generateMetadata({ params }: { params: { address: string } }): Promise<Metadata> {
+  const supabase = getSupabaseServer();
   const address = decodeURIComponent(params.address).toLowerCase();
   
   const { data: profile } = await supabase
@@ -61,8 +63,7 @@ export async function generateMetadata({ params }: { params: { address: string }
 
   const name = profile?.name || "Anonymous Author";
   const bio = profile?.bio || `Intel feed from ${address.slice(0, 6)}...${address.slice(-4)}`;
-  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info').replace(/\/$/, '');
-  const ogImageUrl = `${baseUrl}/api/og?address=${address}`;
+  const ogImageUrl = `/api/og?address=${address}`;
 
   return {
     title: `${name} | Pager Tape`,
@@ -70,7 +71,7 @@ export async function generateMetadata({ params }: { params: { address: string }
     openGraph: {
       title: `${name}'s Tape on Pager`,
       description: bio,
-      url: `${baseUrl}/tape/${address}`,
+      url: `/tape/${address}`,
       siteName: 'Pager',
       images: [
         {
