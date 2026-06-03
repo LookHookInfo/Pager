@@ -4,7 +4,6 @@ import LikeButton from "@/components/LikeButton";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import ProfileHeader from "@/components/ProfileHeader";
-import ProfileMascots from "@/components/ProfileMascots";
 import DeleteButton from "@/components/DeleteButton";
 import { Metadata } from 'next';
 
@@ -126,8 +125,6 @@ export default async function TapePage({
           totalArticles={totalArticles}
           totalRewards={totalRewards}
         />
-
-        <ProfileMascots address={decodedAddress} />
 
         <section className="space-y-12">
           <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400 border-b border-[var(--border-soft)] pb-4">Feed</h2>

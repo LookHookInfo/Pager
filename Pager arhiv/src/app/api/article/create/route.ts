@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
+import { distributeArticle } from '@/lib/distribution';
 
 export async function POST(req: Request) {
   try {

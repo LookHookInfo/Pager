@@ -7,7 +7,7 @@ export async function POST(req: Request) {
     const { 
       address, name, bio, website, thirdweb_client_id, 
       avatar_url, ai_api_key, ai_image_model, ai_atmosphere,
-      ai_nft_token_id,
+      ai_custom_dna_name, ai_custom_dna_description, ai_custom_dna_reference,
       binance_accounts, telegram_channels, telegram_chat_id,
       cta_telegram, cta_forum, ref_links
     } = body;
@@ -19,8 +19,10 @@ export async function POST(req: Request) {
     const normalizedAddress = address.toLowerCase();
     console.log("🛠 [API Profile] Upserting profile for:", normalizedAddress);
     
+    // Используем серверный клиент с SERVICE_ROLE_KEY
     const supabaseServer = getSupabaseServer();
 
+    // Выполняем UPSERT
     const { data, error } = await supabaseServer
       .from('profiles')
       .upsert({ 
@@ -33,7 +35,9 @@ export async function POST(req: Request) {
         ai_api_key,
         ai_image_model,
         ai_atmosphere,
-        ai_nft_token_id,
+        ai_custom_dna_name,
+        ai_custom_dna_description,
+        ai_custom_dna_reference,
         binance_accounts,
         telegram_channels,
         telegram_chat_id,
@@ -49,8 +53,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message || "Database error" }, { status: 500 });
     }
 
+    console.log("✅ [API Profile] Profile synced successfully:", normalizedAddress);
+    
     const response = NextResponse.json({ success: true, profile: data });
+    
+    // Заголовки против кэша
     response.headers.set('Cache-Control', 'no-store, max-age=0');
+    
     return response;
   } catch (e: any) {
     console.error("❌ [API Profile] Critical Error:", e.message);

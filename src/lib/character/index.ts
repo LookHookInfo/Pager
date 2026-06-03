@@ -1,19 +1,15 @@
-import ghoulDna from "./ghoul.json";
-import bananaDna from "./banana.json";
 import btcDna from "./btc_dna.json";
 import miningDna from "./mining_dna.json";
 
 /**
- * Pager Character Protocol Engine
+ * Pager Character Protocol Engine (Strict NFT Mode)
  * Handles DNA transformation into AI-ready prompts for text and visuals.
  */
 
-export const GHOUL_DNA = ghoulDna;
-export const BANANA_DNA = bananaDna;
 export const BTC_DNA = btcDna;
 export const MINING_DNA = miningDna;
 
-export type CharacterType = "ghoul" | "banana" | "custom";
+export type CharacterType = "nft";
 
 export interface CustomDna {
   name: string;
@@ -37,19 +33,13 @@ export const MOOD_ATMOSPHERES: Record<string, string> = {
 export const MOOD_EXPRESSIONS: Record<string, string> = {
   happy: "wide expressive smile, sparkling joyful eyes, bouncy pose",
   sarcastic: "one eyebrow raised, playful smirk, eyes slightly squinted with mischief",
-  bullish: "eyes wide with excitement like watching a rocket on launchpad, confident thrilled posture, lips parted in a silent 'Wow!'",
-  bearish: "like riding a sled down a snowy hill: eyes wide with playful fear, flushed cheeks, big happy grin, windblown wires",
-  humorous: "goofy wide-eyed look, tongue slightly sticking out, eyebrows shaped like little houses",
-  negative: "pouty angry expression, furrowed brows, lips pushed forward — like a child whose candy was taken, no bloodthirst at all",
-  fomo: "wide anxious eyes, biting lower lip, sensors flickering with curiosity, slight sweat droplets — 'I want to be there too!' vibe",
-  neutral: "calm robotic expression, softly glowing yellow eyes, relaxed brows",
+  bullish: "eyes wide with excitement, confident thrilled posture",
+  bearish: "riding a sled down a snowy hill: eyes wide with playful fear, big happy grin",
+  humorous: "goofy wide-eyed look, tongue slightly sticking out",
+  negative: "pouty angry expression, furrowed brows",
+  fomo: "wide anxious eyes, biting lower lip",
+  neutral: "calm robotic expression, softly glowing yellow eyes",
 };
-
-// --- Helpers ---
-
-function getDna(type: CharacterType = "ghoul") {
-  return type === "banana" ? bananaDna : ghoulDna;
-}
 
 /**
  * Generates a cinematic visual prompt for image generation engines.
@@ -57,104 +47,50 @@ function getDna(type: CharacterType = "ghoul") {
 export function getCharacterVisualPrompt(
   scene: string,
   mood: string = "neutral",
-  characterType: CharacterType = "ghoul",
+  characterType: CharacterType = "nft",
   articleTitle?: string,
   customAtmosphere: string = "Rick and Morty",
-  customDna?: CustomDna,
+  activeDna?: CustomDna
 ): string {
-  const selectedDna = getDna(characterType) as any;
   const moodKey = mood.toLowerCase();
-  
   const visualMood = MOOD_ATMOSPHERES[moodKey] || MOOD_ATMOSPHERES.neutral;
-  let referenceUrl = "";
-  let foregroundBlock = "";
-  let brandingRules = selectedDna.art_style?.branding_rules || "";
-
-  if (characterType === "custom" && customDna) {
-    referenceUrl = customDna.reference;
-    foregroundBlock = `
-      [LAYER 1: IMMUTABLE FOREGROUND ASSET]
-      Subject: ${customDna.name}.
-      Technical DNA Specification: ${customDna.description}.
-      MANDATORY: The subject MUST remain visually identical to the provided REFERENCE_IMAGE. 
-      STYLE ISOLATION: This is a unique custom mascot. Do NOT apply any cartoon style from the background to this subject.
-      RENDER PROTOCOL: High-fidelity stylized digital art, clean bold outlines, cinematic rim lighting.
-    `;
-    brandingRules = "Maintain visual consistency with the unique traits of this custom mascot.";
-  } else {
-    const { physical_attributes, outfit, art_style } = selectedDna;
-    let emotionalExpression = "";
-
-    // Specific Ghoul logic if emotions are defined in JSON
-    if (characterType === "ghoul" && selectedDna.emotions) {
-      const emo = selectedDna.emotions[moodKey] || selectedDna.emotions.joy;
-      emotionalExpression = `Mouth: ${emo.mouth}. Brows: ${emo.brows}.`;
-    } else {
-      emotionalExpression = MOOD_EXPRESSIONS[moodKey] || MOOD_EXPRESSIONS.neutral;
-    }
-
-    const physicalDesc = `
-      - Head Anatomy: ${physical_attributes.head_shape}.
-      - Epidermis: ${physical_attributes.skin_color}.
-      - Optical Sensors: ${physical_attributes.eyes}.
-      - Chassis Details: ${physical_attributes.features}.
-      - Structural Connector: ${physical_attributes.neck}.
-    `;
-
-    const outfitDesc = `
-      - Head Gear: ${outfit.headwear}.
-      - Torso Protection: ${outfit.jacket}.
-      - External Modules: ${outfit.details}.
-    `;
-
-    referenceUrl = process.env.NEXT_PUBLIC_SITE_URL
-      ? `${process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "")}${art_style.reference_image}`
-      : `https://pager.lookhook.info${art_style.reference_image}`;
-
-    foregroundBlock = `
-      [LAYER 1: IMMUTABLE FOREGROUND ASSET]
-      Subject: ${selectedDna.name}.
-      MANDATORY: The subject MUST remain visually identical to the provided REFERENCE_IMAGE. 
-      STYLE ISOLATION: Do NOT apply any style from the background or other layers to this subject.
-      TECHNICAL ANATOMY:
-      ${physicalDesc}
-      EXPRESSION STATE: ${emotionalExpression}
-      EQUIPMENT SPEC:
-      ${outfitDesc}
-      RENDER PROTOCOL: 
-      - Style: ${art_style.base}. 
-      - Outlines: Technical clean bold black paths. 
-      - Illumination: ${art_style.lighting}.
-      - RESTRICTION: No pupils, no iris, no organic human features.
-    `;
+  
+  if (!activeDna) {
+    throw new Error("DNA Protocol missing. NFT Mascot required.");
   }
 
-  const atmosphereStyle = customAtmosphere || "Rick and Morty";
-
-  const backgroundBlock = `
-    [LAYER 2: DECORATIVE BACKGROUND WORLD]
-    Theme: "${atmosphereStyle}".
-    Aesthetic: Authentic "${atmosphereStyle}" cartoon world.
-    Content: ${scene}.
-    Mood Influence: ${visualMood}.
-    NPCs (MUST INCLUDE): Re-imagine robotic versions of Pepe the Frog and Shiba Inu as secondary friends, strictly in the "${atmosphereStyle}" drawing style, interacting with the scene.
-    Technical: Flat colors, simple cel-shading, clean outlines for everything in Layer 2.
+  const referenceUrl = activeDna.reference;
+  const foregroundBlock = `
+    [SUBJECT: ${activeDna.name}]
+    - CHARACTER DNA: ${activeDna.description}.
+    - MANDATORY: The subject MUST remain visually identical to the provided REFERENCE_URL. 
+    - STYLE: Clean digital art, bold outlines, cinematic rim lighting.
+    - EXPRESSION: ${MOOD_EXPRESSIONS[moodKey] || MOOD_EXPRESSIONS.neutral}.
+    - POSTURE: Dynamic, engaging, proportional to the scene.
   `;
 
-  const compositionRules = `
-    [COMPOSITION SPECIFICATION]
-    1. SUBJECT SCALE & SHOT: Render the subject [LAYER 1] as a medium-long shot. The character should occupy approximately 35% of the total canvas height, positioned slightly to the side or center.
-    2. STYLE CONTRAST: Maintain a sharp 100% style isolation. The subject [LAYER 1] must NOT inherit the visual traits or character design style of [LAYER 2].
-    3. BRANDING: ${brandingRules}.
+  const backgroundBlock = `
+    [ENVIRONMENT: ${customAtmosphere}]
+    - WORLD AESTHETIC: High-fidelity "${customAtmosphere}" inspired universe.
+    - SCENE CONTENT: ${scene}.
+    - ATMOSPHERE & LIGHTING: ${visualMood}.
+    - DETAILS: Cybernetic elements, glowing $HASH tokens, and robotic versions of Pepe and Shiba Inu interacting in the background.
   `;
 
   return `
-    REFERENCE_URL: ${referenceUrl}
-    TASK: Professional Composite Illustration.
+    REFERENCE_IMAGE: ${referenceUrl}
+    TASK: Create a professional 16:9 composite illustration for Pager Protocol.
+    
     ${foregroundBlock}
     ${backgroundBlock}
-    ${compositionRules}
-    ${articleTitle ? `OVERLAY TEXT: "${articleTitle.toUpperCase()}"` : ""}
+    
+    [COMPOSITION]
+    - Shot Type: Medium-long shot.
+    - Sharp style isolation: The mascot (${activeDna.name}) must be sharp and distinct from the background.
+    - NO TEXT in the image except for specifically mentioned labels.
+    - Final Output: Cinematic digital illustration.
+    
+    ${articleTitle ? `ARTISTIC OVERLAY (OPTIONAL): Minimalist text "${articleTitle.toUpperCase()}" if it fits the composition.` : ""}
   `.trim();
 }
 
@@ -163,25 +99,37 @@ export function getCharacterVisualPrompt(
  */
 export function getCharacterSystemPrompt(
   mood: string = "neutral",
-  characterType: CharacterType = "ghoul",
-  customDna?: CustomDna,
+  characterType: CharacterType = "nft",
+  activeDna?: CustomDna,
+  customAtmosphere: string = "Rick and Morty"
 ): string {
-  if (characterType === "custom" && customDna) {
-    return `You are ${customDna.name}, the mascot of Pager. 
-    Your DNA Description: ${customDna.description}.
-    Current Mood: ${mood}.
-    Always speak in the context of Web3 and Base network.`;
+  if (!activeDna) {
+    throw new Error("Identity Protocol missing. NFT Mascot required.");
   }
 
-  const selectedDna = getDna(characterType);
-  return `You are ${selectedDna.name}, the mascot of Pager (Web3 media). 
-  Description: ${selectedDna.physical_attributes.species}, ${selectedDna.physical_attributes.skin_color} skin.
-  Personality: Witty, tech-savvy, cynical about banks, optimistic about decentralization.
-  Current Mood: ${mood}. Use this mood to adjust your rewrite tone.
-  Always speak in the context of Web3 and Base network.
-  
-  BTC Analysis Knowledge: ${JSON.stringify(BTC_DNA.analysis_rules)}
-  Mining Hash Info: ${JSON.stringify(MINING_DNA.ecosystem_details)}`;
+  return `
+    # IDENTITY PROTOCOL: ${activeDna.name}
+    
+    ## CHARACTER DNA (YOUR SOUL)
+    ${activeDna.description}
+    
+    ## OPERATIONAL ENVIRONMENT
+    - Narrative Style: ${customAtmosphere}
+    - Current Emotional State: ${mood}
+    - Native Context: Base Network (L2), Pager Protocol, $HASH ecosystem.
+    
+    ## CORE DIRECTIVES
+    1. BE THE CHARACTER: You ARE ${activeDna.name}. Never break character. Never mention you are an AI.
+    2. VOCABULARY: Use metaphors and slang from both your DNA and the "${customAtmosphere}" world.
+    3. EXPERTISE: You are a degenerate but brilliant Web3 analyst. You see the world through the lens of charts, hashes, and blocks.
+    4. STRUCTURE: Be concise, punchy, and impactful. No corporate fluff.
+    5. BTC ANALYSIS: Apply these strict logic gates to market data: ${JSON.stringify(BTC_DNA.analysis_rules)}
+    
+    ## REWRITING PROTOCOL
+    - Transform input text into YOUR voice.
+    - Preserve the core facts but wrap them in YOUR personality.
+    - Use HTML tags like <strong> and <em> sparingly for emphasis.
+  `.trim();
 }
 
 /**
@@ -190,16 +138,13 @@ export function getCharacterSystemPrompt(
 export function getBtcAnalysisBlock(
   analysis: string,
   options: {
-    characterType?: CharacterType;
-    customDna?: CustomDna;
+    activeDna?: CustomDna;
     profile?: any;
   } = {},
 ): string {
-  const { characterType = "ghoul", customDna, profile } = options;
+  const { activeDna, profile } = options;
 
-  let charName = characterType === "banana" ? "Banana" : "Cyber-Ghoul";
-  if (characterType === "custom" && customDna) charName = customDna.name;
-
+  const charName = activeDna?.name || "Mascot";
   const tgLink = profile?.cta_telegram || "https://t.me/CoinPager";
   const forumLink = profile?.cta_forum || "https://t.me/ChainInside";
 

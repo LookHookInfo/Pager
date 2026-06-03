@@ -17,6 +17,8 @@ export interface TelegramChannel {
 
 const HASH_TOKEN_LINK = MINING_DNA.ecosystem_details.buy_link;
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 function resolveIpfs(url: string | undefined): string {
   if (!url) return "";
   if (url.startsWith('ipfs://')) {
@@ -101,47 +103,46 @@ export async function postToTelegram(chatId: string, title: string, content: str
   if (!token) return { success: false, error: "Bot token missing" };
   try {
     const message = formatForTelegram(title, content, articleId, authorInfo);
-    
-    // Parse ID and Topic if provided in format "-1002126150260/154"
-    let targetChatId = String(chatId);
-    let messageThreadId: number | undefined = undefined;
-
-    if (targetChatId.includes('/')) {
-        const [id, topic] = targetChatId.split('/');
-        targetChatId = id;
-        messageThreadId = parseInt(topic);
-    }
-
+    const parts = String(chatId).split(':');
+    const id = parts[0];
+    const threadId = parts[1];
     const resolvedImageUrl = resolveIpfs(imageUrl);
     if (resolvedImageUrl) {
-      const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ 
-            chat_id: targetChatId, 
-            photo: resolvedImageUrl, 
-            caption: message, 
-            parse_mode: 'HTML', 
-            message_thread_id: messageThreadId 
-        }) 
-      });
+      const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: id, photo: resolvedImageUrl, caption: message, parse_mode: 'HTML', message_thread_id: threadId ? parseInt(threadId) : undefined }) });
       const data = await res.json();
       if (data.ok) return { success: true };
-      console.warn("⚠️ [Telegram] sendPhoto failed, falling back to message:", data.description);
     }
-
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ 
-            chat_id: targetChatId, 
-            text: message, 
-            parse_mode: 'HTML', 
-            message_thread_id: messageThreadId, 
-            disable_web_page_preview: false 
-        }) 
-    });
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: id, text: message, parse_mode: 'HTML', message_thread_id: threadId ? parseInt(threadId) : undefined, disable_web_page_preview: false }) });
     const data = await res.json();
     return data.ok ? { success: true } : { success: false, error: data.description };
   } catch (e: any) { return { success: false, error: e.message }; }
+}
+
+export async function distributeArticle(profile: any, title: string, content: string, imageUrl: string | undefined, articleId: string) {
+  const results: any[] = [];
+  const authorDisplayName = profile.name || `${profile.address.slice(0, 6)}...`;
+  const aiKey = profile.ai_api_key;
+  const globalChannel = process.env.NEXT_PUBLIC_GLOBAL_TELEGRAM_CHANNEL;
+  if (globalChannel) {
+    const res = await postToTelegram(globalChannel, title, content, articleId, imageUrl, authorDisplayName);
+    results.push({ label: "Global Feed", success: res.success, type: 'global', error: res.error });
+    await sleep(2000);
+  }
+  if (profile.binance_accounts) {
+    let accIndex = 0;
+    for (const acc of profile.binance_accounts) {
+      const res = await postToBinance(acc, title, content, articleId, accIndex++);
+      results.push({ label: acc.label, success: res.success, type: 'binance', error: res.error });
+      await sleep(5000);
+    }
+  }
+  if (profile.telegram_channels) {
+    for (const ch of profile.telegram_channels) {
+      const targetChat = ch.topicId ? `${ch.chatId}:${ch.topicId}` : ch.chatId;
+      const res = await postToTelegram(targetChat, title, content, articleId, imageUrl, authorDisplayName);
+      results.push({ label: ch.label, success: res.success, type: 'telegram', error: res.error });
+      await sleep(5000);
+    }
+  }
+  return results;
 }

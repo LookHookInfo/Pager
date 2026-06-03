@@ -1,13 +1,246 @@
-import { createThirdwebClient } from "thirdweb";
+0xcb4a4330e5755ae1de457ea3f18dc6c1c2400661  contract
 
-export const client = createThirdwebClient({
-  clientId: process.env.NEXT_PUBLIC_THIRDWEB_CLIENT_ID || "",
-});
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.34;
 
-export const HASH_TOKEN_ADDRESS = "0xA9B631ABcc4fd0bc766d7C0C8fCbf866e2bB0445";
-export const MASCOTS_CONTRACT_ADDRESS = "0xcb4a4330e5755ae1de457ea3f18dc6c1c2400661";
+import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/common/ERC2981.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
-export const MASCOTS_ABI = [
+/**
+ * @title PagerMascotKeys
+ * @notice ERC-1155 contract where NFTs act as keys to AI DNA stored in Pager DB.
+ * @dev Fixed supply of 10,000 per mascot. 5% primary fee, 20% royalties.
+ */
+contract PagerMascotKeys is ERC1155, Ownable, ERC2981 {
+    using Strings for uint256;
+
+    // =====================================================
+    // CONSTANTS
+    // =====================================================
+    
+    /// @notice Fixed max supply for every mascot (10,000 copies)
+    uint256 public constant MAX_SUPPLY = 10000;
+    
+    /// @notice $HASH token contract (immutable for gas savings)
+    IERC20 public immutable hashToken;
+    
+    /// @notice Royalty rate for secondary sales (20% = 2000 basis points)
+    uint96 public constant ROYALTY_BPS = 2000;
+
+    // =====================================================
+    // STATE VARIABLES
+    // =====================================================
+
+    /// @notice Team wallet that collects fees
+    address public teamWallet;
+    
+    /// @notice Auto-incrementing ID for the next mascot
+    uint256 public nextTokenId;
+    
+    /// @notice Collection metadata URI for marketplaces (OpenSea)
+    string public collectionMetadata = "ipfs://bafkreibgkoo4zv3mctvyghtzhx5utmperwkfzl4jpwoes2f2ymfefmz3ea";
+    
+    /// @notice Base URI for token metadata (points to your API)
+    string public baseURI;
+
+    /// @notice Structure for each mascot key
+    struct MascotKey {
+        address creator;      // Original creator
+        uint256 price;        // Current mint price in $HASH (wei)
+        uint256 currentSupply; // How many copies minted so far
+    }
+
+    /// @notice Mapping from token ID to mascot data
+    mapping(uint256 => MascotKey) public keys;
+
+    // =====================================================
+    // EVENTS
+    // =====================================================
+
+    event MascotCreated(uint256 indexed tokenId, address indexed creator, uint256 price);
+    event MascotMinted(uint256 indexed tokenId, address indexed buyer);
+    event PriceUpdated(uint256 indexed tokenId, uint256 newPrice);
+
+    // =====================================================
+    // CONSTRUCTOR
+    // =====================================================
+
+    /**
+     * @param _hashToken Address of the $HASH ERC-20 token
+     * @param _teamWallet Wallet that receives fees (5% primary, 20% royalties)
+     * @param _baseURI Base URI for metadata (e.g., "https://pager.lookhook.info/api/metadata/")
+     */
+    constructor(address _hashToken, address _teamWallet, string memory _baseURI) 
+        ERC1155("") 
+        Ownable(msg.sender) 
+    {
+        hashToken = IERC20(_hashToken);
+        teamWallet = _teamWallet;
+        baseURI = _baseURI;
+        _setDefaultRoyalty(_teamWallet, ROYALTY_BPS);
+    }
+
+    // =====================================================
+    // CORE FUNCTIONS
+    // =====================================================
+
+    /**
+     * @notice Creates a new mascot type
+     * @dev Mints 1 copy directly to creator (fair)
+     * @param _price Mint price per copy in $HASH (wei units)
+     */
+    function createMascot(uint256 _price) external {
+        uint256 tokenId = nextTokenId++;
+        
+        keys[tokenId] = MascotKey({
+            creator: msg.sender,
+            price: _price,
+            currentSupply: 1  // Start at 1 because creator gets first copy
+        });
+        
+        // Mint first copy to creator
+        _mint(msg.sender, tokenId, 1, "");
+        
+        emit MascotCreated(tokenId, msg.sender, _price);
+    }
+
+    /**
+     * @notice Mints a copy of a mascot key
+     * @dev 5% fee to team, 95% to creator
+     * @param _tokenId The ID of the mascot to mint
+     */
+    function mintKey(uint256 _tokenId) external {
+        MascotKey storage k = keys[_tokenId];
+        require(k.creator != address(0), "Mascot does not exist");
+        require(k.currentSupply < MAX_SUPPLY, "Sold out");
+
+        uint256 totalCost = k.price;
+        uint256 teamFee = (totalCost * 5) / 100;      // 5% to team
+        uint256 creatorShare = totalCost - teamFee;   // 95% to creator
+
+        k.currentSupply++;
+        _mint(msg.sender, _tokenId, 1, "");
+
+        require(hashToken.transferFrom(msg.sender, teamWallet, teamFee), "Team fee failed");
+        require(hashToken.transferFrom(msg.sender, k.creator, creatorShare), "Creator payment failed");
+        
+        emit MascotMinted(_tokenId, msg.sender);
+    }
+
+    /**
+     * @notice Updates the mint price of a mascot
+     * @dev Only callable by the creator
+     * @param _tokenId The ID of the mascot
+     * @param _newPrice New mint price in $HASH (wei units)
+     */
+    function setPrice(uint256 _tokenId, uint256 _newPrice) external {
+        require(keys[_tokenId].creator == msg.sender, "Only creator can set price");
+        keys[_tokenId].price = _newPrice;
+        emit PriceUpdated(_tokenId, _newPrice);
+    }
+
+    // =====================================================
+    // METADATA FUNCTIONS
+    // =====================================================
+
+    /**
+     * @notice Returns the metadata URI for a specific token
+     * @dev OpenSea calls this to display NFT metadata
+     * @param _tokenId The ID of the mascot
+     * @return string Full metadata URI (baseURI + tokenId + ".json")
+     */
+    function uri(uint256 _tokenId) public view override returns (string memory) {
+        return string(abi.encodePacked(baseURI, _tokenId.toString(), ".json"));
+    }
+
+    /**
+     * @notice Returns the collection-level metadata URI for marketplaces
+     * @dev OpenSea calls this to display collection info
+     * @return string Collection metadata URI (IPFS)
+     */
+    function contractURI() public view returns (string memory) {
+        return collectionMetadata;
+    }
+
+    // =====================================================
+    // VIEW FUNCTIONS
+    // =====================================================
+
+    /**
+     * @notice Returns the remaining supply for a mascot
+     * @param _tokenId The ID of the mascot
+     * @return uint256 Number of copies still available
+     */
+    function remainingSupply(uint256 _tokenId) external view returns (uint256) {
+        return MAX_SUPPLY - keys[_tokenId].currentSupply;
+    }
+
+    /**
+     * @notice Returns the total supply minted for a mascot
+     * @param _tokenId The ID of the mascot
+     * @return uint256 Total minted copies
+     */
+    function totalSupply(uint256 _tokenId) external view returns (uint256) {
+        return keys[_tokenId].currentSupply;
+    }
+
+    // =====================================================
+    // ADMIN FUNCTIONS
+    // =====================================================
+
+    /**
+     * @notice Updates the base URI for token metadata
+     * @param _newBaseURI New base URI
+     */
+    function setBaseURI(string memory _newBaseURI) external onlyOwner {
+        baseURI = _newBaseURI;
+    }
+
+    /**
+     * @notice Updates the collection metadata URI
+     * @param _newMetadata New collection metadata URI (IPFS)
+     */
+    function setCollectionMetadata(string memory _newMetadata) external onlyOwner {
+        collectionMetadata = _newMetadata;
+    }
+
+    /**
+     * @notice Updates the team wallet address
+     * @param _newWallet New team wallet address
+     */
+    function setTeamWallet(address _newWallet) external onlyOwner {
+        teamWallet = _newWallet;
+        _setDefaultRoyalty(_newWallet, ROYALTY_BPS);
+    }
+
+    /**
+     * @notice Withdraws any accidentally sent ETH (safety)
+     */
+    function withdrawETH() external onlyOwner {
+        (bool success, ) = payable(owner()).call{value: address(this).balance}("");
+        require(success, "ETH transfer failed");
+    }
+
+    // =====================================================
+    // OVERRIDES
+    // =====================================================
+
+    /**
+     * @notice Required override for ERC1155 + ERC2981 compatibility
+     */
+    function supportsInterface(bytes4 interfaceId) public view override(ERC1155, ERC2981) returns (bool) {
+        return super.supportsInterface(interfaceId);
+    }
+}
+
+
+
+abi
+
+[
 	{
 		"inputs": [
 			{
@@ -934,4 +1167,4 @@ export const MASCOTS_ABI = [
 		"stateMutability": "nonpayable",
 		"type": "function"
 	}
-];
+]

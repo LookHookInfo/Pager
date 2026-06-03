@@ -84,7 +84,7 @@ export default async function Home({ searchParams }: { searchParams: { page?: st
                 </div>
               </div>
               <Link href={`/article/${article.id}`} className="flex-1 order-first md:order-last flex items-center justify-center">
-                <div className="w-full aspect-video overflow-hidden bg-gray-100 border border-[var(--border-soft)] rounded-sm">
+                <div className="w-full aspect-[16/10] overflow-hidden bg-gray-100 border border-[var(--border-soft)] rounded-sm">
                   {article.image_url ? (
                     <img 
                       src={article.image_url} 
