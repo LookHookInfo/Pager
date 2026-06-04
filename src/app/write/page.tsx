@@ -14,7 +14,6 @@ import {
 import Link from "next/link";
 import { client, HASH_TOKEN_ADDRESS, MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI } from "@/lib/web3";
 import imageCompression from "browser-image-compression";
-import { upload, resolveScheme } from "thirdweb/storage";
 
 const PROJECT_WALLET = "0x39adfb3eb6ff7f56bd5c09c62b4ab1d61997193a";
 const POST_PRICE = "10";
@@ -100,16 +99,22 @@ export default function WritePage() {
   };
 
   const uploadToStorage = async (file: File) => {
-    const clientId = profile?.thirdweb_client_id;
-    if (clientId) {
-      const customClient = createThirdwebClient({ clientId });
-      const uri = await upload({ client: customClient, files: [file] });
-      return resolveScheme({ client: customClient, uri });
-    } else {
-      const { data, error } = await supabase.storage.from('banners').upload(`banners/${file.name}`, file);
-      if (error) throw error;
-      const { data: { publicUrl } } = supabase.storage.from('banners').getPublicUrl(data.path);
-      return publicUrl;
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.details || data.error || "IPFS Upload failed");
+      
+      return data.url;
+    } catch (error: any) {
+      console.error("❌ [Upload API] Pinata failed:", error.message);
+      throw error;
     }
   };
 

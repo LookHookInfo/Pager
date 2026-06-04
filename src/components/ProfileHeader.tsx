@@ -1,16 +1,15 @@
 "use client";
 
 import { 
-  Globe, Settings2, Save, X, Loader2, Camera, Eye, EyeOff, 
-  ExternalLink, Palette, ShoppingCart, UserPlus, Zap, Plus, 
-  Sparkles, Fingerprint, Coins, Database, ShieldCheck, Edit3, Trash2,
-  Languages, UserCircle, Send, Scan, Activity, Eye as EyeIcon, CheckCircle2
+  Globe, Settings2, Save, X, Loader2, Camera, 
+  UserPlus, Zap, Plus, 
+  Sparkles, Fingerprint, Database, ShieldCheck, Edit3, Trash2,
+  Languages, UserCircle, Send, Scan, Activity, Eye as EyeIcon, CheckCircle2, Eye, EyeOff
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useActiveAccount, useSendTransaction } from "thirdweb/react";
-import { createThirdwebClient, getContract, prepareContractCall, toWei, readContract } from "thirdweb";
-import { upload, resolveScheme } from "thirdweb/storage";
+import { getContract, prepareContractCall, toWei, readContract } from "thirdweb";
 import { supabase } from "@/lib/supabase";
 import { MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI, client } from "@/lib/web3";
 import { base } from "thirdweb/chains";
@@ -21,10 +20,11 @@ import { base } from "thirdweb/chains";
 
 const PRESET_ATMOSPHERES = ['Rick and Morty', 'Cyberpunk', 'Japanese Anime', 'Noir Detective', 'Medieval Fantasy'];
 const AI_MODELS = [
-    { id: "google/gemini-3.1-pro", label: "Gemini 3.1 Pro", desc: "Максимальный интеллект, глубокое погружение в роль персонажа" },
-    { id: "google/gemini-3.1-flash-image-preview", label: "Gemini 3.1 Flash (Visual)", desc: "Кинематографичное качество 16:9, высокая скорость" },
-    { id: "black-forest-labs/flux.1-pro", label: "FLUX.1 Pro", desc: "Ультра-реализм, лучшая работа со сложным визуальным ДНК" },
-    { id: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", desc: "Баланс скорости и качества для ежедневных сводок" }
+    { id: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", desc: "Боевая модель: идеальный баланс текста и ДНК (0.01$)" },
+    { id: "google/gemini-3.1-flash-image-preview", label: "Gemini 3 (0.06$)", desc: "Кинематографичное качество 16:9, высокая детализация" },
+    { id: "black-forest-labs/flux.2-klein-4b", label: "FLUX.2 (0.02$)", desc: "Ультра-реализм, лучшая работа с композицией" },
+    { id: "google/gemini-2.5-flash-image", label: "Gemini 2 (0.04$)", desc: "Быстрая генерация, оптимизирована под персонажей" },
+    { id: "google/gemini-3.1-pro", label: "Gemini 3.1 Pro", desc: "Максимальный интеллект для сложных статей (0.09$)" }
 ];
 
 const LANGUAGES = ["English", "Russian", "Spanish", "Chinese", "French", "German", "Japanese", "Turkish"];
@@ -47,7 +47,6 @@ export default function ProfileHeader({
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [showClientId, setShowClientId] = useState(false);
   const [showAiKey, setShowAiKey] = useState(false);
   const [isCustomAtmosphere, setIsCustomAtmosphere] = useState(false);
   const [isAnalyzingDna, setIsAnalyzingDna] = useState(false);
@@ -63,7 +62,7 @@ export default function ProfileHeader({
 
   const [formData, setFormData] = useState({
     name: profile.name || "", bio: profile.bio || "", website: profile.website || "",
-    thirdweb_client_id: profile.thirdweb_client_id || "", avatar_url: profile.avatar_url || "",
+    avatar_url: profile.avatar_url || "",
     ai_api_key: profile.ai_api_key || "", ai_image_model: profile.ai_image_model || AI_MODELS[0].id,
     ai_atmosphere: profile.ai_atmosphere || PRESET_ATMOSPHERES[0], binance_accounts: profile.binance_accounts || [],
     telegram_channels: profile.telegram_channels || [], telegram_chat_id: profile.telegram_chat_id || "",
@@ -77,6 +76,7 @@ export default function ProfileHeader({
   const [forgeStep, setForgeStep] = useState<"dna" | "mint">("dna");
   const [isForging, setIsForging] = useState(false);
   const [pendingTokenId, setPendingTokenId] = useState<number | null>(null);
+  const [forgeErrors, setForgeErrors] = useState<string[]>([]);
 
   const [displayData, setDisplayData] = useState({
     ...formData, name: profile.name || "Anonymous Author", bio: profile.bio || "Web3 enthusiast."
@@ -85,7 +85,7 @@ export default function ProfileHeader({
   useEffect(() => {
     const data = {
       name: profile.name || "", bio: profile.bio || "", website: profile.website || "",
-      thirdweb_client_id: profile.thirdweb_client_id || "", avatar_url: profile.avatar_url || "",
+      avatar_url: profile.avatar_url || "",
       ai_api_key: profile.ai_api_key || "", ai_image_model: profile.ai_image_model || AI_MODELS[0].id,
       ai_atmosphere: profile.ai_atmosphere || PRESET_ATMOSPHERES[0], binance_accounts: profile.binance_accounts || [],
       telegram_channels: profile.telegram_channels || [], telegram_chat_id: profile.telegram_chat_id || "",
@@ -99,42 +99,59 @@ export default function ProfileHeader({
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !formData.thirdweb_client_id) return;
+    if (!file) return;
     try {
       setIsUploading(true);
-      const customClient = createThirdwebClient({ clientId: formData.thirdweb_client_id });
-      const uri = await upload({ client: customClient, files: [file] });
-      setFormData({ ...formData, avatar_url: resolveScheme({ client: customClient, uri }) });
-    } catch (e) { showNotify("Avatar upload fail", "error"); } finally { setIsUploading(false); }
+      const fd = new FormData();
+      fd.append('file', file);
+      
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json();
+      
+      if (!res.ok) throw new Error(data.details || data.error || "IPFS Upload failed");
+      
+      setFormData({ ...formData, avatar_url: data.url });
+      showNotify("Avatar synced with IPFS");
+    } catch (e: any) { 
+      console.error("❌ [Avatar Upload]:", e.message);
+      showNotify(e.message, "error"); 
+    } finally { 
+      setIsUploading(false); 
+    }
   };
 
   const handleMascotImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !formData.thirdweb_client_id) return showNotify("Setup Thirdweb ID!", "error");
+    if (!file) return;
     if (!account?.address) return;
 
     try {
         setIsForging(true);
-        const customClient = createThirdwebClient({ clientId: formData.thirdweb_client_id });
-        const uri = await upload({ client: customClient, files: [file] });
-        const imageUrl = resolveScheme({ client: customClient, uri });
+        const fd = new FormData();
+        fd.append('file', file);
         
-        setForgeData({ ...forgeData, image_url: imageUrl });
+        const res = await fetch("/api/upload", { method: "POST", body: fd });
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.details || data.error || "IPFS Upload failed");
+        
+        const imageUrl = data.url;
+        setForgeData(prev => ({ ...prev, image_url: imageUrl }));
 
         // AI DNA SCANNING (PRO MODE)
         setIsAnalyzingDna(true);
         try {
-            const res = await fetch("/api/ai/analyze", {
+            const scanRes = await fetch("/api/ai/analyze", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ imageUrl, userAddress: account.address })
             });
-            const data = await res.json();
-            if (data.personality && data.visual) {
+            const scanData = await scanRes.json();
+            if (scanData.personality || scanData.visual) {
                 setForgeData(prev => ({ 
                     ...prev, 
-                    personality: data.personality,
-                    visual_desc: data.visual 
+                    personality: scanData.personality || prev.personality,
+                    visual_desc: scanData.visual || prev.visual_desc 
                 }));
             }
         } catch (err) {
@@ -143,13 +160,31 @@ export default function ProfileHeader({
             setIsAnalyzingDna(false);
         }
 
-    } catch (e) { showNotify("Image upload fail", "error"); } finally { setIsForging(false); }
+    } catch (e: any) { 
+      console.error("❌ [Mascot Upload]:", e.message);
+      showNotify(e.message, "error"); 
+    } finally { 
+      setIsForging(false); 
+    }
   };
 
   const handleSealGenes = async () => {
     if (!account) return showNotify("Connect wallet", "error");
-    if (!forgeData.name || !forgeData.personality || !forgeData.image_url) return showNotify("Protocol data incomplete", "error");
     
+    const errors = [];
+    if (!forgeData.image_url) errors.push('image');
+    if (!forgeData.name) errors.push('name');
+    if (!forgeData.personality) errors.push('personality');
+
+    if (errors.length > 0) {
+        setForgeErrors(errors);
+        if (errors.includes('name')) showNotify("Protocol Name is required", "error");
+        else if (errors.includes('personality')) showNotify("DNA description is required", "error");
+        else if (errors.includes('image')) showNotify("Upload mascot DNA image", "error");
+        return;
+    }
+    
+    setForgeErrors([]);
     setIsForging(true);
     try {
         const contract = getContract({ client, chain: base, address: MASCOTS_CONTRACT_ADDRESS, abi: MASCOTS_ABI as any });
@@ -234,7 +269,7 @@ export default function ProfileHeader({
   const addTelegramChannel = () => {
     setFormData({
       ...formData,
-      telegram_channels: [...(formData.telegram_channels || []), { label: "", chatId: "", language: "English", style: "Engaging" }]
+      telegram_channels: [...(formData.telegram_channels || []), { label: "", chatId: "", topicId: "", language: "English", style: "Engaging" }]
     });
   };
 
@@ -263,8 +298,12 @@ export default function ProfileHeader({
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-8">
         <div className="space-y-6 flex-1">
           <div className="flex items-center gap-6">
-             <div className="w-24 h-24 bg-white border border-[var(--border-soft)] rounded-full flex items-center justify-center font-black text-3xl text-black shadow-sm overflow-hidden relative">
+             <div className="w-24 h-24 bg-white border border-[var(--border-soft)] rounded-full flex items-center justify-center font-black text-3xl text-black shadow-sm overflow-hidden relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                 {formData.avatar_url ? <img src={formData.avatar_url} className="w-full h-full object-cover" alt="Avatar" /> : displayData.name.charAt(0).toUpperCase()}
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    {isUploading ? <Loader2 size={24} className="text-white animate-spin" /> : <Camera size={24} className="text-white" />}
+                </div>
+                <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} />
              </div>
              <div className="space-y-2 flex-1">
                 <div className="flex items-center gap-3">
@@ -369,7 +408,12 @@ export default function ProfileHeader({
                                                 setFormData({...formData, telegram_channels: newChs});
                                             }} placeholder="Chat ID / @channel" className="text-xs font-mono p-2 border border-gray-100 outline-none bg-gray-50/30" />
                                         </div>
-                                        <div className="grid grid-cols-2 gap-2">
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <input type="text" value={ch.topicId || ""} onChange={e => {
+                                                const newChs = [...formData.telegram_channels];
+                                                newChs[idx].topicId = e.target.value;
+                                                setFormData({...formData, telegram_channels: newChs});
+                                            }} placeholder="Topic ID" className="text-xs font-mono p-2 border border-gray-100 outline-none bg-gray-50/30" />
                                             <div className="flex items-center gap-2 bg-gray-50/50 p-2 border border-gray-50">
                                                 <Languages size={12} className="text-gray-400" />
                                                 <select value={ch.language} onChange={e => {
@@ -557,18 +601,20 @@ export default function ProfileHeader({
                                 </div>
                             </div>
 
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-black uppercase text-gray-400 ml-1">OpenRouter API Key</label>
-                                <div className="relative">
-                                    <input 
-                                        type={showAiKey ? "text" : "password"} 
-                                        value={formData.ai_api_key} 
-                                        onChange={e => setFormData({...formData, ai_api_key: e.target.value})} 
-                                        placeholder="sk-or-v1-..." 
-                                        className="w-full text-xs font-mono p-3 border border-gray-200 outline-none bg-white focus:border-black pr-10" 
-                                    />
-                                    <div onClick={() => setShowAiKey(!showAiKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black cursor-pointer">
-                                        {showAiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                            <div className="grid grid-cols-1 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-[9px] font-black uppercase text-gray-400 ml-1">OpenRouter API Key</label>
+                                    <div className="relative">
+                                        <input 
+                                            type={showAiKey ? "text" : "password"} 
+                                            value={formData.ai_api_key} 
+                                            onChange={e => setFormData({...formData, ai_api_key: e.target.value})} 
+                                            placeholder="sk-or-v1-..." 
+                                            className="w-full text-xs font-mono p-3 border border-gray-200 outline-none bg-white focus:border-black pr-10" 
+                                        />
+                                        <div onClick={() => setShowAiKey(!showAiKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black cursor-pointer">
+                                            {showAiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -600,13 +646,32 @@ export default function ProfileHeader({
                         </div>
 
                         <div className="space-y-4">
-                            <input type="text" value={forgeData.name} onChange={e => setForgeData({...forgeData, name: e.target.value})} placeholder="Protocol Name" className="w-full text-xs font-bold p-3 border border-gray-100 outline-none bg-gray-50/50" disabled={forgeStep==='mint'} />
+                            <input 
+                                type="text" 
+                                value={forgeData.name} 
+                                onChange={e => {
+                                    setForgeData({...forgeData, name: e.target.value});
+                                    if (forgeErrors.includes('name')) setForgeErrors(prev => prev.filter(err => err !== 'name'));
+                                }} 
+                                placeholder="Protocol Name" 
+                                className={`w-full text-xs font-bold p-3 border outline-none transition-all ${forgeErrors.includes('name') ? 'border-red-500 bg-red-50/10 shadow-[0_0_10px_rgba(239,68,68,0.2)]' : 'border-gray-100 bg-gray-50/50'}`} 
+                                disabled={forgeStep==='mint'} 
+                            />
                             
                             <div className="space-y-2">
                                 <div className="flex items-center gap-2 text-[9px] font-black uppercase text-gray-400 ml-1">
                                     <Activity size={10} className="text-blue-500" /> Behavioral DNA
                                 </div>
-                                <textarea value={forgeData.personality} onChange={e => setForgeData({...forgeData, personality: e.target.value})} placeholder="Character mindset & voice..." className="w-full text-xs p-3 border border-gray-100 outline-none bg-gray-50/50 min-h-[80px]" disabled={forgeStep==='mint'} />
+                                <textarea 
+                                    value={forgeData.personality} 
+                                    onChange={e => {
+                                        setForgeData({...forgeData, personality: e.target.value});
+                                        if (forgeErrors.includes('personality')) setForgeErrors(prev => prev.filter(err => err !== 'personality'));
+                                    }} 
+                                    placeholder="Character mindset & voice..." 
+                                    className={`w-full text-xs p-3 border outline-none transition-all min-h-[80px] ${forgeErrors.includes('personality') ? 'border-red-500 bg-red-50/10' : 'border-gray-100 bg-gray-50/50'}`} 
+                                    disabled={forgeStep==='mint'} 
+                                />
                             </div>
 
                             <div className="space-y-2">

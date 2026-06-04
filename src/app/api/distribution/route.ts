@@ -66,7 +66,7 @@ export async function POST(req: Request) {
     if (channelType === 'binance') {
       res = await postToBinance(account, title, content, articleId);
     } else if (channelType === 'telegram') {
-      const targetChat = account.topicId ? `${account.chatId}:${account.topicId}` : account.chatId;
+      const targetChat = account.topicId ? `${account.chatId}/${account.topicId}` : account.chatId;
       console.log(`📡 [API Distribution] Posting to user Telegram: ${targetChat}`);
       res = await postToTelegram(targetChat, title, content, articleId, imageUrl, authorDisplayName);
     } else if (channelType === 'global') {

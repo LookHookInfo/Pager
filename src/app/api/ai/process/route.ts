@@ -82,31 +82,37 @@ export async function POST(req: Request) {
       reference: normalizeReference(nftMetadata.image)
     };
 
-    // --- UNIFIED MODEL LOGIC ---
-    const selectedModel = providedImageModel || userProfile?.ai_image_model || "google/gemini-3.1-flash-image-preview";
+    // --- SMART MODEL ROUTING (The "Three Models" Logic) ---
+    const selectedModel = providedImageModel || userProfile?.ai_image_model || "google/gemini-2.5-flash";
     const finalAtmosphere = providedAtmosphere || userProfile?.ai_atmosphere || "Rick and Morty";
     
-    // 1. Determine Text Model (The Brain)
-    let textModel = "google/gemini-2.0-flash-001";
-    if (selectedModel.includes("gemini-3.1")) {
-        textModel = "google/gemini-3.1-pro"; 
-    } else if (selectedModel.includes("gemini-2.5")) {
-        textModel = "google/gemini-2.5-flash"; 
-    }
+    // Default reliable text model (The Brain)
+    let textModel = "google/gemini-2.5-flash"; 
+    
+    // Default visual engine (The Artist)
+    let imageModel = "google/gemini-3.1-flash-image-preview"; 
 
-    // 2. Determine Image Model (The Artist)
-    // Most Gemini models (Flash/Pro) don't generate images via standard chat API.
-    // If the selected model is not an explicit image model, we default to FLUX or Gemini Visual.
-    let imageModel = selectedModel;
-    if (selectedModel.includes("gemini-2.5") || selectedModel === "google/gemini-3.1-pro") {
-        imageModel = "google/gemini-3.1-flash-image-preview"; // Default to visual-capable model
+    if (selectedModel.includes("gemini-3.1-pro")) {
+        textModel = "google/gemini-3.1-pro";
+        imageModel = "google/gemini-3.1-flash-image-preview";
+    } else if (selectedModel.includes("flux.2")) {
+        // FLUX.2 (0.02$) is pure image, needs text backbone
+        textModel = "google/gemini-2.5-flash";
+        imageModel = "black-forest-labs/flux.2-klein-4b";
+    } else if (selectedModel.includes("gemini-2.5-flash-image")) {
+        // Gemini 2 Image (0.04$)
+        textModel = "google/gemini-2.5-flash";
+        imageModel = "google/gemini-2.5-flash-image";
+    } else if (selectedModel.includes("gemini-3.1-flash-image")) {
+        // Gemini 3 Image (0.06$)
+        textModel = "google/gemini-2.5-flash"; 
+        imageModel = "google/gemini-3.1-flash-image-preview";
     }
 
     if (onlyBanner) {
       const visualPrompt = getCharacterVisualPrompt(bannerDescription || providedTitle, mood, "nft", providedTitle, finalAtmosphere, activeDna);
       let bannerUrl = "";
       try {
-        console.log("? [Banner] Requesting image from:", imageModel);
         const imgRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: "POST",
           headers: { 
@@ -124,21 +130,11 @@ export async function POST(req: Request) {
 
         if (imgRes.ok) {
           const imgData = await imgRes.json();
-          // OpenRouter image response path check
           bannerUrl = imgData?.choices?.[0]?.message?.images?.[0]?.image_url?.url || 
                       imgData?.choices?.[0]?.message?.content?.match(/https:\/\/\S+\.(?:jpg|png|webp)/)?.[0] || "";
-          
-          if (!bannerUrl && imgData?.choices?.[0]?.message?.content) {
-              console.log("? [Banner] Raw AI response:", imgData.choices[0].message.content);
-          }
-        } else {
-            const errData = await imgRes.json();
-            console.error("? [Banner] API Error:", errData);
         }
-      } catch (e: any) {
-          console.error("? [Banner] Fetch Exception:", e.message);
-      }
-      if (!bannerUrl) return NextResponse.json({ error: "Banner generation failed. Check your API credits and model selection." }, { status: 500 });
+      } catch (e: any) {}
+      if (!bannerUrl) return NextResponse.json({ error: "Banner generation failed" }, { status: 500 });
       return NextResponse.json({ image_url: bannerUrl });
     }
 

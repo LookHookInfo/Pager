@@ -71,11 +71,40 @@ export async function adaptContent(title: string, html: string, language: string
   if (!apiKey) return { title, teaser: html, og_title: title };
   const targetLanguage = language || 'English';
   try {
-    const prompt = `ACT AS A PROFESSIONAL SMM MANAGER AND CONTENT EDITOR. Original Title: ${title}. Article Content: ${html.replace(/<[^>]*>?/gm, '').slice(0, 3000)}. TASK: Create a localized, unique "TEASER" version of this article for ${platform.toUpperCase()}. STRICT TARGET LANGUAGE: ${targetLanguage.toUpperCase()}. TARGET STYLE: ${style || 'Engaging and professional'}. Return ONLY valid JSON: { "title": "...", "teaser": "...", "og_title": "..." }`;
+    const prompt = `
+      ACT AS A PROFESSIONAL SMM MANAGER AND CONTENT EDITOR. 
+      TASK: Create a localized, unique "TEASER" version of this article for ${platform.toUpperCase()}.
+      
+      STRICT TARGET LANGUAGE: ${targetLanguage.toUpperCase()}
+      TARGET STYLE: ${style || 'Engaging and professional'}
+      
+      RULES:
+      1. VALUE: Highlight the most important insight of the article.
+      2. STRUCTURE: Teaser should be 2-3 short, punchy paragraphs. Use emojis where appropriate for the style.
+      3. CALL TO ACTION: The tone should be inviting but professional.
+      4. OG TITLE: Create a powerful headline for social media preview.
+      
+      ORIGINAL CONTENT:
+      Title: ${title}
+      Article Content: ${html.replace(/<[^>]*>?/gm, '').slice(0, 5000)}
+      
+      RETURN ONLY VALID JSON: 
+      { 
+        "title": "Social headline in ${targetLanguage}", 
+        "teaser": "Post content with paragraphs in ${targetLanguage}", 
+        "og_title": "SEO preview title in ${targetLanguage}" 
+      }
+    `;
+
     const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "google/gemini-2.0-flash-001", messages: [{ role: "user", content: prompt }], response_format: { type: "json_object" }, temperature: 0.85 })
+      body: JSON.stringify({ 
+        model: "google/gemini-2.0-flash-001", 
+        messages: [{ role: "user", content: prompt }], 
+        response_format: { type: "json_object" }, 
+        temperature: 0.8 
+      })
     });
     const data = await res.json();
     const result = JSON.parse(data.choices[0]?.message?.content || "{}");

@@ -5,7 +5,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { 
-      address, name, bio, website, thirdweb_client_id, 
+      address, name, bio, website, 
       avatar_url, ai_api_key, ai_image_model, ai_atmosphere,
       ai_nft_token_id,
       binance_accounts, telegram_channels, telegram_chat_id,
@@ -28,7 +28,6 @@ export async function POST(req: Request) {
         name, 
         bio, 
         website,
-        thirdweb_client_id,
         avatar_url,
         ai_api_key,
         ai_image_model,

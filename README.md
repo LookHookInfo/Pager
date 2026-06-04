@@ -61,7 +61,7 @@ User profiles hide several mechanisms for customizing the protocol's operation:
 1.  Clone the repository.
 2.  Configure `.env` (Supabase, Thirdweb, and OpenRouter keys are required).
 3.  Run `npm install` and `npm run dev`.
-4.  For IPFS functionality, ensure `NEXT_PUBLIC_THIRDWEB_CLIENT_ID` is correctly configured in the profile settings.
+4.  Configure `PINATA_JWT` and `NEXT_PUBLIC_PINATA_GATEWAY` in your server environment (e.g. Vercel or `.env`) for IPFS storage functionality.
 
 ---
 *Pager — Media owned by those who create and support it. $HASH Power.*
