@@ -2,9 +2,73 @@ import { NextResponse } from "next/server";
 import { getCharacterSystemPrompt, getBtcAnalysisBlock, getMiningSponsorBlock, getCharacterVisualPrompt, CustomDna } from "@/lib/character";
 import { resolveNftDna } from "@/lib/character/nft";
 import { getSupabaseServer } from "@/lib/supabase";
+import sharp from "sharp";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
+
+/**
+ * SERVER-SIDE PERSISTENCE & COMPRESSION: 
+ * Downloads the AI image, compresses it using 'sharp', and uploads it to Pinata.
+ */
+async function uploadToPinata(imageUrl: string): Promise<string> {
+  const pinataJwt = process.env.PINATA_JWT;
+  if (!pinataJwt) {
+    console.error("❌ [Server Persist] PINATA_JWT missing");
+    return imageUrl;
+  }
+
+  try {
+    console.log("📡 [Server Persist] Downloading AI sample...");
+    const imgRes = await fetch(imageUrl);
+    if (!imgRes.ok) throw new Error(`Failed to fetch AI image: ${imgRes.status}`);
+    
+    const arrayBuffer = await imgRes.arrayBuffer();
+    const inputBuffer = Buffer.from(arrayBuffer);
+
+    console.log("📡 [Server Persist] Compressing image with sharp...");
+    // Convert to WebP with high quality (85%) and reasonable size
+    const compressedBuffer = await sharp(inputBuffer)
+      .webp({ quality: 85, effort: 4 })
+      .toBuffer();
+
+    // Robust JWT cleaning
+    const cleanJwt = pinataJwt.trim().split(/\s+/).reduce((a, b) => a.length > b.length ? a : b).replace(/JWT$/, "");
+    
+    const formData = new FormData();
+    // Convert Buffer to Uint8Array for proper Blob compatibility in Node environments
+    const blob = new Blob([new Uint8Array(compressedBuffer)], { type: 'image/webp' });
+    formData.append("file", blob, `ai-banner-${Date.now()}.webp`);
+    
+    const metadata = JSON.stringify({ 
+      name: `pager-ai-${Date.now()}`,
+      keyvalues: { project: "Pager", type: "AI-Banner", source: "BFL", format: "webp" }
+    });
+    formData.append("pinataMetadata", metadata);
+    formData.append("pinataOptions", JSON.stringify({ cidVersion: 1 }));
+
+    console.log(`📡 [Server Persist] Uploading compressed banner (~${Math.round(compressedBuffer.length / 1024)} KB) to Pinata...`);
+    const res = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${cleanJwt}` },
+      body: formData,
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const gateway = process.env.NEXT_PUBLIC_PINATA_GATEWAY || "https://gateway.pinata.cloud/ipfs/";
+      const permanentUrl = `${gateway.endsWith("/") ? gateway : gateway + "/"}${data.IpfsHash}`;
+      console.log("✅ [Server Persist] Success:", permanentUrl);
+      return permanentUrl;
+    } else {
+      const errText = await res.text();
+      console.error("❌ [Server Persist] Pinata error:", errText);
+    }
+  } catch (e) {
+    console.error("❌ [Server Persist] Critical failure:", e);
+  }
+  return imageUrl;
+}
 
 function normalizeReference(url: string): string {
   if (!url) return "";
@@ -31,9 +95,66 @@ function extractJson(text: string) {
     if (jsonMatch) return JSON.parse(jsonMatch[0]);
     return JSON.parse(cleaned);
   } catch (e) {
-    console.error("? [AI Process] JSON Parse Error. Content:", text.slice(0, 200));
+    console.error("❌ [AI Process] JSON Parse Error. Content:", text.slice(0, 200));
     throw new Error("AI returned invalid JSON format. Please try again.");
   }
+}
+
+async function generateBflImage(prompt: string): Promise<string> {
+  const apiKey = process.env.BFL_API_KEY;
+  if (!apiKey) throw new Error("BFL API Key missing in environment");
+
+  try {
+    // 1. Create Task - FLUX.2 PRO (0.03$)
+    const res = await fetch("https://api.bfl.ai/v1/flux-2-pro", {
+      method: "POST",
+      headers: {
+        "x-key": apiKey,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        prompt,
+        width: 1344,
+        height: 768,
+        prompt_upsampling: true
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error("❌ [BFL API] Creation Failed:", err);
+      return "";
+    }
+
+    const data = await res.json();
+    const pollingUrl = data.polling_url || `https://api.bfl.ai/v1/get_result?id=${data.id}`;
+
+    // 2. Poll Result (Max ~50s)
+    for (let i = 0; i < 25; i++) { 
+      await new Promise(r => setTimeout(r, 2000));
+      const statusRes = await fetch(pollingUrl, {
+        headers: { "x-key": apiKey }
+      });
+      
+      if (!statusRes.ok) continue;
+      
+      const statusData = await statusRes.json();
+      if (statusData.status === "Ready") {
+        const sampleUrl = statusData.result?.sample || "";
+        if (sampleUrl) {
+          // ENSURE PERSISTENCE: Download and upload to our Pinata FROM SERVER
+          return await uploadToPinata(sampleUrl);
+        }
+        return "";
+      } else if (statusData.status === "Failed" || statusData.status === "Error") {
+        console.error("❌ [BFL API] Generation Error:", statusData);
+        return "";
+      }
+    }
+  } catch (e) {
+    console.error("❌ [BFL API] Exception:", e);
+  }
+  return "";
 }
 
 export async function POST(req: Request) {
@@ -43,7 +164,6 @@ export async function POST(req: Request) {
       mood = "neutral", 
       content: providedContent, 
       title: providedTitle, 
-      imageModel: providedImageModel,
       atmosphere: providedAtmosphere,
       nftTokenId: requestedNftId,
       onlyBanner = false,
@@ -60,21 +180,18 @@ export async function POST(req: Request) {
       .eq("address", userAddress.toLowerCase())
       .maybeSingle();
 
-    if (!userProfile?.ai_api_key) {
-      return NextResponse.json({ error: "AI API Key missing" }, { status: 403 });
+    // Use system key primarily for consistent branding quality
+    const openRouterKey = process.env.OPENROUTER_API_KEY || userProfile?.ai_api_key;
+
+    if (!openRouterKey) {
+      return NextResponse.json({ error: "AI Engine Offline (Key Missing)" }, { status: 403 });
     }
 
-    const userApiKey = userProfile.ai_api_key;
     const nftTokenId = requestedNftId || userProfile?.ai_nft_token_id;
-
-    if (!nftTokenId) {
-      return NextResponse.json({ error: "NFT Mascot required" }, { status: 400 });
-    }
+    if (!nftTokenId) return NextResponse.json({ error: "NFT Mascot required" }, { status: 400 });
 
     const nftMetadata = await resolveNftDna(nftTokenId);
-    if (!nftMetadata) {
-      return NextResponse.json({ error: "Failed to resolve NFT DNA" }, { status: 404 });
-    }
+    if (!nftMetadata) return NextResponse.json({ error: "Failed to resolve NFT DNA" }, { status: 404 });
 
     const activeDna: CustomDna = {
       name: nftMetadata.name,
@@ -82,58 +199,16 @@ export async function POST(req: Request) {
       reference: normalizeReference(nftMetadata.image)
     };
 
-    // --- SMART MODEL ROUTING (The "Three Models" Logic) ---
-    const selectedModel = providedImageModel || userProfile?.ai_image_model || "google/gemini-2.5-flash";
     const finalAtmosphere = providedAtmosphere || userProfile?.ai_atmosphere || "Rick and Morty";
     
-    // Default reliable text model (The Brain)
-    let textModel = "google/gemini-2.5-flash"; 
-    
-    // Default visual engine (The Artist)
-    let imageModel = "google/gemini-3.1-flash-image-preview"; 
-
-    if (selectedModel.includes("gemini-3.1-pro")) {
-        textModel = "google/gemini-3.1-pro";
-        imageModel = "google/gemini-3.1-flash-image-preview";
-    } else if (selectedModel.includes("flux.2")) {
-        // FLUX.2 (0.02$) is pure image, needs text backbone
-        textModel = "google/gemini-2.5-flash";
-        imageModel = "black-forest-labs/flux.2-klein-4b";
-    } else if (selectedModel.includes("gemini-2.5-flash-image")) {
-        // Gemini 2 Image (0.04$)
-        textModel = "google/gemini-2.5-flash";
-        imageModel = "google/gemini-2.5-flash-image";
-    } else if (selectedModel.includes("gemini-3.1-flash-image")) {
-        // Gemini 3 Image (0.06$)
-        textModel = "google/gemini-2.5-flash"; 
-        imageModel = "google/gemini-3.1-flash-image-preview";
-    }
+    // STRICT MODEL SELECTION:
+    // TEXT: Gemini 2.5 Flash (Balanced speed/quality)
+    // BANNERS: FLUX.2 PRO (Direct BFL API)
+    const textModel = "google/gemini-2.5-flash"; 
 
     if (onlyBanner) {
       const visualPrompt = getCharacterVisualPrompt(bannerDescription || providedTitle, mood, "nft", providedTitle, finalAtmosphere, activeDna);
-      let bannerUrl = "";
-      try {
-        const imgRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: { 
-            "Authorization": "Bearer " + userApiKey, 
-            "Content-Type": "application/json", 
-            "HTTP-Referer": "https://pager.sh",
-            "X-Title": "Pager Protocol"
-          },
-          body: JSON.stringify({
-            model: imageModel,
-            messages: [{ role: "user", content: [{ type: "text", text: visualPrompt }] }],
-            image_config: { aspect_ratio: "16:9" }
-          })
-        });
-
-        if (imgRes.ok) {
-          const imgData = await imgRes.json();
-          bannerUrl = imgData?.choices?.[0]?.message?.images?.[0]?.image_url?.url || 
-                      imgData?.choices?.[0]?.message?.content?.match(/https:\/\/\S+\.(?:jpg|png|webp)/)?.[0] || "";
-        }
-      } catch (e: any) {}
+      const bannerUrl = await generateBflImage(visualPrompt);
       if (!bannerUrl) return NextResponse.json({ error: "Banner generation failed" }, { status: 500 });
       return NextResponse.json({ image_url: bannerUrl });
     }
@@ -168,7 +243,7 @@ export async function POST(req: Request) {
     const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: { 
-        "Authorization": "Bearer " + userApiKey, 
+        "Authorization": "Bearer " + openRouterKey, 
         "Content-Type": "application/json", 
         "HTTP-Referer": "https://pager.sh",
         "X-Title": "Pager Protocol"
@@ -198,32 +273,11 @@ export async function POST(req: Request) {
     const fullHtml = finalBody + getBtcAnalysisBlock(finalFormat(result.analysis || "Market analysis."), { activeDna, profile: userProfile }) + getMiningSponsorBlock();
     const visualPrompt = getCharacterVisualPrompt(result.banner || finalTitle, mood, "nft", finalTitle, finalAtmosphere, activeDna);
     
-    let bannerUrl = "";
-    try {
-      const imgRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: { 
-          "Authorization": "Bearer " + userApiKey, 
-          "Content-Type": "application/json", 
-          "HTTP-Referer": "https://pager.sh",
-          "X-Title": "Pager Protocol"
-        },
-        body: JSON.stringify({ 
-            model: imageModel, 
-            messages: [{ role: "user", content: [{ type: "text", text: visualPrompt }] }], 
-            image_config: { aspect_ratio: "16:9" } 
-        })
-      });
-      if (imgRes.ok) {
-        const imgData = await imgRes.json();
-        bannerUrl = imgData?.choices?.[0]?.message?.images?.[0]?.image_url?.url || 
-                    imgData?.choices?.[0]?.message?.content?.match(/https:\/\/\S+\.(?:jpg|png|webp)/)?.[0] || "";
-      }
-    } catch (e) {}
+    // Banner generation via FLUX.2 PRO with auto-persistence to Pinata
+    const bannerUrl = await generateBflImage(visualPrompt);
 
     return NextResponse.json({ title: finalTitle, content: fullHtml, image_url: bannerUrl, banner_description: result.banner || finalTitle });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
-

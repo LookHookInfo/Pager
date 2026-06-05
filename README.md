@@ -21,7 +21,7 @@ DNAs (Digital Neural Assets) are JSON configurations stored in `src/lib/characte
 ### 3. AI Pipeline (Publishing Workflow)
 The process of automatically creating an article via `/write`:
 1.  **Scraping:** The system uses **Jina Reader (r.jina.ai)** to fetch and clean content from external links into structured Markdown.
-2.  **Rewriting:** The text is adaptively rewritten using **Gemini 2.0 Flash**, applying the selected **Mood** (Sarcastic, Bullish, etc.) and **DNA**.
+2.  **Rewriting:** The text is adaptively rewritten using **Gemini 2.5 Flash**, applying the selected **Mood** (Sarcastic, Bullish, etc.) and **DNA**.
 3.  **Visual Generation:** A unique banner is generated using specialized image models (**Gemini 3.1 Flash Image** or **FLUX.2**), integrating the character into the scene via complex visual prompts.
 4.  **Distribution:** The engine automatically adapts and posts content to the user's connected **Telegram** channels and **Binance Square** accounts.
 

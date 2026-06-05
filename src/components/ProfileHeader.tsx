@@ -15,18 +15,10 @@ import { MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI, client } from "@/lib/web3";
 import { base } from "thirdweb/chains";
 
 /**
- * PROFILE HEADER COMPONENT - V2 (TWO-STEP FORGE)
+ * PROFILE HEADER COMPONENT - Simplified V3 (Hardcoded AI Models)
  */
 
 const PRESET_ATMOSPHERES = ['Rick and Morty', 'Cyberpunk', 'Japanese Anime', 'Noir Detective', 'Medieval Fantasy'];
-const AI_MODELS = [
-    { id: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash", desc: "Боевая модель: идеальный баланс текста и ДНК (0.01$)" },
-    { id: "google/gemini-3.1-flash-image-preview", label: "Gemini 3 (0.06$)", desc: "Кинематографичное качество 16:9, высокая детализация" },
-    { id: "black-forest-labs/flux.2-klein-4b", label: "FLUX.2 (0.02$)", desc: "Ультра-реализм, лучшая работа с композицией" },
-    { id: "google/gemini-2.5-flash-image", label: "Gemini 2 (0.04$)", desc: "Быстрая генерация, оптимизирована под персонажей" },
-    { id: "google/gemini-3.1-pro", label: "Gemini 3.1 Pro", desc: "Максимальный интеллект для сложных статей (0.09$)" }
-];
-
 const LANGUAGES = ["English", "Russian", "Spanish", "Chinese", "French", "German", "Japanese", "Turkish"];
 
 export default function ProfileHeader({ 
@@ -63,7 +55,7 @@ export default function ProfileHeader({
   const [formData, setFormData] = useState({
     name: profile.name || "", bio: profile.bio || "", website: profile.website || "",
     avatar_url: profile.avatar_url || "",
-    ai_api_key: profile.ai_api_key || "", ai_image_model: profile.ai_image_model || AI_MODELS[0].id,
+    ai_api_key: profile.ai_api_key || "", 
     ai_atmosphere: profile.ai_atmosphere || PRESET_ATMOSPHERES[0], binance_accounts: profile.binance_accounts || [],
     telegram_channels: profile.telegram_channels || [], telegram_chat_id: profile.telegram_chat_id || "",
     cta_telegram: profile.cta_telegram || "", cta_forum: profile.cta_forum || "",
@@ -86,7 +78,7 @@ export default function ProfileHeader({
     const data = {
       name: profile.name || "", bio: profile.bio || "", website: profile.website || "",
       avatar_url: profile.avatar_url || "",
-      ai_api_key: profile.ai_api_key || "", ai_image_model: profile.ai_image_model || AI_MODELS[0].id,
+      ai_api_key: profile.ai_api_key || "",
       ai_atmosphere: profile.ai_atmosphere || PRESET_ATMOSPHERES[0], binance_accounts: profile.binance_accounts || [],
       telegram_channels: profile.telegram_channels || [], telegram_chat_id: profile.telegram_chat_id || "",
       cta_telegram: profile.cta_telegram || "", cta_forum: profile.cta_forum || "",
@@ -138,7 +130,7 @@ export default function ProfileHeader({
         const imageUrl = data.url;
         setForgeData(prev => ({ ...prev, image_url: imageUrl }));
 
-        // AI DNA SCANNING (PRO MODE)
+        // AI DNA SCANNING (Hardcoded Gemini 2.5 Flash)
         setIsAnalyzingDna(true);
         try {
             const scanRes = await fetch("/api/ai/analyze", {
@@ -582,28 +574,9 @@ export default function ProfileHeader({
                                 )}
                             </div>
 
-                            <div className="space-y-3">
-                                <p className="text-[9px] font-black uppercase text-gray-400 ml-1">Visualization Model (by tier)</p>
-                                <div className="grid grid-cols-1 gap-2">
-                                    {AI_MODELS.map((model) => (
-                                        <div 
-                                            key={model.id}
-                                            onClick={() => setFormData({...formData, ai_image_model: model.id})}
-                                            className={`p-3 border cursor-pointer transition-all flex items-center justify-between group ${formData.ai_image_model === model.id ? 'bg-black border-black text-white' : 'bg-white border-gray-200 text-gray-400 hover:border-black'}`}
-                                        >
-                                            <div className="flex flex-col">
-                                                <span className="text-[10px] font-black uppercase tracking-tight">{model.label}</span>
-                                                <span className={`text-[8px] font-bold ${formData.ai_image_model === model.id ? 'text-gray-400' : 'text-gray-300'}`}>{model.desc}</span>
-                                            </div>
-                                            {formData.ai_image_model === model.id && <ShieldCheck size={16} className="text-yellow-400" />}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
                             <div className="grid grid-cols-1 gap-4">
                                 <div className="space-y-1">
-                                    <label className="text-[9px] font-black uppercase text-gray-400 ml-1">OpenRouter API Key</label>
+                                    <label className="text-[9px] font-black uppercase text-gray-400 ml-1">OpenRouter API Key (Optional)</label>
                                     <div className="relative">
                                         <input 
                                             type={showAiKey ? "text" : "password"} 
@@ -616,6 +589,7 @@ export default function ProfileHeader({
                                             {showAiKey ? <EyeOff size={14} /> : <Eye size={14} />}
                                         </div>
                                     </div>
+                                    <p className="text-[8px] text-gray-400 font-bold italic">Leave blank to use PAGER credits for AI generation.</p>
                                 </div>
                             </div>
                         </div>

@@ -3,6 +3,18 @@ import { getSupabaseServer } from "@/lib/supabase";
 
 export const maxDuration = 30;
 
+function extractJson(text: string) {
+  try {
+    const cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) return JSON.parse(jsonMatch[0]);
+    return JSON.parse(cleaned);
+  } catch (e) {
+    console.error("❌ [DNA Scan] JSON Parse Error. Content:", text.slice(0, 200));
+    return null;
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const { imageUrl, userAddress } = await req.json();
@@ -14,24 +26,20 @@ export async function POST(req: Request) {
     const supabase = getSupabaseServer();
     const { data: profile } = await supabase
       .from("profiles")
-      .select("ai_api_key, ai_image_model")
+      .select("ai_api_key")
       .eq("address", userAddress.toLowerCase())
       .maybeSingle();
 
-    if (!profile?.ai_api_key) {
-      return NextResponse.json({ error: "AI API Key missing" }, { status: 403 });
+    // Use system key primarily for DNA analysis to ensure consistency
+    const aiApiKey = process.env.OPENROUTER_API_KEY || profile?.ai_api_key;
+
+    if (!aiApiKey) {
+      return NextResponse.json({ error: "AI Engine Offline" }, { status: 403 });
     }
 
-    // --- SMART MODEL SELECTION ---
-    // In 2026, we prefer Gemini 3.1 Pro for the most accurate DNA extraction if available.
-    let modelId = "google/gemini-2.0-flash-001";
-    const selectedModel = profile.ai_image_model || "";
-    
-    if (selectedModel.includes("gemini-3.1")) {
-        modelId = "google/gemini-3.1-pro"; // Highest tier
-    } else if (selectedModel.includes("gemini-2.5")) {
-        modelId = "google/gemini-2.5-flash";
-    }
+    // STRICT MODEL SELECTION:
+    // Gemini 2.5 Flash is optimal for all text and vision tasks.
+    const modelId = "google/gemini-2.5-flash";
 
     const prompt = `
       ACT AS A WEB3 GENETICIST AND VISUAL ANALYST. 
@@ -47,17 +55,18 @@ export async function POST(req: Request) {
       Return ONLY JSON.
     `;
 
+    console.log("📡 [DNA Scan] Analyzing image:", imageUrl);
+
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": "Bearer " + profile.ai_api_key,
+        "Authorization": "Bearer " + aiApiKey,
         "Content-Type": "application/json",
         "HTTP-Referer": "https://pager.sh",
         "X-Title": "Pager Protocol",
       },
       body: JSON.stringify({
         model: modelId,
-        response_format: { type: "json_object" },
         messages: [
           {
             role: "user",
@@ -71,20 +80,27 @@ export async function POST(req: Request) {
     });
 
     if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: { message: "OpenRouter Analysis Failed" } }));
+        const err = await response.json().catch(() => ({ error: { message: "Analysis Failed" } }));
+        console.error("❌ [DNA Scan] OpenRouter Error:", err);
         throw new Error(err.error?.message || "AI Analysis failed");
     }
 
     const data = await response.json();
-    const result = JSON.parse(data.choices?.[0]?.message?.content || "{}");
+    const content = data.choices?.[0]?.message?.content || "{}";
+    const result = extractJson(content);
+
+    if (!result) {
+        throw new Error("Failed to parse AI DNA response");
+    }
+
+    console.log("✅ [DNA Scan] Success for:", userAddress);
 
     return NextResponse.json({ 
         personality: result.personality || "Mysterious entity.", 
         visual: result.visual || "Default character look." 
     });
   } catch (error: any) {
-    console.error("? [DNA Forge] Error:", error.message);
+    console.error("❌ [DNA Scan] Critical Error:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
-

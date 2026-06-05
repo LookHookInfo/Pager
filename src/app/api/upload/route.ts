@@ -15,17 +15,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Pinata configuration missing on server' }, { status: 500 });
     }
 
-    // Clean JWT: users often copy labels like "JWT" or spaces
-    const cleanJwt = pinataJwt.trim().split(' ')[0].replace(/JWT$/, '');
+    // Robust JWT cleaning
+    let cleanJwt = pinataJwt.trim();
+    if (cleanJwt.startsWith('JWT ')) {
+      cleanJwt = cleanJwt.substring(4).trim();
+    } else if (cleanJwt.includes(' ')) {
+      // Fallback: take the longest part which is likely the token
+      cleanJwt = cleanJwt.split(/\s+/).reduce((a, b) => a.length > b.length ? a : b);
+    }
+    cleanJwt = cleanJwt.replace(/JWT$/, '');
 
     const pinataFormData = new FormData();
     pinataFormData.append('file', file);
     
-    const metadata = JSON.stringify({ name: `pager-${Date.now()}-${file.name}` });
+    const metadata = JSON.stringify({ 
+      name: `pager-${Date.now()}-${file.name}`,
+      keyvalues: { project: 'Pager', timestamp: Date.now().toString() }
+    });
     pinataFormData.append('pinataMetadata', metadata);
     pinataFormData.append('pinataOptions', JSON.stringify({ cidVersion: 1 }));
 
-    console.log("📡 [Upload API] Sending request to Pinata...");
+    console.log("📡 [Upload API] Sending request to Pinata... (Token length:", cleanJwt.length, ")");
 
     const res = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
       method: 'POST',

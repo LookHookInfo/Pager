@@ -27,10 +27,10 @@ const COMPRESSION_OPTIONS = {
 
 // Fallback gateways for IPFS
 const IPFS_GATEWAYS = [
-  "https://ipfs.io/ipfs/",
-  "https://cloudflare-ipfs.com/ipfs/",
   "https://gateway.ipn.io/ipfs/",
-  "https://gateway.pinata.cloud/ipfs/"
+  "https://gateway.pinata.cloud/ipfs/",
+  "https://cloudflare-ipfs.com/ipfs/",
+  "https://ipfs.io/ipfs/"
 ];
 
 interface Notification {
@@ -76,21 +76,17 @@ export default function WritePage() {
 
   // --- Persistence Logic ---
   const persistAiImage = async (url: string) => {
-    if (!url || url.startsWith('https://gateway.ipn.io') || url.includes('supabase.co')) return url;
+    if (!url) return "";
+    // If it's already a gateway URL or direct link we trust, return it
+    if (url.startsWith('https://gateway.ipn.io') || url.includes('supabase.co')) return url;
     
     try {
       setProcessingStep("persisting");
       const response = await fetch(url);
       const blob = await response.blob();
       
-      if (blob.size < (COMPRESSION_OPTIONS.maxSizeMB * 1024 * 1024) * 0.8) {
-        const fileToUpload = new File([blob], `ai-${Date.now()}.png`, { type: blob.type });
-        return await uploadToStorage(fileToUpload);
-      }
-
-      const file = new File([blob], "ai-banner.png", { type: blob.type });
-      const compressedBlob = await imageCompression(file, COMPRESSION_OPTIONS);
-      const fileToUpload = new File([compressedBlob], `ai-${Date.now()}.webp`, { type: "image/webp" });
+      // Upload to Pinata via our API
+      const fileToUpload = new File([blob], `ai-${Date.now()}.png`, { type: blob.type });
       return await uploadToStorage(fileToUpload);
     } catch (e) {
       console.error("❌ [Persist] Failed to save AI image:", e);
@@ -199,7 +195,6 @@ export default function WritePage() {
           title: scrapeData.title,
           mood,
           nftTokenId: selectedNftId,
-          imageModel: profile?.ai_image_model,
           atmosphere: profile?.ai_atmosphere || "Rick and Morty",
           userAddress: account?.address
         })
@@ -212,8 +207,7 @@ export default function WritePage() {
       if (data.banner_description) setBannerDescription(data.banner_description);
 
       if (data.image_url) {
-        const permanentUrl = await persistAiImage(data.image_url);
-        setImageUrl(permanentUrl);
+        setImageUrl(data.image_url);
         addNotification("Content protocol synchronized", "success");
       }
       
@@ -228,7 +222,7 @@ export default function WritePage() {
   };
 
   const handleRegenerateBanner = async () => {
-    if (!profile?.ai_api_key || !selectedNftId) return;
+    if (!selectedNftId) return;
     setIsRegenerating(true);
     
     try {
@@ -241,8 +235,6 @@ export default function WritePage() {
               title,
               mood,
               nftTokenId: selectedNftId,
-              userApiKey: profile?.ai_api_key,
-              imageModel: profile?.ai_image_model,
               atmosphere: profile?.ai_atmosphere || "Rick and Morty",
               userAddress: account?.address
             })
@@ -251,8 +243,7 @@ export default function WritePage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Regeneration failed");
         if (data.image_url) {
-            const permanentUrl = await persistAiImage(data.image_url);
-            setImageUrl(permanentUrl);
+            setImageUrl(data.image_url);
             addNotification("Banner updated!", "success");
         }
     } catch (err: any) {
@@ -402,11 +393,7 @@ export default function WritePage() {
 
       <div className={`overflow-hidden transition-all duration-500 bg-gray-50 border-y border-gray-100 mt-8 ${activeMode === "ai" ? 'min-h-[200px] opacity-100 py-12' : 'max-h-0 opacity-0'}`}>
         <div className="max-w-4xl mx-auto px-6 space-y-6">
-          {(!profile?.ai_api_key) ? (
-            <div className="text-center py-4 text-gray-400 text-sm font-bold uppercase tracking-widest flex items-center justify-center gap-3">
-              <Lock size={18} /> API Key Locked. Check Profile Settings.
-            </div>
-          ) : ownedMascots.length === 0 && !isFetchingMascots ? (
+          {ownedMascots.length === 0 && !isFetchingMascots ? (
             <div className="text-center py-8 bg-white border border-gray-100 p-8">
                 <AlertCircle className="mx-auto text-red-500 mb-4" size={32} />
                 <h3 className="text-sm font-black uppercase tracking-widest mb-2">NFT Mascot Required</h3>
@@ -452,7 +439,7 @@ export default function WritePage() {
               <input type="text" placeholder="Banner URL" value={imageUrl} onChange={e => setImageUrl(e.target.value)} className="w-full text-[10px] font-black uppercase tracking-widest border-none focus:outline-none bg-transparent" />
             </div>
             <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black transition-colors">{isUploading ? <Loader2 size={16} className="animate-spin" /> : <><Upload size={16} /> Upload</>}</button>
-            {profile?.ai_api_key && <button onClick={handleRegenerateBanner} disabled={isRegenerating || !title || !selectedNftId} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-500 hover:text-blue-700 transition-colors">{isRegenerating ? <Loader2 size={14} className="animate-spin" /> : <><Sparkles size={14} /> Regenerate</>}</button>}
+            <button onClick={handleRegenerateBanner} disabled={isRegenerating || !title || !selectedNftId} className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-500 hover:text-blue-700 transition-colors">{isRegenerating ? <Loader2 size={14} className="animate-spin" /> : <><Sparkles size={14} /> Regenerate</>}</button>
             <input ref={fileInputRef} type="file" onChange={handleFileUpload} className="hidden" accept="image/*" />
           </div>
           {imageUrl && <div className="aspect-video bg-gray-50 overflow-hidden border border-gray-100 rounded-sm relative group"><img src={imageUrl} alt="Banner" className="w-full h-full object-cover" /><button onClick={() => setImageUrl("")} className="absolute top-2 right-2 p-1.5 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all hover:bg-black"><X size={14} /></button></div>}

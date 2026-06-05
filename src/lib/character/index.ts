@@ -43,6 +43,7 @@ export const MOOD_EXPRESSIONS: Record<string, string> = {
 
 /**
  * Generates a cinematic visual prompt for image generation engines.
+ * Optimized for FLUX.2 PRO & Gemini.
  */
 export function getCharacterVisualPrompt(
   scene: string,
@@ -60,37 +61,42 @@ export function getCharacterVisualPrompt(
   }
 
   const referenceUrl = activeDna.reference;
+
+  // --- STRICT CORE SUBJECT ---
   const foregroundBlock = `
-    [SUBJECT: ${activeDna.name}]
-    - CHARACTER DNA: ${activeDna.description}.
-    - MANDATORY: The subject MUST remain visually identical to the provided REFERENCE_URL. 
-    - STYLE: Clean digital art, bold outlines, cinematic rim lighting.
+    [PRIMARY SUBJECT: THE CHARACTER "${activeDna.name}"]
+    - CHARACTER IDENTITY: ${activeDna.description}.
+    - VISUAL CONSTANCY: The subject MUST be visually identical to the mascot in REFERENCE_IMAGE. 
+    - QUALITY: Masterpiece digital art, perfect anatomy, correct number of fingers and hands.
     - EXPRESSION: ${MOOD_EXPRESSIONS[moodKey] || MOOD_EXPRESSIONS.neutral}.
-    - POSTURE: Dynamic, engaging, proportional to the scene.
+    - POSTURE: Dynamic and proportional posture.
   `;
 
+  // --- ENVIRONMENT & STYLE ---
   const backgroundBlock = `
-    [ENVIRONMENT: ${customAtmosphere}]
-    - WORLD AESTHETIC: High-fidelity "${customAtmosphere}" inspired universe.
-    - SCENE CONTENT: ${scene}.
-    - ATMOSPHERE & LIGHTING: ${visualMood}.
-    - DETAILS: Cybernetic elements, glowing $HASH tokens, and robotic versions of Pepe and Shiba Inu interacting in the background.
+    [STYLE & ENVIRONMENT]
+    - VISUAL STYLE: Use only the artistic aesthetic of "${customAtmosphere}". 
+    - PROHIBITED: DO NOT include any characters or famous personalities from "${customAtmosphere}" or other media.
+    - SCENE: ${scene}.
+    - LIGHTING: ${visualMood}.
+    - TECH ELEMENTS: Futuristic UI elements, glowing $HASH icons, decentralized network nodes.
   `;
 
   return `
     REFERENCE_IMAGE: ${referenceUrl}
-    TASK: Create a professional 16:9 composite illustration for Pager Protocol.
+    TASK: High-fidelity cinematic 16:9 illustration.
     
     ${foregroundBlock}
     ${backgroundBlock}
     
-    [COMPOSITION]
-    - Shot Type: Medium-long shot.
-    - Sharp style isolation: The mascot (${activeDna.name}) must be sharp and distinct from the background.
-    - NO TEXT in the image except for specifically mentioned labels.
-    - Final Output: Cinematic digital illustration.
+    [STRICT COMPOSITION RULES]
+    1. FOCUS: The ONLY character in the image is "${activeDna.name}". 
+    2. ANATOMY: NO extra fingers, NO double limbs, NO deformed hands. Every detail must be anatomically perfect.
+    3. IP PROTECTION: NO celebrities, NO famous cartoon characters, NO copyrighted mascots.
+    4. NO TEXT: Do not generate any text or letters unless requested.
     
-    ${articleTitle ? `ARTISTIC OVERLAY (OPTIONAL): Minimalist text "${articleTitle.toUpperCase()}" if it fits the composition.` : ""}
+    Final Output: Sharp, professional digital illustration for a high-end Web3 protocol.
+    ${articleTitle ? `(Optional Overlay Theme: ${articleTitle.toUpperCase()})` : ""}
   `.trim();
 }
 

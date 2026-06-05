@@ -46,10 +46,10 @@ export async function POST(req: Request) {
     let imageUrl = article.image_url;
 
     // 3. Adapt content if needed
-    if (aiKey && (account.language || account.style)) {
+    if (account.language || account.style) {
       console.log(`📡 [API Distribution] Adapting content for ${channelType}...`);
       const platform = channelType === 'binance' ? 'binance' : 'telegram';
-      const adapted = await adaptContent(title, content, account.language || 'English', account.style || 'Professional', aiKey, platform);
+      const adapted = await adaptContent(title, content, account.language || 'English', account.style || 'Professional', aiKey || "", platform);
       title = adapted.title;
       content = adapted.teaser;
       
