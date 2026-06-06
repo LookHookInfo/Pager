@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getCharacterSystemPrompt, getBtcAnalysisBlock, getMiningSponsorBlock, getCharacterVisualPrompt, CustomDna } from "@/lib/character";
 import { resolveNftDna } from "@/lib/character/nft";
 import { getSupabaseServer } from "@/lib/supabase";
+import { decryptData } from "@/lib/security";
+import { verifySignature, getAuthMessage } from "@/lib/auth";
 import sharp from "sharp";
 
 export const maxDuration = 60;
@@ -104,8 +106,10 @@ async function generateBflImage(prompt: string): Promise<string> {
   const apiKey = process.env.BFL_API_KEY;
   if (!apiKey) throw new Error("BFL API Key missing in environment");
 
+  console.log("🎨 [BFL] Starting generation for prompt:", prompt.slice(0, 100) + "...");
+
   try {
-    // 1. Create Task - FLUX.2 PRO (0.03$)
+    // 1. Create Task - FLUX.2 PRO
     const res = await fetch("https://api.bfl.ai/v1/flux-2-pro", {
       method: "POST",
       headers: {
@@ -122,39 +126,57 @@ async function generateBflImage(prompt: string): Promise<string> {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      console.error("❌ [BFL API] Creation Failed:", err);
-      return "";
+      console.error("❌ [BFL API] Task Creation Failed:", err);
+      throw new Error(`BFL Creation Failed: ${res.status}`);
     }
 
     const data = await res.json();
-    const pollingUrl = data.polling_url || `https://api.bfl.ai/v1/get_result?id=${data.id}`;
+    const taskId = data.id;
+    const pollingUrl = `https://api.bfl.ai/v1/get_result?id=${taskId}`;
+    
+    console.log(`📡 [BFL] Task created: ${taskId}. Polling...`);
 
-    // 2. Poll Result (Max ~50s)
-    for (let i = 0; i < 25; i++) { 
+    // 2. Poll Result (Increased to 40 attempts x 2s = 80s)
+    // Note: Vercel might still timeout, but we try our best.
+    for (let i = 0; i < 40; i++) { 
       await new Promise(r => setTimeout(r, 2000));
-      const statusRes = await fetch(pollingUrl, {
-        headers: { "x-key": apiKey }
-      });
       
-      if (!statusRes.ok) continue;
-      
-      const statusData = await statusRes.json();
-      if (statusData.status === "Ready") {
-        const sampleUrl = statusData.result?.sample || "";
-        if (sampleUrl) {
-          // ENSURE PERSISTENCE: Download and upload to our Pinata FROM SERVER
-          return await uploadToPinata(sampleUrl);
+      try {
+        const statusRes = await fetch(pollingUrl, {
+          headers: { "x-key": apiKey }
+        });
+        
+        if (!statusRes.ok) {
+          console.warn(`⚠️ [BFL] Polling error (${statusRes.status}), retrying...`);
+          continue;
         }
-        return "";
-      } else if (statusData.status === "Failed" || statusData.status === "Error") {
-        console.error("❌ [BFL API] Generation Error:", statusData);
-        return "";
+        
+        const statusData = await statusRes.json();
+        console.log(`⏳ [BFL] Status (${i}): ${statusData.status}`);
+
+        if (statusData.status === "Ready") {
+          const sampleUrl = statusData.result?.sample || "";
+          if (sampleUrl) {
+            console.log("✅ [BFL] Image ready, uploading to Pinata...");
+            return await uploadToPinata(sampleUrl);
+          }
+          throw new Error("BFL returned Ready but no sample URL");
+        } 
+        
+        if (statusData.status === "Failed" || statusData.status === "Error") {
+          console.error("❌ [BFL API] Generation Error:", statusData);
+          throw new Error(`BFL Generation Failed: ${statusData.error || 'Unknown error'}`);
+        }
+      } catch (pollErr: any) {
+        console.error("⚠️ [BFL] Poll iteration failed:", pollErr.message);
       }
     }
-  } catch (e) {
-    console.error("❌ [BFL API] Exception:", e);
+    
+    throw new Error("BFL Generation Timed Out (80s)");
+  } catch (e: any) {
+    console.error("❌ [BFL API] Exception:", e.message);
+    throw e;
   }
-  return "";
 }
 
 export async function POST(req: Request) {
@@ -168,20 +190,61 @@ export async function POST(req: Request) {
       nftTokenId: requestedNftId,
       onlyBanner = false,
       bannerDescription = "",
-      userAddress = ""
+      userAddress = "",
+      signature,
+      message,
+      skipBanner = false
     } = body;
 
     if (!userAddress) return NextResponse.json({ error: "User address required" }, { status: 400 });
+
+    const normalizedAddress = userAddress.toLowerCase();
+
+    // 1. ВЕРИФИКАЦИЯ ПОДПИСИ
+    if (!signature || !message) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
+    const expectedAction = onlyBanner ? "regenerate banner" : "initiate magic forge";
+    const expectedMessage = getAuthMessage(expectedAction, normalizedAddress);
+    const sessionMessage = getAuthMessage("authorize session", normalizedAddress);
+    
+    // Принимаем либо конкретное действие, либо общую подпись сессии
+    if (message !== expectedMessage && message !== sessionMessage) {
+      return NextResponse.json({ error: 'Invalid auth message' }, { status: 401 });
+    }
+
+    const isAuthorized = await verifySignature(message, signature, normalizedAddress);
+    if (!isAuthorized) {
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+    }
 
     const supabaseServer = getSupabaseServer();
     const { data: userProfile } = await supabaseServer
       .from("profiles")
       .select("*")
-      .eq("address", userAddress.toLowerCase())
+      .eq("address", normalizedAddress)
       .maybeSingle();
 
+    // ПРОВЕРКА БАЛАНСА ПЕРЕД ГЕНЕРАЦИЕЙ БАННЕРА (10 кредитов)
+    const CREDIT_COST = 10;
+    const isGeneratingBanner = onlyBanner || !skipBanner;
+    
+    if (isGeneratingBanner) {
+      const currentCredits = userProfile?.ai_credits || 0;
+      if (currentCredits < CREDIT_COST) {
+        return NextResponse.json({ error: `Insufficient credits. Balance: ${currentCredits}. Required: ${CREDIT_COST}` }, { status: 402 });
+      }
+    }
+
     // Use system key primarily for consistent branding quality
-    const openRouterKey = process.env.OPENROUTER_API_KEY || userProfile?.ai_api_key;
+    let openRouterKey = process.env.OPENROUTER_API_KEY;
+    
+    // Если у пользователя свой ключ, расшифровываем его
+    if (userProfile?.ai_api_key) {
+      const decryptedUserKey = decryptData(userProfile.ai_api_key);
+      if (decryptedUserKey) openRouterKey = decryptedUserKey;
+    }
 
     if (!openRouterKey) {
       return NextResponse.json({ error: "AI Engine Offline (Key Missing)" }, { status: 403 });
@@ -274,7 +337,27 @@ export async function POST(req: Request) {
     const visualPrompt = getCharacterVisualPrompt(result.banner || finalTitle, mood, "nft", finalTitle, finalAtmosphere, activeDna);
     
     // Banner generation via FLUX.2 PRO with auto-persistence to Pinata
-    const bannerUrl = await generateBflImage(visualPrompt);
+    let bannerUrl = "";
+    if (!skipBanner) {
+      bannerUrl = await generateBflImage(visualPrompt);
+      
+      // СПИСЫВАЕМ КРЕДИТЫ ТОЛЬКО ПРИ УСПЕХЕ
+      if (bannerUrl) {
+         console.log(`💸 [AI Process] Generation success. Debiting ${CREDIT_COST} credits from ${normalizedAddress}`);
+         const { error: debitError } = await supabaseServer.rpc('decrement_ai_credits', { 
+           user_address: normalizedAddress, 
+           dec_amount: CREDIT_COST 
+         });
+
+         if (debitError) {
+           console.error("❌ [AI Process] Balance debit failed (non-critical for user):", debitError.message);
+           // Пытаемся обновить вручную если RPC нет
+           await supabaseServer.from('profiles')
+             .update({ ai_credits: (userProfile?.ai_credits || 10) - CREDIT_COST })
+             .eq('address', normalizedAddress);
+         }
+      }
+    }
 
     return NextResponse.json({ title: finalTitle, content: fullHtml, image_url: bannerUrl, banner_description: result.banner || finalTitle });
   } catch (error: any) {

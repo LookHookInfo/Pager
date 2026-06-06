@@ -13,10 +13,11 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { client, HASH_TOKEN_ADDRESS, MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI } from "@/lib/web3";
+import { getAuthMessage } from "@/lib/auth";
 import imageCompression from "browser-image-compression";
 
 const PROJECT_WALLET = "0x39adfb3eb6ff7f56bd5c09c62b4ab1d61997193a";
-const POST_PRICE = "10";
+const GEN_PRICE = "10";
 const COMPRESSION_OPTIONS = {
   maxSizeMB: 0.7,
   maxWidthOrHeight: 1920,
@@ -65,6 +66,23 @@ export default function WritePage() {
   const [isFetchingMascots, setIsFetchingMascots] = useState(false);
 
   const [processingStep, setProcessingStep] = useState<"idle" | "scraping" | "rewriting" | "persisting" | "done">("idle");
+  
+  // КЭШ ПОДПИСИ ДЛЯ ТЕКУЩЕЙ СЕССИИ
+  const sessionAuth = useRef<{ signature: string, message: string } | null>(null);
+
+  const getSessionSignature = async (action: string) => {
+    if (!account) throw new Error("Connect wallet");
+    
+    // Если у нас уже есть подпись для авторизации протокола на сегодня - используем её
+    if (sessionAuth.current) return sessionAuth.current;
+
+    addNotification("Authorizing Session...", "info");
+    const message = getAuthMessage("authorize session", account.address.toLowerCase());
+    const signature = await account.signMessage({ message });
+    
+    sessionAuth.current = { signature, message };
+    return sessionAuth.current;
+  };
 
   const addNotification = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -173,11 +191,16 @@ export default function WritePage() {
   const handleAiRewrite = async () => {
     if (!externalUrl) return alert("Paste a link first!");
     if (!selectedNftId) return alert("Select an NFT Mascot first!");
-
+    if (!account) return alert("Connect wallet");
+    
     setIsAiProcessing(true);
     setProcessingStep("scraping");
     
     try {
+      // 1. ПОЛУЧАЕМ ПОДПИСЬ СЕССИИ (Один раз за сессию)
+      const { signature, message } = await getSessionSignature("authorize session");
+
+      // 2. SCRAPE & REWRITE (БЕСПЛАТНО)
       const scrapeRes = await fetch("/api/ai/scrape", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -187,6 +210,7 @@ export default function WritePage() {
       if (!scrapeRes.ok) throw new Error(scrapeData.error || "Scraping failed");
 
       setProcessingStep("rewriting");
+      
       const processRes = await fetch("/api/ai/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -196,24 +220,33 @@ export default function WritePage() {
           mood,
           nftTokenId: selectedNftId,
           atmosphere: profile?.ai_atmosphere || "Rick and Morty",
-          userAddress: account?.address
-        })
+          userAddress: account.address.toLowerCase(),
+          signature,
+          message,
+          skipBanner: false // ТЕПЕРЬ ГЕНЕРИРУЕМ ВСЁ СРАЗУ, СЕРВЕР САМ СПИШЕТ КРЕДИТЫ
+        }),
+        signal: AbortSignal.timeout(95000)
       });
+      
       const data = await processRes.json();
-      if (!processRes.ok) throw new Error(data.error || "Rewriting failed");
+      if (!processRes.ok) {
+        // Если кредитов мало, сервер вернет 402
+        if (processRes.status === 402) throw new Error("Insufficient AI Credits. Top up in your profile.");
+        throw new Error(data.error || "Forge failed");
+      }
 
       setTitle(data.title);
       if (editorRef.current) editorRef.current.innerHTML = data.content;
       if (data.banner_description) setBannerDescription(data.banner_description);
+      if (data.image_url) setImageUrl(data.image_url);
 
-      if (data.image_url) {
-        setImageUrl(data.image_url);
-        addNotification("Content protocol synchronized", "success");
-      }
-      
+      addNotification("Magic Forge synchronized!", "success");
       setProcessingStep("done");
       setTimeout(() => { setProcessingStep("idle"); setActiveMode("manual"); }, 2000);
+      fetchProfile(); // Обновляем баланс
+      
     } catch (err: any) {
+      console.error("❌ [Magic Forge Error]:", err);
       addNotification(err.message, "error");
       setProcessingStep("idle");
     } finally {
@@ -222,46 +255,57 @@ export default function WritePage() {
   };
 
   const handleRegenerateBanner = async () => {
-    if (!selectedNftId) return;
-    setIsRegenerating(true);
+    if (!selectedNftId || !title) return;
+    if (!account) return alert("Connect wallet");
     
+    setIsRegenerating(true);
     try {
-        const res = await fetch("/api/ai/process", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              onlyBanner: true,
-              bannerDescription,
-              title,
-              mood,
-              nftTokenId: selectedNftId,
-              atmosphere: profile?.ai_atmosphere || "Rick and Morty",
-              userAddress: account?.address
-            })
-        });
-        
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Regeneration failed");
-        if (data.image_url) {
-            setImageUrl(data.image_url);
-            addNotification("Banner updated!", "success");
-        }
+      addNotification("Regenerating banner (Silent Sync)...", "success");
+      const { signature, message } = await getSessionSignature("authorize session");
+
+      const res = await fetch("/api/ai/process", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            onlyBanner: true,
+            bannerDescription,
+            title,
+            mood,
+            nftTokenId: selectedNftId,
+            atmosphere: profile?.ai_atmosphere || "Rick and Morty",
+            userAddress: account.address.toLowerCase(),
+            signature,
+            message
+          }),
+          signal: AbortSignal.timeout(95000)
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Regeneration failed");
+      
+      if (data.image_url) {
+          setImageUrl(data.image_url);
+          addNotification("Banner updated!", "success");
+          fetchProfile();
+      }
     } catch (err: any) {
-        addNotification(err.message, "error");
+      addNotification(err.message, "error");
     } finally {
-        setIsRegenerating(false);
+      setIsRegenerating(false);
     }
   };
 
   const fetchProfile = useCallback(async () => {
     if (!account?.address) return;
     try {
-      const { data } = await supabase.from('profiles').select('*').eq('address', account.address.toLowerCase()).maybeSingle();
-      if (data) {
-          setProfile(data);
-          if (data.ai_nft_token_id) setSelectedNftId(data.ai_nft_token_id);
+      // Загружаем профиль через API, чтобы получить маскированные ключи
+      const res = await fetch(`/api/profile?address=${account.address.toLowerCase()}`);
+      const data = await res.json();
+      if (res.ok && data.profile) {
+          setProfile(data.profile);
+          if (data.profile.ai_nft_token_id) setSelectedNftId(data.profile.ai_nft_token_id);
       }
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error("❌ [WritePage] Profile fetch failed:", err); }
   }, [account?.address]);
 
   useEffect(() => { fetchProfile(); }, [fetchProfile]);
@@ -288,82 +332,100 @@ export default function WritePage() {
     const content = editorRef.current?.innerHTML || "";
     if (!account) return alert("Connect wallet");
     if (!title || !content || content === "<br>") return alert("Title and Content required");
-    if (parseFloat(balance?.displayValue || "0") < parseFloat(POST_PRICE)) return alert("Insufficient $HASH.");
-
-    setStatus("paying");
+    
+    // Публикация теперь бесплатная (оплата перенесена на AI Forge)
+    setStatus("publishing");
     try {
-        const contract = getContract({ client, chain: base, address: HASH_TOKEN_ADDRESS });
-        const transaction = prepareContractCall({
-          contract,
-          method: "function transfer(address to, uint256 value)",
-          params: [PROJECT_WALLET, BigInt(toWei(POST_PRICE))],
-        });
+      // 1. ПОДПИСЬ ДЛЯ ПОДТВЕРЖДЕНИЯ АВТОРСТВА
+      const authMessage = getAuthMessage("publish article", account.address.toLowerCase());
+      const signature = await account.signMessage({ message: authMessage });
 
-        sendTransaction(transaction, {
-          onSuccess: async () => {
-            setStatus("publishing");
-            try {
-              const res = await fetch("/api/article/create", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ title, content, image_url: imageUrl || null, author_address: account.address.toLowerCase() })
-              });
-              
-              if (!res.ok) {
-                const errData = await res.json().catch(() => ({ error: "Server returned error" }));
-                throw new Error(errData.error || "Failed to create article");
-              }
-              
-              const resData = await res.json();
-              const articleId = resData.article.id;
-              const targets = resData.article.distributionTargets || resData.distributionTargets;
+      // 2. СОЗДАНИЕ СТАТЬИ
+      const res = await fetch("/api/article/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          title, 
+          content, 
+          image_url: imageUrl || null, 
+          author_address: account.address.toLowerCase(),
+          signature,
+          message: authMessage
+        })
+      });
+      
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: "Server returned error" }));
+        throw new Error(errData.error || "Failed to create article");
+      }
+      
+      const resData = await res.json();
+      const articleId = resData.article.id;
+      const targets = resData.article.distributionTargets || resData.distributionTargets;
 
-              if (targets) {
-                if (targets.global) {
-                  addNotification("Publishing to Global Feed...", "info");
-                  await fetch("/api/distribution", { 
-                    method: "POST", 
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ articleId, channelType: 'global', account: {}, profileAddress: account.address }) 
-                  }).catch(e => console.error("Global Feed Error:", e));
-                }
-                
-                for (const accObj of (targets.binance || [])) {
-                  addNotification(`Posting to Binance Square: ${accObj.label}...`, "info");
-                  await fetch("/api/distribution", { 
-                    method: "POST", 
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ articleId, channelType: 'binance', account: accObj, profileAddress: account.address }) 
-                  }).catch(e => console.error("Binance Error:", e));
-                }
+      if (targets) {
+        addNotification("Authorizing protocol distribution...", "info");
 
-                for (const chObj of (targets.telegram || [])) {
-                  addNotification(`Posting to Telegram: ${chObj.label}...`, "info");
-                  await fetch("/api/distribution", { 
-                    method: "POST", 
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ articleId, channelType: 'telegram', account: chObj, profileAddress: account.address }) 
-                  }).catch(e => console.error("Telegram Error:", e));
-                }
-              }
+        // ОДНА ПОДПИСЬ ДЛЯ ВСЕХ КАНАЛОВ
+        const channelsCount = (targets.binance?.length || 0) + (targets.telegram?.length || 0) + (targets.global ? 1 : 0);
+        const batchMsg = getAuthMessage(`distribute to ${channelsCount} channels`, account.address.toLowerCase());
+        const batchSig = await account.signMessage({ message: batchMsg });
 
-              setStatus("success");
-              addNotification("Protocol distribution initiated!", "success");
-              setTimeout(() => router.push("/"), 3000);
-            } catch (err: any) { 
-              console.error("❌ [Publish Error]:", err);
-              setStatus("error");
-              addNotification(`Failed: ${err.message}`, "error");
-            }
-          },
-          onError: (err) => { 
-            setStatus("error"); 
-            addNotification(`Payment failed: ${err.message}`, "error");
-          }
-        });
+        if (targets.global) {
+          addNotification("Publishing to Global Feed...", "info");
+          await fetch("/api/distribution", { 
+            method: "POST", 
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              articleId, 
+              channelType: 'global', 
+              account: {}, 
+              profileAddress: account.address,
+              signature: batchSig,
+              message: batchMsg
+            }) 
+          }).catch(e => console.error("Global Feed Error:", e));
+        }
+
+        for (const accObj of (targets.binance || [])) {
+          addNotification(`Posting to Binance Square: ${accObj.label}...`, "info");
+          await fetch("/api/distribution", { 
+            method: "POST", 
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              articleId, 
+              channelType: 'binance', 
+              account: accObj, 
+              profileAddress: account.address,
+              signature: batchSig,
+              message: batchMsg
+            }) 
+          }).catch(e => console.error("Binance Error:", e));
+        }
+
+        for (const chObj of (targets.telegram || [])) {
+          addNotification(`Posting to Telegram: ${chObj.label}...`, "info");
+          await fetch("/api/distribution", { 
+            method: "POST", 
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              articleId, 
+              channelType: 'telegram', 
+              account: chObj, 
+              profileAddress: account.address,
+              signature: batchSig,
+              message: batchMsg
+            }) 
+          }).catch(e => console.error("Telegram Error:", e));
+        }
+      }
+      setStatus("success");
+      addNotification("Protocol distribution initiated!", "success");
+      setTimeout(() => router.push("/"), 3000);
     } catch (err: any) { 
-        setStatus("error"); 
-        addNotification(`Critical Error: ${err.message}`, "error");
+      console.error("❌ [Publish Error]:", err);
+      setStatus("error");
+      addNotification(`Failed: ${err.message}`, "error");
     }
   };
 

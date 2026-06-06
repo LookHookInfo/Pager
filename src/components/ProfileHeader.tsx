@@ -11,8 +11,9 @@ import { useRouter } from "next/navigation";
 import { useActiveAccount, useSendTransaction } from "thirdweb/react";
 import { getContract, prepareContractCall, toWei, readContract } from "thirdweb";
 import { supabase } from "@/lib/supabase";
-import { MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI, client } from "@/lib/web3";
+import { MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI, client, HASH_TOKEN_ADDRESS } from "@/lib/web3";
 import { base } from "thirdweb/chains";
+import { getAuthMessage } from "@/lib/auth";
 
 /**
  * PROFILE HEADER COMPONENT - Simplified V3 (Hardcoded AI Models)
@@ -233,20 +234,94 @@ export default function ProfileHeader({
     } catch (e: any) { showNotify(e.message, "error"); setIsForging(false); }
   };
 
+  const [isDepositing, setIsDepositing] = useState(false);
+
+  const handleDeposit = async () => {
+    if (!account) return showNotify("Connect wallet", "error");
+    const amountStr = prompt("Enter amount of $HASH to deposit (1 $HASH = 1 Credit):", "50");
+    if (!amountStr || isNaN(parseFloat(amountStr)) || parseFloat(amountStr) <= 0) return;
+    
+    setIsDepositing(true);
+    try {
+      showNotify(`Initiating ${amountStr} $HASH transfer...`, "success");
+      
+      // 1. ПЕРЕВОД ТОКЕНОВ
+      const contract = getContract({ client, chain: base, address: HASH_TOKEN_ADDRESS });
+      const transaction = prepareContractCall({
+        contract,
+        method: "function transfer(address to, uint256 value)",
+        params: ["0x39adfb3eb6ff7f56bd5c09c62b4ab1d61997193a", BigInt(toWei(amountStr))],
+      });
+
+      sendTransaction(transaction, {
+        onSuccess: async (txResult) => {
+          try {
+            // 2. ПОДПИСЬ ДЛЯ ПОДТВЕРЖДЕНИЯ
+            const message = getAuthMessage(`deposit ${amountStr} credits`, account.address.toLowerCase());
+            const signature = await account.signMessage({ message });
+
+            // 3. УВЕДОМЛЕНИЕ СЕРВЕРА
+            const res = await fetch("/api/profile/deposit", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                address: account.address,
+                amount: amountStr,
+                txHash: txResult.transactionHash,
+                signature,
+                message
+              })
+            });
+
+            if (!res.ok) throw new Error("Server failed to sync deposit");
+            
+            showNotify(`Successfully deposited ${amountStr} AI Credits!`, "success");
+            router.refresh();
+          } catch (e: any) {
+            showNotify(`Deposit Sync Error: ${e.message}`, "error");
+          } finally {
+            setIsDepositing(false);
+          }
+        },
+        onError: (err) => {
+          showNotify(`Transfer failed: ${err.message}`, "error");
+          setIsDepositing(false);
+        }
+      });
+    } catch (e: any) {
+      showNotify(e.message, "error");
+      setIsDepositing(false);
+    }
+  };
   const handleSave = async () => {
+    if (!account) return showNotify("Connect wallet", "error");
     setIsSaving(true);
     try {
+      // 1. ПОДПИСЬ ДЛЯ АУТЕНТИФИКАЦИИ
+      const message = getAuthMessage("update Pager profile", account.address.toLowerCase());
+      const signature = await account.signMessage({ message });
+
+      // 2. ОТПРАВКА ДАННЫХ
       const res = await fetch("/api/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: profile.address.toLowerCase(), ...formData }),
+        body: JSON.stringify({ 
+          address: profile.address.toLowerCase(), 
+          ...formData,
+          signature,
+          message 
+        }),
         cache: 'no-store'
       });
-      if (!res.ok) throw new Error("Save failed");
+      
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.error || "Save failed");
+      
       showNotify("Protocol Configuration Updated");
       setIsEditing(false);
       router.refresh();
     } catch (e: any) {
+      console.error("❌ [Save Profile]:", e);
       showNotify(`Error: ${e.message}`, "error");
     } finally { setIsSaving(false); }
   };
@@ -537,9 +612,25 @@ export default function ProfileHeader({
                 {/* --- RIGHT COLUMN: AI & FORGE --- */}
                 <div className="lg:col-span-5 space-y-10">
                     <div className="p-6 border border-gray-100 rounded-sm space-y-6 bg-gray-50/30 shadow-sm">
-                        <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
-                            <Sparkles size={14} /> Intelligence Core
-                        </h4>
+                        <div className="flex items-center justify-between">
+                            <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
+                                <Sparkles size={14} /> Intelligence Core
+                            </h4>
+                            <div className="flex items-center gap-2">
+                                <div className="px-3 py-1 bg-white border border-gray-200 rounded-full flex items-center gap-2 shadow-sm">
+                                    <Database size={12} className="text-blue-500" />
+                                    <span className="text-[10px] font-black">{profile.ai_credits || 0} Credits</span>
+                                </div>
+                                <button 
+                                    onClick={handleDeposit} 
+                                    disabled={isDepositing}
+                                    className="p-1.5 bg-black text-white rounded-full hover:bg-gray-800 transition-all shadow-md disabled:opacity-50"
+                                    title="Top Up Credits"
+                                >
+                                    {isDepositing ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                                </button>
+                            </div>
+                        </div>
                         <div className="space-y-6">
                             <div className="space-y-3">
                                 <p className="text-[9px] font-black uppercase text-gray-400 ml-1">Narrative Atmosphere</p>

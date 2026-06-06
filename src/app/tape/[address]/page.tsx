@@ -7,6 +7,7 @@ import ProfileHeader from "@/components/ProfileHeader";
 import ProfileMascots from "@/components/ProfileMascots";
 import DeleteButton from "@/components/DeleteButton";
 import { Metadata } from 'next';
+import { maskKey } from "@/lib/security";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -26,6 +27,16 @@ async function getProfileData(address: string, page: number) {
     .eq('address', cleanAddress)
     .maybeSingle();
 
+  // Маскируем ключи для безопасности на фронтенде
+  const safeProfile = profile ? {
+    ...profile,
+    ai_api_key: profile.ai_api_key ? maskKey(profile.ai_api_key) : "",
+    binance_accounts: (profile.binance_accounts || []).map((acc: any) => ({
+      ...acc,
+      apiKey: acc.apiKey ? maskKey(acc.apiKey) : ""
+    }))
+  } : null;
+
   // 2. Получаем общее количество наград и статей (нужно для хедера)
   const { data: allStats } = await supabase
     .from("articles")
@@ -44,7 +55,7 @@ async function getProfileData(address: string, page: number) {
     .range(from, to);
 
   return {
-    profile: profile || { address: cleanAddress, name: "Anonymous Author" },
+    profile: safeProfile || { address: cleanAddress, name: "Anonymous Author" },
     articles: articles || [],
     totalArticles: totalArticlesCount,
     totalRewards,

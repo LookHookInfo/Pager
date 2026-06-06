@@ -1,19 +1,44 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
 import { postToBinance, postToTelegram, adaptContent } from '@/lib/distribution';
+import { decryptData } from '@/lib/security';
+import { verifySignature, getAuthMessage } from '@/lib/auth';
 
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { articleId, channelType, account, profileAddress } = body;
+    const { articleId, channelType, account, profileAddress, signature, message } = body;
 
     console.log(`📡 [API Distribution] Request for ${channelType} (${account.label || 'N/A'})`);
 
     if (!articleId || !channelType || !account || !profileAddress) {
       console.error("❌ [API Distribution] Missing parameters:", { articleId, channelType, account, profileAddress });
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
+    }
+
+    const normalizedAddress = profileAddress.toLowerCase();
+
+    // 1. ВЕРИФИКАЦИЯ ПОДПИСИ
+    if (!signature || !message) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
+    const expectedMessage = getAuthMessage(`distribute to ${account.label || 'channel'}`, normalizedAddress);
+    const sessionMessage = getAuthMessage("authorize session", normalizedAddress);
+    
+    // Пакетная дистрибуция может иметь разное количество каналов в сообщении
+    // Поэтому проверяем на вхождение ключевой фразы или session signature
+    const isBatchMsg = message.includes("distribute to") && message.includes("channels");
+
+    if (message !== expectedMessage && message !== sessionMessage && !isBatchMsg) {
+      return NextResponse.json({ error: 'Invalid auth message' }, { status: 401 });
+    }
+
+    const isAuthorized = await verifySignature(message, signature, normalizedAddress);
+    if (!isAuthorized) {
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
     const supabaseServer = getSupabaseServer();
@@ -37,7 +62,9 @@ export async function POST(req: Request) {
       .eq('address', profileAddress.toLowerCase())
       .single();
 
-    const aiKey = profile?.ai_api_key;
+    // Расшифровываем OpenRouter ключ если он есть
+    const aiKey = profile?.ai_api_key ? decryptData(profile.ai_api_key) : "";
+    
     const authorDisplayName = profile?.name || `${profileAddress.slice(0, 6)}...`;
     const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info').replace(/\/$/, '');
 
@@ -49,7 +76,7 @@ export async function POST(req: Request) {
     if (account.language || account.style) {
       console.log(`📡 [API Distribution] Adapting content for ${channelType}...`);
       const platform = channelType === 'binance' ? 'binance' : 'telegram';
-      const adapted = await adaptContent(title, content, account.language || 'English', account.style || 'Professional', aiKey || "", platform);
+      const adapted = await adaptContent(title, content, account.language || 'English', account.style || 'Professional', aiKey, platform);
       title = adapted.title;
       content = adapted.teaser;
       
@@ -64,7 +91,12 @@ export async function POST(req: Request) {
     // 4. Publish
     let res: { success: boolean, error?: string } = { success: false };
     if (channelType === 'binance') {
-      res = await postToBinance(account, title, content, articleId);
+      // Расшифровываем Binance API ключ
+      const secureAccount = {
+        ...account,
+        apiKey: account.apiKey ? decryptData(account.apiKey) : ""
+      };
+      res = await postToBinance(secureAccount, title, content, articleId);
     } else if (channelType === 'telegram') {
       const targetChat = account.topicId ? `${account.chatId}/${account.topicId}` : account.chatId;
       console.log(`📡 [API Distribution] Posting to user Telegram: ${targetChat}`);
