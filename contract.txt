@@ -1,4 +1,5 @@
-0xcb4a4330e5755ae1de457ea3f18dc6c1c2400661  contract
+0x329b97d8f288D550A428aA7995A33C66298A3b34  contract
+
 
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.34;
@@ -8,75 +9,73 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/common/ERC2981.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-/**
- * @title PagerMascotKeys
- * @notice ERC-1155 contract where NFTs act as keys to AI DNA stored in Pager DB.
- * @dev Fixed supply of 10,000 per mascot. 5% primary fee, 20% royalties.
- */
-contract PagerMascotKeys is ERC1155, Ownable, ERC2981 {
+contract PagerMascotKeys is ERC1155, Ownable, ERC2981, ReentrancyGuard {
     using Strings for uint256;
 
     // =====================================================
     // CONSTANTS
     // =====================================================
     
-    /// @notice Fixed max supply for every mascot (10,000 copies)
     uint256 public constant MAX_SUPPLY = 10000;
-    
-    /// @notice $HASH token contract (immutable for gas savings)
+    uint96 public constant ROYALTY_BPS = 2000;
+    uint256 public constant CREATION_FEE = 500 * 10**18;
     IERC20 public immutable hashToken;
     
-    /// @notice Royalty rate for secondary sales (20% = 2000 basis points)
-    uint96 public constant ROYALTY_BPS = 2000;
+    string public name = "Pager Mascot Keys";
+    string public symbol = "PMK";
 
     // =====================================================
-    // STATE VARIABLES
+    // STRUCTS
     // =====================================================
 
-    /// @notice Team wallet that collects fees
-    address public teamWallet;
-    
-    /// @notice Auto-incrementing ID for the next mascot
-    uint256 public nextTokenId;
-    
-    /// @notice Collection metadata URI for marketplaces (OpenSea)
-    string public collectionMetadata = "ipfs://bafkreibgkoo4zv3mctvyghtzhx5utmperwkfzl4jpwoes2f2ymfefmz3ea";
-    
-    /// @notice Base URI for token metadata (points to your API)
-    string public baseURI;
-
-    /// @notice Structure for each mascot key
     struct MascotKey {
-        address creator;      // Original creator
-        uint256 price;        // Current mint price in $HASH (wei)
-        uint256 currentSupply; // How many copies minted so far
+        address creator;
+        uint256 price;
+        uint32 currentSupply;
+        uint32 totalSold;
+        bool exists;
     }
 
-    /// @notice Mapping from token ID to mascot data
+    // =====================================================
+    // STATE
+    // =====================================================
+
+    address public teamWallet;
+    uint256 public nextTokenId;
+    
+    string public collectionMetadata = "ipfs://bafkreibgkoo4zv3mctvyghtzhx5utmperwkfzl4jpwoes2f2ymfefmz3ea";
+    string public baseURI;
+
     mapping(uint256 => MascotKey) public keys;
+    uint256[] public allTokenIds;
+    
+    mapping(address => uint256[]) private userTokens;
+    mapping(address => mapping(uint256 => bool)) private userTokenExists;
 
     // =====================================================
     // EVENTS
     // =====================================================
 
+    event CreationFeePaid(address indexed creator, uint256 amount);
     event MascotCreated(uint256 indexed tokenId, address indexed creator, uint256 price);
     event MascotMinted(uint256 indexed tokenId, address indexed buyer);
+    event MascotDiscarded(uint256 indexed tokenId, address indexed user);
+    event MascotDeleted(uint256 indexed tokenId);
     event PriceUpdated(uint256 indexed tokenId, uint256 newPrice);
 
     // =====================================================
     // CONSTRUCTOR
     // =====================================================
 
-    /**
-     * @param _hashToken Address of the $HASH ERC-20 token
-     * @param _teamWallet Wallet that receives fees (5% primary, 20% royalties)
-     * @param _baseURI Base URI for metadata (e.g., "https://pager.lookhook.info/api/metadata/")
-     */
     constructor(address _hashToken, address _teamWallet, string memory _baseURI) 
         ERC1155("") 
         Ownable(msg.sender) 
     {
+        require(_hashToken != address(0), "Invalid token");
+        require(_teamWallet != address(0), "Invalid wallet");
+        
         hashToken = IERC20(_hashToken);
         teamWallet = _teamWallet;
         baseURI = _baseURI;
@@ -84,161 +83,242 @@ contract PagerMascotKeys is ERC1155, Ownable, ERC2981 {
     }
 
     // =====================================================
-    // CORE FUNCTIONS
+    // CORE
     // =====================================================
 
-    /**
-     * @notice Creates a new mascot type
-     * @dev Mints 1 copy directly to creator (fair)
-     * @param _price Mint price per copy in $HASH (wei units)
-     */
     function createMascot(uint256 _price) external {
+        require(hashToken.transferFrom(msg.sender, teamWallet, CREATION_FEE), "Creation fee failed");
+        emit CreationFeePaid(msg.sender, CREATION_FEE);
+        
         uint256 tokenId = nextTokenId++;
         
         keys[tokenId] = MascotKey({
             creator: msg.sender,
             price: _price,
-            currentSupply: 1  // Start at 1 because creator gets first copy
+            currentSupply: 1,
+            totalSold: 0,
+            exists: true
         });
         
-        // Mint first copy to creator
+        allTokenIds.push(tokenId);
         _mint(msg.sender, tokenId, 1, "");
         
         emit MascotCreated(tokenId, msg.sender, _price);
     }
 
-    /**
-     * @notice Mints a copy of a mascot key
-     * @dev 5% fee to team, 95% to creator
-     * @param _tokenId The ID of the mascot to mint
-     */
-    function mintKey(uint256 _tokenId) external {
+    function mintKey(uint256 _tokenId) external nonReentrant {
         MascotKey storage k = keys[_tokenId];
-        require(k.creator != address(0), "Mascot does not exist");
+        require(k.exists, "Not exist");
         require(k.currentSupply < MAX_SUPPLY, "Sold out");
 
-        uint256 totalCost = k.price;
-        uint256 teamFee = (totalCost * 5) / 100;      // 5% to team
-        uint256 creatorShare = totalCost - teamFee;   // 95% to creator
+        uint256 teamFee = (k.price * 5) / 100;
+        uint256 creatorShare = k.price - teamFee;
+
+        require(hashToken.transferFrom(msg.sender, teamWallet, teamFee), "Team fee");
+        require(hashToken.transferFrom(msg.sender, k.creator, creatorShare), "Creator fee");
 
         k.currentSupply++;
+        k.totalSold++;
         _mint(msg.sender, _tokenId, 1, "");
-
-        require(hashToken.transferFrom(msg.sender, teamWallet, teamFee), "Team fee failed");
-        require(hashToken.transferFrom(msg.sender, k.creator, creatorShare), "Creator payment failed");
         
         emit MascotMinted(_tokenId, msg.sender);
     }
 
-    /**
-     * @notice Updates the mint price of a mascot
-     * @dev Only callable by the creator
-     * @param _tokenId The ID of the mascot
-     * @param _newPrice New mint price in $HASH (wei units)
-     */
+    function discardMascot(uint256 _tokenId) external {
+        require(balanceOf(msg.sender, _tokenId) > 0, "Not owner");
+        safeTransferFrom(msg.sender, teamWallet, _tokenId, 1, "");
+        emit MascotDiscarded(_tokenId, msg.sender);
+    }
+
     function setPrice(uint256 _tokenId, uint256 _newPrice) external {
-        require(keys[_tokenId].creator == msg.sender, "Only creator can set price");
+        require(keys[_tokenId].exists, "Not exist");
+        require(keys[_tokenId].creator == msg.sender, "Only creator");
         keys[_tokenId].price = _newPrice;
         emit PriceUpdated(_tokenId, _newPrice);
     }
 
+    /**
+     * @notice Полное удаление маскота (только owner)
+     * @dev Убирает из allTokenIds, блокирует минт и метаданные
+     */
+    function deleteMascot(uint256 _tokenId) external onlyOwner {
+        require(keys[_tokenId].exists, "Already deleted");
+        
+        keys[_tokenId].exists = false;
+        _removeFromAllTokens(_tokenId);
+        
+        emit MascotDeleted(_tokenId);
+    }
+
     // =====================================================
-    // METADATA FUNCTIONS
+    // VIEWS
     // =====================================================
 
-    /**
-     * @notice Returns the metadata URI for a specific token
-     * @dev OpenSea calls this to display NFT metadata
-     * @param _tokenId The ID of the mascot
-     * @return string Full metadata URI (baseURI + tokenId + ".json")
-     */
+    function getAllMascots(uint256 offset, uint256 limit) 
+        external 
+        view 
+        returns (
+            uint256[] memory tokenIds,
+            MascotKey[] memory details,
+            uint256 total
+        ) 
+    {
+        total = allTokenIds.length;
+        
+        if (offset >= total) {
+            return (new uint256[](0), new MascotKey[](0), total);
+        }
+        
+        uint256 end = offset + limit > total ? total : offset + limit;
+        uint256 len = end - offset;
+        
+        tokenIds = new uint256[](len);
+        details = new MascotKey[](len);
+        
+        for (uint256 i = 0; i < len; i++) {
+            tokenIds[i] = allTokenIds[offset + i];
+            details[i] = keys[tokenIds[i]];
+        }
+        
+        return (tokenIds, details, total);
+    }
+
+    function getUserMascots(address _owner) 
+        external 
+        view 
+        returns (
+            uint256[] memory tokenIds,
+            uint256[] memory balances,
+            MascotKey[] memory details
+        ) 
+    {
+        uint256[] storage list = userTokens[_owner];
+        uint256 len = list.length;
+        
+        tokenIds = new uint256[](len);
+        balances = new uint256[](len);
+        details = new MascotKey[](len);
+        
+        for (uint256 i = 0; i < len; i++) {
+            tokenIds[i] = list[i];
+            balances[i] = balanceOf(_owner, list[i]);
+            details[i] = keys[list[i]];
+        }
+        
+        return (tokenIds, balances, details);
+    }
+
+    function getUserMascotCount(address _owner) external view returns (uint256) {
+        return userTokens[_owner].length;
+    }
+
+    // =====================================================
+    // METADATA
+    // =====================================================
+
     function uri(uint256 _tokenId) public view override returns (string memory) {
+        require(keys[_tokenId].exists, "Nonexistent token");
         return string(abi.encodePacked(baseURI, _tokenId.toString(), ".json"));
     }
 
-    /**
-     * @notice Returns the collection-level metadata URI for marketplaces
-     * @dev OpenSea calls this to display collection info
-     * @return string Collection metadata URI (IPFS)
-     */
     function contractURI() public view returns (string memory) {
         return collectionMetadata;
     }
 
     // =====================================================
-    // VIEW FUNCTIONS
+    // ADMIN
     // =====================================================
 
-    /**
-     * @notice Returns the remaining supply for a mascot
-     * @param _tokenId The ID of the mascot
-     * @return uint256 Number of copies still available
-     */
-    function remainingSupply(uint256 _tokenId) external view returns (uint256) {
-        return MAX_SUPPLY - keys[_tokenId].currentSupply;
-    }
-
-    /**
-     * @notice Returns the total supply minted for a mascot
-     * @param _tokenId The ID of the mascot
-     * @return uint256 Total minted copies
-     */
-    function totalSupply(uint256 _tokenId) external view returns (uint256) {
-        return keys[_tokenId].currentSupply;
-    }
-
-    // =====================================================
-    // ADMIN FUNCTIONS
-    // =====================================================
-
-    /**
-     * @notice Updates the base URI for token metadata
-     * @param _newBaseURI New base URI
-     */
     function setBaseURI(string memory _newBaseURI) external onlyOwner {
         baseURI = _newBaseURI;
     }
 
-    /**
-     * @notice Updates the collection metadata URI
-     * @param _newMetadata New collection metadata URI (IPFS)
-     */
     function setCollectionMetadata(string memory _newMetadata) external onlyOwner {
         collectionMetadata = _newMetadata;
     }
 
-    /**
-     * @notice Updates the team wallet address
-     * @param _newWallet New team wallet address
-     */
     function setTeamWallet(address _newWallet) external onlyOwner {
+        require(_newWallet != address(0), "Invalid address");
         teamWallet = _newWallet;
         _setDefaultRoyalty(_newWallet, ROYALTY_BPS);
     }
 
-    /**
-     * @notice Withdraws any accidentally sent ETH (safety)
-     */
     function withdrawETH() external onlyOwner {
         (bool success, ) = payable(owner()).call{value: address(this).balance}("");
         require(success, "ETH transfer failed");
     }
 
     // =====================================================
-    // OVERRIDES
+    // INTERNAL
     // =====================================================
 
     /**
-     * @notice Required override for ERC1155 + ERC2981 compatibility
+     * @dev Убирает tokenId из allTokenIds (сохраняя порядок)
      */
-    function supportsInterface(bytes4 interfaceId) public view override(ERC1155, ERC2981) returns (bool) {
+    function _removeFromAllTokens(uint256 _tokenId) private {
+        uint256 len = allTokenIds.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (allTokenIds[i] == _tokenId) {
+                allTokenIds[i] = allTokenIds[len - 1];
+                allTokenIds.pop();
+                break;
+            }
+        }
+    }
+
+    function _update(
+        address from,
+        address to,
+        uint256[] memory ids,
+        uint256[] memory values
+    ) internal virtual override {
+        super._update(from, to, ids, values);
+        
+        if (to != address(0)) {
+            for (uint256 i = 0; i < ids.length; i++) {
+                if (values[i] > 0 && !userTokenExists[to][ids[i]]) {
+                    userTokens[to].push(ids[i]);
+                    userTokenExists[to][ids[i]] = true;
+                }
+            }
+        }
+        
+        if (from != address(0)) {
+            for (uint256 i = 0; i < ids.length; i++) {
+                if (balanceOf(from, ids[i]) == 0) {
+                    userTokenExists[from][ids[i]] = false;
+                    _removeUserToken(from, ids[i]);
+                }
+            }
+        }
+    }
+
+    function _removeUserToken(address user, uint256 tokenId) private {
+        uint256[] storage tokens = userTokens[user];
+        for (uint256 i = 0; i < tokens.length; i++) {
+            if (tokens[i] == tokenId) {
+                tokens[i] = tokens[tokens.length - 1];
+                tokens.pop();
+                break;
+            }
+        }
+    }
+
+    function supportsInterface(bytes4 interfaceId) 
+        public 
+        view 
+        override(ERC1155, ERC2981) 
+        returns (bool) 
+    {
         return super.supportsInterface(interfaceId);
     }
 }
 
 
 
-abi
+
+
+ABI
 
 [
 	{
@@ -451,6 +531,11 @@ abi
 		"type": "error"
 	},
 	{
+		"inputs": [],
+		"name": "ReentrancyGuardReentrantCall",
+		"type": "error"
+	},
+	{
 		"anonymous": false,
 		"inputs": [
 			{
@@ -480,6 +565,25 @@ abi
 		"inputs": [
 			{
 				"indexed": true,
+				"internalType": "address",
+				"name": "creator",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "CreationFeePaid",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
 				"internalType": "uint256",
 				"name": "tokenId",
 				"type": "uint256"
@@ -498,6 +602,38 @@ abi
 			}
 		],
 		"name": "MascotCreated",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "tokenId",
+				"type": "uint256"
+			}
+		],
+		"name": "MascotDeleted",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "tokenId",
+				"type": "uint256"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "user",
+				"type": "address"
+			}
+		],
+		"name": "MascotDiscarded",
 		"type": "event"
 	},
 	{
@@ -652,6 +788,19 @@ abi
 	},
 	{
 		"inputs": [],
+		"name": "CREATION_FEE",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
 		"name": "MAX_SUPPLY",
 		"outputs": [
 			{
@@ -671,6 +820,25 @@ abi
 				"internalType": "uint96",
 				"name": "",
 				"type": "uint96"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"name": "allTokenIds",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
 			}
 		],
 		"stateMutability": "view",
@@ -777,6 +945,168 @@ abi
 		"type": "function"
 	},
 	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_tokenId",
+				"type": "uint256"
+			}
+		],
+		"name": "deleteMascot",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_tokenId",
+				"type": "uint256"
+			}
+		],
+		"name": "discardMascot",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "offset",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "limit",
+				"type": "uint256"
+			}
+		],
+		"name": "getAllMascots",
+		"outputs": [
+			{
+				"internalType": "uint256[]",
+				"name": "tokenIds",
+				"type": "uint256[]"
+			},
+			{
+				"components": [
+					{
+						"internalType": "address",
+						"name": "creator",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "price",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint32",
+						"name": "currentSupply",
+						"type": "uint32"
+					},
+					{
+						"internalType": "uint32",
+						"name": "totalSold",
+						"type": "uint32"
+					},
+					{
+						"internalType": "bool",
+						"name": "exists",
+						"type": "bool"
+					}
+				],
+				"internalType": "struct PagerMascotKeys.MascotKey[]",
+				"name": "details",
+				"type": "tuple[]"
+			},
+			{
+				"internalType": "uint256",
+				"name": "total",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_owner",
+				"type": "address"
+			}
+		],
+		"name": "getUserMascotCount",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_owner",
+				"type": "address"
+			}
+		],
+		"name": "getUserMascots",
+		"outputs": [
+			{
+				"internalType": "uint256[]",
+				"name": "tokenIds",
+				"type": "uint256[]"
+			},
+			{
+				"internalType": "uint256[]",
+				"name": "balances",
+				"type": "uint256[]"
+			},
+			{
+				"components": [
+					{
+						"internalType": "address",
+						"name": "creator",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "price",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint32",
+						"name": "currentSupply",
+						"type": "uint32"
+					},
+					{
+						"internalType": "uint32",
+						"name": "totalSold",
+						"type": "uint32"
+					},
+					{
+						"internalType": "bool",
+						"name": "exists",
+						"type": "bool"
+					}
+				],
+				"internalType": "struct PagerMascotKeys.MascotKey[]",
+				"name": "details",
+				"type": "tuple[]"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
 		"inputs": [],
 		"name": "hashToken",
 		"outputs": [
@@ -834,9 +1164,19 @@ abi
 				"type": "uint256"
 			},
 			{
-				"internalType": "uint256",
+				"internalType": "uint32",
 				"name": "currentSupply",
-				"type": "uint256"
+				"type": "uint32"
+			},
+			{
+				"internalType": "uint32",
+				"name": "totalSold",
+				"type": "uint32"
+			},
+			{
+				"internalType": "bool",
+				"name": "exists",
+				"type": "bool"
 			}
 		],
 		"stateMutability": "view",
@@ -853,6 +1193,19 @@ abi
 		"name": "mintKey",
 		"outputs": [],
 		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "name",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "",
+				"type": "string"
+			}
+		],
+		"stateMutability": "view",
 		"type": "function"
 	},
 	{
@@ -876,25 +1229,6 @@ abi
 				"internalType": "address",
 				"name": "",
 				"type": "address"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "_tokenId",
-				"type": "uint256"
-			}
-		],
-		"name": "remainingSupply",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
 			}
 		],
 		"stateMutability": "view",
@@ -1098,31 +1432,25 @@ abi
 	},
 	{
 		"inputs": [],
-		"name": "teamWallet",
+		"name": "symbol",
 		"outputs": [
 			{
-				"internalType": "address",
+				"internalType": "string",
 				"name": "",
-				"type": "address"
+				"type": "string"
 			}
 		],
 		"stateMutability": "view",
 		"type": "function"
 	},
 	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "_tokenId",
-				"type": "uint256"
-			}
-		],
-		"name": "totalSupply",
+		"inputs": [],
+		"name": "teamWallet",
 		"outputs": [
 			{
-				"internalType": "uint256",
+				"internalType": "address",
 				"name": "",
-				"type": "uint256"
+				"type": "address"
 			}
 		],
 		"stateMutability": "view",

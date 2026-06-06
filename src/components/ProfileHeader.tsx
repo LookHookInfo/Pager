@@ -4,7 +4,7 @@ import {
   Globe, Settings2, Save, X, Loader2, Camera, 
   UserPlus, Zap, Plus, 
   Sparkles, Fingerprint, Database, ShieldCheck, Edit3, Trash2,
-  Languages, UserCircle, Send, Scan, Activity, Eye as EyeIcon, CheckCircle2, Eye, EyeOff
+  Languages, UserCircle, Send, Scan, Activity, Eye as EyeIcon, CheckCircle2
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -40,7 +40,6 @@ export default function ProfileHeader({
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [showAiKey, setShowAiKey] = useState(false);
   const [isCustomAtmosphere, setIsCustomAtmosphere] = useState(false);
   const [isAnalyzingDna, setIsAnalyzingDna] = useState(false);
   
@@ -56,7 +55,6 @@ export default function ProfileHeader({
   const [formData, setFormData] = useState({
     name: profile.name || "", bio: profile.bio || "", website: profile.website || "",
     avatar_url: profile.avatar_url || "",
-    ai_api_key: profile.ai_api_key || "", 
     ai_atmosphere: profile.ai_atmosphere || PRESET_ATMOSPHERES[0], binance_accounts: profile.binance_accounts || [],
     telegram_channels: profile.telegram_channels || [], telegram_chat_id: profile.telegram_chat_id || "",
     cta_telegram: profile.cta_telegram || "", cta_forum: profile.cta_forum || "",
@@ -79,7 +77,6 @@ export default function ProfileHeader({
     const data = {
       name: profile.name || "", bio: profile.bio || "", website: profile.website || "",
       avatar_url: profile.avatar_url || "",
-      ai_api_key: profile.ai_api_key || "",
       ai_atmosphere: profile.ai_atmosphere || PRESET_ATMOSPHERES[0], binance_accounts: profile.binance_accounts || [],
       telegram_channels: profile.telegram_channels || [], telegram_chat_id: profile.telegram_chat_id || "",
       cta_telegram: profile.cta_telegram || "", cta_forum: profile.cta_forum || "",
@@ -193,7 +190,8 @@ export default function ProfileHeader({
             image_url: forgeData.image_url,
             creator_address: account.address.toLowerCase(),
             price: forgeData.price,
-            max_supply: 10000 
+            max_supply: 10000,
+            contract_address: MASCOTS_CONTRACT_ADDRESS.toLowerCase()
         }], { onConflict: 'id' });
 
         if (dbError) throw dbError;
@@ -210,6 +208,31 @@ export default function ProfileHeader({
     try {
         const contract = getContract({ client, chain: base, address: MASCOTS_CONTRACT_ADDRESS, abi: MASCOTS_ABI as any });
         
+        // 1. ПРОВЕРКА И ОДОБРЕНИЕ КОМИССИИ (500 $HASH)
+        const hashContract = getContract({ client, chain: base, address: HASH_TOKEN_ADDRESS });
+        const creationFee = await readContract({ contract, method: "function CREATION_FEE() view returns (uint256)", params: [] });
+        
+        const currentAllowance = await readContract({
+            contract: hashContract,
+            method: "function allowance(address,address) view returns (uint256)",
+            params: [account.address as any, MASCOTS_CONTRACT_ADDRESS as any]
+        });
+
+        if (currentAllowance < creationFee) {
+            showNotify("Approving 500 $HASH Creation Fee...", "success");
+            const approveTx = prepareContractCall({
+                contract: hashContract,
+                method: "function approve(address spender, uint256 value)",
+                params: [MASCOTS_CONTRACT_ADDRESS, creationFee]
+            });
+            await new Promise((resolve, reject) => {
+                sendTransaction(approveTx, {
+                    onSuccess: () => resolve(true),
+                    onError: (err) => reject(err)
+                });
+            });
+        }
+
         const transaction = prepareContractCall({
             contract,
             method: "function createMascot(uint256 _price)",
@@ -353,7 +376,7 @@ export default function ProfileHeader({
     <header className="mb-20 space-y-12">
       {/* Visual Notification System */}
       {notification && (
-          <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-[100] px-8 py-4 rounded-sm shadow-2xl border-l-4 animate-in slide-in-from-top-4 duration-300 flex items-center gap-4 ${notification.type === 'success' ? 'bg-black text-white border-green-500' : 'bg-red-600 text-white border-red-800'}`}>
+          <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-[100] px-8 py-4 rounded-sm shadow-2xl border-l-4 animate-in slide-in-from-top-4 duration-300 flex items-center gap-4 ${notification.type === 'success' ? 'bg-black text-white border-green-500' : notification.type === 'error' ? 'bg-red-600 text-white border-red-800' : 'bg-gray-900 text-white border-blue-500'}`}>
               {notification.type === 'success' ? <CheckCircle2 size={20} className="text-green-500" /> : <X size={20} />}
               <div className="flex flex-col">
                   <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Protocol Message</span>
@@ -663,25 +686,6 @@ export default function ProfileHeader({
                                         className="w-full text-xs p-3 border border-black outline-none bg-white animate-in slide-in-from-top-1 duration-200" 
                                     />
                                 )}
-                            </div>
-
-                            <div className="grid grid-cols-1 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-[9px] font-black uppercase text-gray-400 ml-1">OpenRouter API Key (Optional)</label>
-                                    <div className="relative">
-                                        <input 
-                                            type={showAiKey ? "text" : "password"} 
-                                            value={formData.ai_api_key} 
-                                            onChange={e => setFormData({...formData, ai_api_key: e.target.value})} 
-                                            placeholder="sk-or-v1-..." 
-                                            className="w-full text-xs font-mono p-3 border border-gray-200 outline-none bg-white focus:border-black pr-10" 
-                                        />
-                                        <div onClick={() => setShowAiKey(!showAiKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black cursor-pointer">
-                                            {showAiKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                                        </div>
-                                    </div>
-                                    <p className="text-[8px] text-gray-400 font-bold italic">Leave blank to use PAGER credits for AI generation.</p>
-                                </div>
                             </div>
                         </div>
                     </div>

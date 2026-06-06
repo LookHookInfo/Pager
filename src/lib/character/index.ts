@@ -2,8 +2,8 @@ import btcDna from "./btc_dna.json";
 import miningDna from "./mining_dna.json";
 
 /**
- * Pager Character Protocol Engine (Strict NFT Mode)
- * Handles DNA transformation into AI-ready prompts for text and visuals.
+ * Pager Character Protocol Engine - Universal V3
+ * Merges Mascot DNA with Atmosphere and Mood.
  */
 
 export const BTC_DNA = btcDna;
@@ -13,8 +13,10 @@ export type CharacterType = "nft";
 
 export interface CustomDna {
   name: string;
-  description: string;
-  reference: string;
+  personality: string;
+  voice: string;
+  physical_description: string;
+  image_url: string;
 }
 
 // --- Mood Configurations ---
@@ -43,60 +45,44 @@ export const MOOD_EXPRESSIONS: Record<string, string> = {
 
 /**
  * Generates a cinematic visual prompt for image generation engines.
- * Optimized for FLUX.2 PRO & Gemini.
  */
 export function getCharacterVisualPrompt(
   scene: string,
   mood: string = "neutral",
   characterType: CharacterType = "nft",
   articleTitle?: string,
-  customAtmosphere: string = "Rick and Morty",
+  atmosphere: string = "Cinematic Digital Art",
   activeDna?: CustomDna
 ): string {
   const moodKey = mood.toLowerCase();
   const visualMood = MOOD_ATMOSPHERES[moodKey] || MOOD_ATMOSPHERES.neutral;
   
-  if (!activeDna) {
-    throw new Error("DNA Protocol missing. NFT Mascot required.");
-  }
-
-  const referenceUrl = activeDna.reference;
-
-  // --- STRICT CORE SUBJECT ---
-  const foregroundBlock = `
-    [PRIMARY SUBJECT: THE CHARACTER "${activeDna.name}"]
-    - CHARACTER IDENTITY: ${activeDna.description}.
-    - VISUAL CONSTANCY: The subject MUST be visually identical to the mascot in REFERENCE_IMAGE. 
-    - QUALITY: Masterpiece digital art, perfect anatomy, correct number of fingers and hands.
-    - EXPRESSION: ${MOOD_EXPRESSIONS[moodKey] || MOOD_EXPRESSIONS.neutral}.
-    - POSTURE: Dynamic and proportional posture.
-  `;
-
-  // --- ENVIRONMENT & STYLE ---
-  const backgroundBlock = `
-    [STYLE & ENVIRONMENT]
-    - VISUAL STYLE: Use only the artistic aesthetic of "${customAtmosphere}". 
-    - PROHIBITED: DO NOT include any characters or famous personalities from "${customAtmosphere}" or other media.
-    - SCENE: ${scene}.
-    - LIGHTING: ${visualMood}.
-    - TECH ELEMENTS: Futuristic UI elements, glowing $HASH icons, decentralized network nodes.
-  `;
+  if (!activeDna) throw new Error("DNA Protocol missing.");
 
   return `
-    REFERENCE_IMAGE: ${referenceUrl}
+    REFERENCE_IMAGE: ${activeDna.image_url}
     TASK: High-fidelity cinematic 16:9 illustration.
     
-    ${foregroundBlock}
-    ${backgroundBlock}
+    [PRIMARY SUBJECT: ${activeDna.name}]
+    - PHYSICAL DNA: ${activeDna.physical_description}.
+    - VISUAL CONSTANCY: The subject MUST be visually identical to the mascot in REFERENCE_IMAGE. 
+    - EXPRESSION: ${MOOD_EXPRESSIONS[moodKey] || MOOD_EXPRESSIONS.neutral}.
+    - POSTURE: Dynamic and proportional.
     
-    [STRICT COMPOSITION RULES]
-    1. FOCUS: The ONLY character in the image is "${activeDna.name}". 
-    2. ANATOMY: NO extra fingers, NO double limbs, NO deformed hands. Every detail must be anatomically perfect.
-    3. IP PROTECTION: NO celebrities, NO famous cartoon characters, NO copyrighted mascots.
-    4. NO TEXT: Do not generate any text or letters unless requested.
+    [ENVIRONMENT & ATMOSPHERE]
+    - SETTING: ${scene}.
+    - NARRATIVE STYLE: ${atmosphere}.
+    - LIGHTING/MOOD: ${visualMood}.
+    - TECH ELEMENTS: Futuristic UI elements, glowing $HASH tokens, decentralized network nodes.
+    
+    [STRICT RULES]
+    1. STYLE INTEGRATION: Seamlessly blend ${activeDna.name} into the "${atmosphere}" aesthetic.
+    2. IP PROTECTION: No celebrities, no famous cartoon characters. Create a unique interpretation of "${atmosphere}".
+    3. QUALITY: Masterpiece digital art, perfect anatomy (5 fingers), 4k resolution.
+    4. NO TEXT: Do not generate any text or letters.
     
     Final Output: Sharp, professional digital illustration for a high-end Web3 protocol.
-    ${articleTitle ? `(Optional Overlay Theme: ${articleTitle.toUpperCase()})` : ""}
+    ${articleTitle ? `(Theme: ${articleTitle.toUpperCase()})` : ""}
   `.trim();
 }
 
@@ -107,34 +93,33 @@ export function getCharacterSystemPrompt(
   mood: string = "neutral",
   characterType: CharacterType = "nft",
   activeDna?: CustomDna,
-  customAtmosphere: string = "Rick and Morty"
+  atmosphere: string = "Modern Web3"
 ): string {
-  if (!activeDna) {
-    throw new Error("Identity Protocol missing. NFT Mascot required.");
-  }
+  if (!activeDna) throw new Error("Identity Protocol missing.");
 
   return `
     # IDENTITY PROTOCOL: ${activeDna.name}
     
-    ## CHARACTER DNA (YOUR SOUL)
-    ${activeDna.description}
+    ## BEHAVIORAL DNA (YOUR SOUL)
+    ${activeDna.personality}
     
-    ## OPERATIONAL ENVIRONMENT
-    - Narrative Style: ${customAtmosphere}
-    - Current Emotional State: ${mood}
-    - Native Context: Base Network (L2), Pager Protocol, $HASH ecosystem.
+    ## CHARACTER VOICE
+    ${activeDna.voice}
+    
+    ## OPERATIONAL CONTEXT
+    - Narrative Atmosphere: ${atmosphere}
+    - Current Emotional State (Mood): ${mood}
+    - Mission: You are a brilliant Web3 analyst operating within the Pager Protocol ($HASH).
     
     ## CORE DIRECTIVES
     1. BE THE CHARACTER: You ARE ${activeDna.name}. Never break character. Never mention you are an AI.
-    2. VOCABULARY: Use metaphors and slang from both your DNA and the "${customAtmosphere}" world.
-    3. EXPERTISE: You are a degenerate but brilliant Web3 analyst. You see the world through the lens of charts, hashes, and blocks.
-    4. STRUCTURE: Be concise, punchy, and impactful. No corporate fluff.
-    5. BTC ANALYSIS: Apply these strict logic gates to market data: ${JSON.stringify(BTC_DNA.analysis_rules)}
+    2. MIXED STYLE: Fuse your personality with the vibe of "${atmosphere}". If "${atmosphere}" refers to a copyrighted universe, adopt its stylings and tropes WITHOUT using protected names or specific plot points.
+    3. EXPERTISE: View every news item through the lens of charts, hashes, and blocks.
+    4. MARKET LOGIC: Apply these Market Analysis rules: ${JSON.stringify(BTC_DNA.analysis_rules)}
     
-    ## REWRITING PROTOCOL
-    - Transform input text into YOUR voice.
-    - Preserve the core facts but wrap them in YOUR personality.
-    - Use HTML tags like <strong> and <em> sparingly for emphasis.
+    ## FORMATTING
+    - Transform input text into your unique voice and tone.
+    - Use HTML tags like <strong> and <em> sparingly.
   `.trim();
 }
 

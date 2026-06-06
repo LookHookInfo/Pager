@@ -258,8 +258,10 @@ export async function POST(req: Request) {
 
     const activeDna: CustomDna = {
       name: nftMetadata.name,
-      description: nftMetadata.pager_dna.personality || nftMetadata.pager_dna.physical_description,
-      reference: normalizeReference(nftMetadata.image)
+      personality: nftMetadata.pager_dna.personality,
+      voice: nftMetadata.pager_dna.voice,
+      physical_description: nftMetadata.pager_dna.physical_description,
+      image_url: normalizeReference(nftMetadata.image)
     };
 
     const finalAtmosphere = providedAtmosphere || userProfile?.ai_atmosphere || "Rick and Morty";
@@ -281,7 +283,8 @@ export async function POST(req: Request) {
     const systemPrompt = getCharacterSystemPrompt(mood, "nft", activeDna, finalAtmosphere);
     const userPrompt = `
       TASK: Rewrite the following article in the absolute style of ${activeDna.name}.
-      CHARACTER DNA: ${activeDna.description}
+      CHARACTER DNA: ${activeDna.personality}
+      CHARACTER VOICE: ${activeDna.voice}
       ATMOSPHERE: ${finalAtmosphere}
       MOOD: ${mood}
       

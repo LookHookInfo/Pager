@@ -53,7 +53,7 @@ export default function Navbar() {
         <div className="flex items-center gap-6">
           {account && (
             <div className="hidden md:flex items-center gap-6">
-              <Link href="/character" className="text-sm font-medium text-[var(--text-secondary)] hover:text-black transition-colors">Mascots</Link>
+              <Link href="/mascots" className="text-sm font-medium text-[var(--text-secondary)] hover:text-black transition-colors">Mascots</Link>
               <Link href="/write" className="text-sm font-medium text-[var(--text-secondary)] hover:text-black transition-colors">Write</Link>
               <div className="h-4 w-[1px] bg-[var(--border-soft)]" />
               <Link href={`/tape/${account.address}`} className="text-sm font-medium text-[var(--text-secondary)] hover:text-black transition-colors">

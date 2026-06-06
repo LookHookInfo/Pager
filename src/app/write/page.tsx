@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { 
   Image as ImageIcon, Send, X, AlertCircle, 
   Bold, Italic, Link as LinkIcon, Loader2, Upload,
-  Sparkles, PenLine, Lock, CheckCircle2, Megaphone, Zap, Settings2, ShoppingCart
+  Sparkles, PenLine, Lock, CheckCircle2, Megaphone, Zap, Settings2, ShoppingCart, ChevronDown
 } from "lucide-react";
 import Link from "next/link";
 import { client, HASH_TOKEN_ADDRESS, MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI } from "@/lib/web3";
@@ -26,14 +26,6 @@ const COMPRESSION_OPTIONS = {
   initialQuality: 0.9,
 };
 
-// Fallback gateways for IPFS
-const IPFS_GATEWAYS = [
-  "https://gateway.ipn.io/ipfs/",
-  "https://gateway.pinata.cloud/ipfs/",
-  "https://cloudflare-ipfs.com/ipfs/",
-  "https://ipfs.io/ipfs/"
-];
-
 interface Notification {
   id: string;
   message: string;
@@ -47,6 +39,7 @@ export default function WritePage() {
   
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   
   const [title, setTitle] = useState("");
   const [imageUrl, setImageUrl] = useState("");
@@ -64,16 +57,14 @@ export default function WritePage() {
   const [ownedMascots, setOwnedMascots] = useState<any[]>([]);
   const [selectedNftId, setSelectedNftId] = useState<string | null>(null);
   const [isFetchingMascots, setIsFetchingMascots] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   const [processingStep, setProcessingStep] = useState<"idle" | "scraping" | "rewriting" | "persisting" | "done">("idle");
   
-  // КЭШ ПОДПИСИ ДЛЯ ТЕКУЩЕЙ СЕССИИ
   const sessionAuth = useRef<{ signature: string, message: string } | null>(null);
 
   const getSessionSignature = async (action: string) => {
     if (!account) throw new Error("Connect wallet");
-    
-    // Если у нас уже есть подпись для авторизации протокола на сегодня - используем её
     if (sessionAuth.current) return sessionAuth.current;
 
     addNotification("Authorizing Session...", "info");
@@ -92,61 +83,18 @@ export default function WritePage() {
     }, 5000);
   };
 
-  // --- Persistence Logic ---
-  const persistAiImage = async (url: string) => {
-    if (!url) return "";
-    // If it's already a gateway URL or direct link we trust, return it
-    if (url.startsWith('https://gateway.ipn.io') || url.includes('supabase.co')) return url;
-    
-    try {
-      setProcessingStep("persisting");
-      const response = await fetch(url);
-      const blob = await response.blob();
-      
-      // Upload to Pinata via our API
-      const fileToUpload = new File([blob], `ai-${Date.now()}.png`, { type: blob.type });
-      return await uploadToStorage(fileToUpload);
-    } catch (e) {
-      console.error("❌ [Persist] Failed to save AI image:", e);
-      return url;
-    }
-  };
-
   const uploadToStorage = async (file: File) => {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-      
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.details || data.error || "IPFS Upload failed");
-      
       return data.url;
     } catch (error: any) {
       console.error("❌ [Upload API] Pinata failed:", error.message);
       throw error;
     }
-  };
-
-  const fetchMascotMetadata = async (uri: string) => {
-    const cid = uri.replace("ipfs://", "");
-    for (const gateway of IPFS_GATEWAYS) {
-      try {
-        const res = await fetch(`${gateway}${cid}`, { 
-          signal: AbortSignal.timeout(5000),
-          headers: { 'Accept': 'application/json' }
-        });
-        if (res.ok) return await res.json();
-      } catch (e) {
-        console.warn(`Gateway ${gateway} failed, trying next...`);
-        continue;
-      }
-    }
-    return null;
   };
 
   const fetchOwnedMascots = useCallback(async () => {
@@ -156,28 +104,53 @@ export default function WritePage() {
       const contract = getContract({ client, chain: base, address: MASCOTS_CONTRACT_ADDRESS, abi: MASCOTS_ABI as any });
       const nextId = await readContract({ contract, method: "function nextTokenId() view returns (uint256)", params: [] });
       
-      const owned = [];
+      const ownedIds = [];
       for (let i = 0; i < Number(nextId); i++) {
         const balance = await readContract({ contract, method: "function balanceOf(address, uint256) view returns (uint256)", params: [account.address, BigInt(i)] });
-        if (balance > 0n) {
-          const uri = await readContract({ contract, method: "function uri(uint256) view returns (string)", params: [BigInt(i)] });
-          const metadata = await fetchMascotMetadata(uri);
-          owned.push({ id: i, uri, name: metadata?.name || `Mascot #${i}` });
-        }
+        if (balance > 0n) ownedIds.push(i);
       }
-      setOwnedMascots(owned);
-      if (owned.length > 0 && !selectedNftId) {
-          if (profile?.ai_nft_token_id && owned.some(m => String(m.id) === profile.ai_nft_token_id)) {
-              setSelectedNftId(profile.ai_nft_token_id);
-          } else {
-              setSelectedNftId(String(owned[0].id));
-          }
+
+      if (ownedIds.length > 0) {
+        const { data: dnas } = await supabase
+            .from('mascots_dna')
+            .select('id, name, image_url')
+            .in('id', ownedIds)
+            .eq('contract_address', MASCOTS_CONTRACT_ADDRESS.toLowerCase());
+
+        const finalMascots = ownedIds.map(id => {
+            const dna = dnas?.find(d => d.id === id);
+            return {
+                id: String(id),
+                name: dna?.name || `Protocol #${id}`,
+                image: dna?.image_url || "/logo-pager.png"
+            };
+        });
+
+        setOwnedMascots(finalMascots);
+        
+        if (!selectedNftId) {
+            if (profile?.ai_nft_token_id && finalMascots.some(m => m.id === profile.ai_nft_token_id)) {
+                setSelectedNftId(profile.ai_nft_token_id);
+            } else {
+                setSelectedNftId(finalMascots[0].id);
+            }
+        }
       }
     } catch (e) { console.error("❌ [WritePage] Error fetching owned mascots:", e); }
     setIsFetchingMascots(false);
   }, [account?.address, profile?.ai_nft_token_id, selectedNftId]);
 
   useEffect(() => { fetchOwnedMascots(); }, [fetchOwnedMascots]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const moods = [
     { id: "sarcastic", label: "Sarcastic", icon: "🎭" },
@@ -197,120 +170,53 @@ export default function WritePage() {
     setProcessingStep("scraping");
     
     try {
-      // 1. ПОЛУЧАЕМ ПОДПИСЬ СЕССИИ (Один раз за сессию)
       const { signature, message } = await getSessionSignature("authorize session");
-
-      // 2. SCRAPE & REWRITE (БЕСПЛАТНО)
-      const scrapeRes = await fetch("/api/ai/scrape", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: externalUrl })
-      });
+      const scrapeRes = await fetch("/api/ai/scrape", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: externalUrl }) });
       const scrapeData = await scrapeRes.json();
       if (!scrapeRes.ok) throw new Error(scrapeData.error || "Scraping failed");
 
       setProcessingStep("rewriting");
-      
-      const processRes = await fetch("/api/ai/process", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          content: scrapeData.textContent,
-          title: scrapeData.title,
-          mood,
-          nftTokenId: selectedNftId,
-          atmosphere: profile?.ai_atmosphere || "Rick and Morty",
-          userAddress: account.address.toLowerCase(),
-          signature,
-          message,
-          skipBanner: false // ТЕПЕРЬ ГЕНЕРИРУЕМ ВСЁ СРАЗУ, СЕРВЕР САМ СПИШЕТ КРЕДИТЫ
-        }),
-        signal: AbortSignal.timeout(95000)
-      });
-      
+      const processRes = await fetch("/api/ai/process", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: scrapeData.textContent, title: scrapeData.title, mood, nftTokenId: selectedNftId, atmosphere: profile?.ai_atmosphere || "Rick and Morty", userAddress: account.address.toLowerCase(), signature, message, skipBanner: false }), signal: AbortSignal.timeout(95000) });
       const data = await processRes.json();
-      if (!processRes.ok) {
-        // Если кредитов мало, сервер вернет 402
-        if (processRes.status === 402) throw new Error("Insufficient AI Credits. Top up in your profile.");
-        throw new Error(data.error || "Forge failed");
-      }
-
+      if (!processRes.ok) { if (processRes.status === 402) throw new Error("Insufficient AI Credits. Top up in your profile."); throw new Error(data.error || "Forge failed"); }
       setTitle(data.title);
       if (editorRef.current) editorRef.current.innerHTML = data.content;
       if (data.banner_description) setBannerDescription(data.banner_description);
       if (data.image_url) setImageUrl(data.image_url);
-
       addNotification("Magic Forge synchronized!", "success");
       setProcessingStep("done");
       setTimeout(() => { setProcessingStep("idle"); setActiveMode("manual"); }, 2000);
-      fetchProfile(); // Обновляем баланс
-      
-    } catch (err: any) {
-      console.error("❌ [Magic Forge Error]:", err);
-      addNotification(err.message, "error");
-      setProcessingStep("idle");
-    } finally {
-      setIsAiProcessing(false);
-    }
+      fetchProfile(); 
+    } catch (err: any) { console.error("❌ [Magic Forge Error]:", err); addNotification(err.message, "error"); setProcessingStep("idle"); } finally { setIsAiProcessing(false); }
   };
 
   const handleRegenerateBanner = async () => {
     if (!selectedNftId || !title) return;
     if (!account) return alert("Connect wallet");
-    
     setIsRegenerating(true);
     try {
-      addNotification("Regenerating banner (Silent Sync)...", "success");
+      addNotification("Regenerating banner...", "success");
       const { signature, message } = await getSessionSignature("authorize session");
-
-      const res = await fetch("/api/ai/process", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            onlyBanner: true,
-            bannerDescription,
-            title,
-            mood,
-            nftTokenId: selectedNftId,
-            atmosphere: profile?.ai_atmosphere || "Rick and Morty",
-            userAddress: account.address.toLowerCase(),
-            signature,
-            message
-          }),
-          signal: AbortSignal.timeout(95000)
-      });
-      
+      const res = await fetch("/api/ai/process", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ onlyBanner: true, bannerDescription, title, mood, nftTokenId: selectedNftId, atmosphere: profile?.ai_atmosphere || "Rick and Morty", userAddress: account.address.toLowerCase(), signature, message }), signal: AbortSignal.timeout(95000) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Regeneration failed");
-      
-      if (data.image_url) {
-          setImageUrl(data.image_url);
-          addNotification("Banner updated!", "success");
-          fetchProfile();
-      }
-    } catch (err: any) {
-      addNotification(err.message, "error");
-    } finally {
-      setIsRegenerating(false);
-    }
+      if (data.image_url) { setImageUrl(data.image_url); addNotification("Banner updated!", "success"); fetchProfile(); }
+    } catch (err: any) { addNotification(err.message, "error"); } finally { setIsRegenerating(false); }
   };
 
   const fetchProfile = useCallback(async () => {
     if (!account?.address) return;
     try {
-      // Загружаем профиль через API, чтобы получить маскированные ключи
       const res = await fetch(`/api/profile?address=${account.address.toLowerCase()}`);
       const data = await res.json();
       if (res.ok && data.profile) {
           setProfile(data.profile);
-          if (data.profile.ai_nft_token_id) setSelectedNftId(data.profile.ai_nft_token_id);
+          if (data.profile.ai_nft_token_id && !selectedNftId) setSelectedNftId(data.profile.ai_nft_token_id);
       }
     } catch (err) { console.error("❌ [WritePage] Profile fetch failed:", err); }
-  }, [account?.address]);
+  }, [account?.address, selectedNftId]);
 
   useEffect(() => { fetchProfile(); }, [fetchProfile]);
-
-  const { data: balance } = useWalletBalance({ client, chain: base, address: account?.address, tokenAddress: HASH_TOKEN_ADDRESS });
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -320,114 +226,37 @@ export default function WritePage() {
       const compressedBlob = await imageCompression(file, COMPRESSION_OPTIONS);
       const url = await uploadToStorage(new File([compressedBlob], `${Date.now()}.webp`, { type: "image/webp" }));
       setImageUrl(url);
-    } catch (error: any) {
-      alert(error.message || "Upload failed");
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
+    } catch (error: any) { alert(error.message || "Upload failed"); } finally { setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ""; }
   };
 
   const handlePublish = async () => {
     const content = editorRef.current?.innerHTML || "";
     if (!account) return alert("Connect wallet");
     if (!title || !content || content === "<br>") return alert("Title and Content required");
-    
-    // Публикация теперь бесплатная (оплата перенесена на AI Forge)
     setStatus("publishing");
     try {
-      // 1. ПОДПИСЬ ДЛЯ ПОДТВЕРЖДЕНИЯ АВТОРСТВА
       const authMessage = getAuthMessage("publish article", account.address.toLowerCase());
       const signature = await account.signMessage({ message: authMessage });
-
-      // 2. СОЗДАНИЕ СТАТЬИ
-      const res = await fetch("/api/article/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          title, 
-          content, 
-          image_url: imageUrl || null, 
-          author_address: account.address.toLowerCase(),
-          signature,
-          message: authMessage
-        })
-      });
-      
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({ error: "Server returned error" }));
-        throw new Error(errData.error || "Failed to create article");
-      }
-      
+      const res = await fetch("/api/article/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title, content, image_url: imageUrl || null, author_address: account.address.toLowerCase(), signature, message: authMessage }) });
+      if (!res.ok) { const errData = await res.json().catch(() => ({ error: "Server returned error" })); throw new Error(errData.error || "Failed to create article"); }
       const resData = await res.json();
       const articleId = resData.article.id;
       const targets = resData.article.distributionTargets || resData.distributionTargets;
-
       if (targets) {
-        addNotification("Authorizing protocol distribution...", "info");
-
-        // ОДНА ПОДПИСЬ ДЛЯ ВСЕХ КАНАЛОВ
         const channelsCount = (targets.binance?.length || 0) + (targets.telegram?.length || 0) + (targets.global ? 1 : 0);
         const batchMsg = getAuthMessage(`distribute to ${channelsCount} channels`, account.address.toLowerCase());
         const batchSig = await account.signMessage({ message: batchMsg });
-
-        if (targets.global) {
-          addNotification("Publishing to Global Feed...", "info");
-          await fetch("/api/distribution", { 
-            method: "POST", 
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              articleId, 
-              channelType: 'global', 
-              account: {}, 
-              profileAddress: account.address,
-              signature: batchSig,
-              message: batchMsg
-            }) 
-          }).catch(e => console.error("Global Feed Error:", e));
-        }
-
-        for (const accObj of (targets.binance || [])) {
-          addNotification(`Posting to Binance Square: ${accObj.label}...`, "info");
-          await fetch("/api/distribution", { 
-            method: "POST", 
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              articleId, 
-              channelType: 'binance', 
-              account: accObj, 
-              profileAddress: account.address,
-              signature: batchSig,
-              message: batchMsg
-            }) 
-          }).catch(e => console.error("Binance Error:", e));
-        }
-
-        for (const chObj of (targets.telegram || [])) {
-          addNotification(`Posting to Telegram: ${chObj.label}...`, "info");
-          await fetch("/api/distribution", { 
-            method: "POST", 
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              articleId, 
-              channelType: 'telegram', 
-              account: chObj, 
-              profileAddress: account.address,
-              signature: batchSig,
-              message: batchMsg
-            }) 
-          }).catch(e => console.error("Telegram Error:", e));
-        }
+        if (targets.global) { await fetch("/api/distribution", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ articleId, channelType: 'global', account: {}, profileAddress: account.address, signature: batchSig, message: batchMsg }) }).catch(e => console.error("Global Feed Error:", e)); }
+        for (const accObj of (targets.binance || [])) { await fetch("/api/distribution", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ articleId, channelType: 'binance', account: accObj, profileAddress: account.address, signature: batchSig, message: batchMsg }) }).catch(e => console.error("Binance Error:", e)); }
+        for (const chObj of (targets.telegram || [])) { await fetch("/api/distribution", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ articleId, channelType: 'telegram', account: chObj, profileAddress: account.address, signature: batchSig, message: batchMsg }) }).catch(e => console.error("Telegram Error:", e)); }
       }
       setStatus("success");
       addNotification("Protocol distribution initiated!", "success");
       setTimeout(() => router.push("/"), 3000);
-    } catch (err: any) { 
-      console.error("❌ [Publish Error]:", err);
-      setStatus("error");
-      addNotification(`Failed: ${err.message}`, "error");
-    }
+    } catch (err: any) { console.error("❌ [Publish Error]:", err); setStatus("error"); addNotification(`Failed: ${err.message}`, "error"); }
   };
+
+  const selectedMascot = ownedMascots.find(m => m.id === selectedNftId);
 
   if (!account) return <div className="min-h-screen flex items-center justify-center bg-[var(--bg-main)]"><Link href="/" className="btn-primary">Back to Feed</Link></div>;
 
@@ -453,46 +282,106 @@ export default function WritePage() {
         </div>
       </div>
 
-      <div className={`overflow-hidden transition-all duration-500 bg-gray-50 border-y border-gray-100 mt-8 ${activeMode === "ai" ? 'min-h-[200px] opacity-100 py-12' : 'max-h-0 opacity-0'}`}>
-        <div className="max-w-4xl mx-auto px-6 space-y-6">
+      <div className={`transition-all duration-500 bg-gray-50 border-y border-gray-100 mt-8 relative z-40 ${activeMode === "ai" ? 'min-h-[160px] opacity-100 py-10 overflow-visible' : 'max-h-0 opacity-0 invisible overflow-hidden'}`}>
+        <div className="max-w-5xl mx-auto px-6 space-y-6">
           {ownedMascots.length === 0 && !isFetchingMascots ? (
-            <div className="text-center py-8 bg-white border border-gray-100 p-8">
+            <div className="text-center py-8 bg-white border border-gray-100 p-8 rounded-sm">
                 <AlertCircle className="mx-auto text-red-500 mb-4" size={32} />
                 <h3 className="text-sm font-black uppercase tracking-widest mb-2">NFT Mascot Required</h3>
                 <p className="text-xs text-gray-400 mb-6 uppercase font-bold">Magic Forge requires an active Mascot Protocol in your wallet.</p>
-                <Link href="/character" className="btn-primary inline-flex items-center gap-2 px-8 py-3 text-[10px] font-black uppercase tracking-widest"><ShoppingCart size={14} /> Visit Registry</Link>
+                <Link href="/mascots" className="btn-primary inline-flex items-center gap-2 px-8 py-3 text-[10px] font-black uppercase tracking-widest"><ShoppingCart size={14} /> Visit Registry</Link>
             </div>
           ) : (
             <>
               <div className="flex flex-col gap-4">
-                <div className="flex flex-col md:flex-row gap-3">
-                  <input type="text" placeholder="Paste source link..." value={externalUrl} onChange={e => setExternalUrl(e.target.value)} className="flex-[3] px-4 py-3 text-sm border border-gray-200 focus:border-black outline-none bg-white transition-colors font-medium" />
-                  <select value={mood} onChange={e => setMood(e.target.value)} className="flex-1 px-3 py-3 text-xs font-black uppercase tracking-widest border border-gray-200 outline-none bg-white cursor-pointer appearance-none">{moods.map(m => <option key={m.id} value={m.id}>{m.icon} {m.label}</option>)}</select>
-                  <button onClick={handleAiRewrite} disabled={isAiProcessing || !externalUrl || !selectedNftId} className="flex-1 bg-black text-white text-[10px] font-black uppercase tracking-widest py-3 px-6 hover:bg-gray-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl">{isAiProcessing ? <Loader2 size={14} className="animate-spin" /> : "Initiate Forge"}</button>
-                </div>
-                <div className="flex flex-col md:flex-row items-center gap-4 bg-white p-4 border border-gray-100">
-                  <div className="flex items-center gap-2 text-[10px] font-black uppercase text-gray-400 shrink-0"><Zap size={14} /> Protocol Switcher:</div>
-                  <div className="flex flex-1 gap-2 overflow-x-auto no-scrollbar py-1">
-                     {ownedMascots.map(m => (
-                       <button 
-                          key={m.id}
-                          onClick={() => setSelectedNftId(String(m.id))}
-                          className={`flex items-center gap-2 px-4 py-2 rounded-sm border transition-all shrink-0 ${selectedNftId === String(m.id) ? 'bg-black text-white border-black shadow-lg' : 'bg-gray-50 border-gray-100 text-gray-400 hover:border-gray-300'}`}
-                       >
-                          <span className="text-[10px] font-black uppercase tracking-tight">{m.name}</span>
-                       </button>
-                     ))}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                  <input 
+                    type="text" 
+                    placeholder="Paste source link..." 
+                    value={externalUrl} 
+                    onChange={e => setExternalUrl(e.target.value)} 
+                    className="md:col-span-4 px-4 py-3 text-sm border border-gray-200 focus:border-black outline-none bg-white transition-colors font-medium rounded-sm" 
+                  />
+                  
+                  {/* Custom Mascot Dropdown */}
+                  <div className="md:col-span-3 relative" ref={dropdownRef}>
+                    <button 
+                        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                        className="w-full flex items-center justify-between px-3 py-3 bg-white border border-gray-200 rounded-sm hover:border-black transition-all group"
+                    >
+                        <div className="flex items-center gap-2.5 overflow-hidden">
+                            {selectedMascot ? (
+                                <>
+                                    <img src={selectedMascot.image} className="w-6 h-6 rounded-full object-cover border border-gray-100 shrink-0 group-hover:scale-110 transition-transform" alt="" />
+                                    <span className="text-[10px] font-black uppercase truncate tracking-tight">{selectedMascot.name}</span>
+                                </>
+                            ) : (
+                                <span className="text-[10px] font-black uppercase text-gray-400">Protocol</span>
+                            )}
+                        </div>
+                        <ChevronDown size={14} className={`text-gray-400 transition-transform shrink-0 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {isDropdownOpen && (
+                        <div className="absolute top-full left-0 w-full mt-2 bg-white border border-gray-200 rounded-sm shadow-[0_20px_50px_rgba(0,0,0,0.15)] z-[100] max-h-72 overflow-y-auto no-scrollbar animate-in fade-in slide-in-from-top-2 duration-300">
+                            {ownedMascots.map(m => (
+                                <div 
+                                    key={m.id} 
+                                    onClick={() => { setSelectedNftId(m.id); setIsDropdownOpen(false); }}
+                                    className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0 ${selectedNftId === m.id ? 'bg-blue-50/50' : ''}`}
+                                >
+                                    <div className="relative shrink-0">
+                                        <img src={m.image} className="w-10 h-10 rounded-full object-cover border border-gray-100 shadow-sm" alt="" />
+                                        {selectedNftId === m.id && <div className="absolute -bottom-1 -right-1 bg-yellow-400 rounded-full p-0.5 border-2 border-white"><CheckCircle2 size={8} className="text-black" /></div>}
+                                    </div>
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="text-[10px] font-black uppercase truncate tracking-tighter">{m.name}</span>
+                                        <span className="text-[8px] font-bold text-gray-400 uppercase tracking-widest">Protocol Key #{m.id}</span>
+                                    </div>
+                                    {selectedNftId === m.id && <Zap size={10} className="ml-auto text-yellow-400 fill-yellow-400" />}
+                                </div>
+                            ))}
+                        </div>
+                    )}
                   </div>
-                  <Link href={`/character`} className="flex items-center gap-2 px-4 py-2 bg-gray-50 border border-gray-100 rounded-full text-[9px] font-black uppercase tracking-widest hover:border-black transition-all"><Settings2 size={12} /> Registry</Link>
+
+                  <div className="md:col-span-2 relative">
+                    <select 
+                        value={mood} 
+                        onChange={e => setMood(e.target.value)} 
+                        className="w-full px-3 py-3 text-[10px] font-black uppercase tracking-widest border border-gray-200 outline-none bg-white cursor-pointer appearance-none pr-8 rounded-sm hover:border-black transition-all"
+                    >
+                        {moods.map(m => <option key={m.id} value={m.id}>{m.icon} {m.label}</option>)}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
+
+                  <button 
+                    onClick={handleAiRewrite} 
+                    disabled={isAiProcessing || !externalUrl || !selectedNftId} 
+                    className="md:col-span-3 bg-black text-white text-[10px] font-black uppercase tracking-widest py-3 px-6 hover:bg-gray-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl rounded-sm"
+                  >
+                    {isAiProcessing ? <Loader2 size={14} className="animate-spin" /> : <><Sparkles size={14} /> Initiate Forge</>}
+                  </button>
                 </div>
               </div>
-              {processingStep !== "idle" && <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-tighter text-black"><div className="w-1.5 h-1.5 bg-black rounded-full animate-ping" /> Forge Status: {processingStep}...</div>}
+              <div className="flex items-center justify-between px-1">
+                {processingStep !== "idle" ? (
+                    <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-black">
+                        <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(250,204,21,0.5)]" /> Forge Status: {processingStep}...
+                    </div>
+                ) : <div />}
+                
+                <Link href={`/mascots`} className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-black transition-all">
+                    <Settings2 size={12} /> Registry
+                </Link>
+              </div>
             </>
           )}
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-6 pt-12 space-y-8">
+      <div className="max-w-3xl mx-auto px-6 pt-12 space-y-8 relative z-10">
         <input type="text" placeholder="Story Title" value={title} onChange={e => setTitle(e.target.value)} className="w-full text-4xl md:text-6xl font-black border-none focus:outline-none placeholder:text-gray-100 uppercase tracking-tighter" />
         <div className="border-y border-gray-50 py-4 space-y-4">
           <div className="flex items-center gap-4">
