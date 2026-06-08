@@ -30,32 +30,36 @@ export async function POST(req: Request) {
       .eq("address", userAddress.toLowerCase())
       .maybeSingle();
 
-    // Use system key primarily for DNA analysis to ensure consistency
     const aiApiKey = process.env.OPENROUTER_API_KEY || profile?.ai_api_key;
 
     if (!aiApiKey) {
       return NextResponse.json({ error: "AI Engine Offline" }, { status: 403 });
     }
 
-    // STRICT MODEL SELECTION:
-    // Gemini 2.5 Flash is optimal for all text and vision tasks.
-    const modelId = "google/gemini-2.5-flash";
+    // CURRENT WORKING MODEL:
+    const modelId = "google/gemma-4-31b-it";
 
     const prompt = `
-      ACT AS A WEB3 GENETICIST AND VISUAL ANALYST. 
-      Analyze this character image and extract their unique PAGER PROTOCOL DNA.
-      
+      ACT AS A PREEMINENT VISUAL ARCHITECT AND CHARACTER DESIGNER. 
+      Analyze the provided mascot image to extract its "GENETIC CODE" for 100% accurate replication and cinematic world-building.
+
+      ANALYSIS PROTOCOL:
+      1. PROPORTIONS & SCALE: Describe the silhouette. What is the head-to-body ratio? Are accessories oversized? Note the exact scale of items (e.g., "oversized mechanical gauntlets", "compact athletic build", "large expressive head occupies 1/3 of total height").
+      2. PHYSICAL DNA: Identify species, exact eye glow color, and specific facial traits.
+      3. TEXTURE & MATERIAL: Identify every material (e.g., "brushed scratched metal", "soft velvet fabric", "translucent neon-emitting plastic").
+      4. ENVIRONMENT DNA (FOR BANNERS): Based on the character's vibe, describe a RICH, HIGH-DENSITY background. Include lighting (e.g., "volumetric god-rays", "harsh cinematic rim lighting"), particles (e.g., "floating digital embers", "drifting cherry blossoms"), and architectural elements that make the scene feel ALIVE and atmospheric.
+      5. STYLE SIGNATURE: Define the art style (e.g., "High-fidelity 3D render", "Cyberpunk oil painting").
+
       OUTPUT FORMAT: STRICT JSON
       { 
-        "personality": "2-3 sentences about their character, attitude, speech style, and worldview. How do they talk about crypto?", 
-        "visual": "Precise description of clothing, accessories, body type, art style, and core colors. Be very specific about unique traits that define this mascot." 
+        "personality": "2 sentences about their temperament.", 
+        "visual": "A surgical-grade technical summary. Start with PROPORTIONS and SILHOUETTE, then detail the MASCOT, then describe a RICH CINEMATIC ENVIRONMENT for banners. Ensure descriptions are high-density and packed with atmospheric details to avoid empty backgrounds." 
       }
       
-      Ensure the description is optimized for high-fidelity image generation (Stable Diffusion / FLUX / Gemini).
       Return ONLY JSON.
     `;
 
-    console.log("📡 [DNA Scan] Analyzing image:", imageUrl);
+    console.log("📡 [DNA Scan] Analyzing image with Flash Lite:", imageUrl);
 
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
