@@ -17,19 +17,19 @@ export interface CustomDna {
 
 // Atmosphere visual descriptors for image generation
 const ATMOSPHERE_VISUALS: Record<string, string> = {
-  Surrealism: "hand-drawn cartoon aesthetic, rough sketchy lineart, cel-shaded flat colors, weird surreal distortion, mutilated cartoon physics, rubber hose animation style, mind-bending impossible cartoon landscapes, vibrant unnatural color palettes, cartoon dimension portal aesthetic",
+  Surrealism: "adult swim cartoon style: hand-drawn animation aesthetic with rough sketchy lineart, cel-shaded flat colors, rubber hose limbs, weird surreal anatomy, distorted cartoon physics, mind-bending impossible scenes, vibrant toxic color palettes, mad scientist laboratory vibe, interdimensional portal aesthetic, mutilated cartoon logic, messy expressive brushstrokes, dynamic smear frames, grotesque yet hilarious character distortions, retro cartoon surrealism. The mascot is fully drawn in this style — like a character from a surreal sci-fi cartoon show.",
   "Pixel Art": "retro 8-bit/16-bit aesthetic, blocky pixelated rendering, limited color palette, chunky sprites, CRT glow, gameboy-era textures, pixel-perfect edges",
   "Brick Style": "LEGO-like blocky construction, visible brick joints, modular building aesthetic, primary colors, plastic texture, studded surfaces, toy-like volumetric build",
   "Anime Style": "cel-shaded animation style, sharp clean lineart, vibrant gradient hair, large expressive eyes, dramatic lighting, sakura petals, cinematic anime composition, motion lines",
-  "Графити": "graffiti art on concrete walls, spray paint textures, dripping paint effects, vibrant aerosol colors, street art mural style, wildstyle lettering, stencil art elements, urban brick wall canvas, paint splatters and tags, hip-hop street culture aesthetic",
+  "Graffiti": "unified graffiti mural art style: the mascot character is a vibrant spray-painted graffiti illustration — bold wide outlines, dripping aerosol fills, stencil textures, paint splatters, wildstyle urban art. The character and background together form a seamless mural on brick wall canvas. Vibrant street color palette, tag culture elements, all rendered as one cohesive graffiti artwork, hip-hop aesthetic.",
 };
 
 const ATMOSPHERE_TEXT_INSTRUCTIONS: Record<string, string> = {
-  Surrealism: "Mad cartoon logic, absurd twists, reality-bending metaphors. Write like a deranged cartoon narrator — chaotic, funny, mind-bending.",
+  Surrealism: "Adult swim cartoon logic: interdimensional absurdity, mad scientist energy, reality-bending metaphors, dark humor mixed with childish nonsense. Write like a deranged cartoon narrator — chaotic, funny, mind-bending, burping through the fourth wall.",
   "Pixel Art": "Write as if narrating a retro video game. Short punchy sentences, arcade-style energy, 8-bit bravado. Use game mechanics as metaphors.",
   "Brick Style": "Describe everything as modular, buildable, constructed. Use engineering and assembly metaphors. Structured, systematic, blueprint-like thinking.",
   "Anime Style": "Dramatic over-the-top narration, emotional intensity, protagonist energy. Use training arc, power-up, and rival metaphors. Maximum aura.",
-  "Графити": "Raw street energy, underground vibe, rebellious tone. Use urban metaphors, graffiti culture references, spray-paint attitude. Keep it edgy and authentic.",
+  "Graffiti": "Raw street energy, underground vibe, rebellious tone. Use urban metaphors, graffiti culture references, spray-paint attitude. Keep it edgy and authentic.",
 };
 
 function getAtmosphereVisual(atmosphere: string): string {
@@ -57,23 +57,23 @@ export function getCharacterVisualPrompt(
   if (!activeDna) throw new Error("DNA Protocol missing.");
 
   return `
-    REFERENCE_IMAGE: ${activeDna.image_url}
+    REFERENCE_IMAGE: ${activeDna.image_url} (character reference only)
     TASK: High-fidelity 16:9 illustration in "${atmosphere}" style.
     
     [PRIMARY SUBJECT: ${activeDna.name}]
     - PHYSICAL DNA: ${activeDna.physical_description}.
-    - VISUAL CONSTANCY: The subject MUST be visually identical to the mascot in REFERENCE_IMAGE. 
+    - CHARACTER IDENTITY: Keep the character's core identity (silhouette, color scheme, key traits) from REFERENCE_IMAGE, but fully render in "${atmosphere}" art style.
+    - RENDERING: The character MUST be drawn as a ${atmosphere} illustration — not photorealistic, not default digital art.
     - EXPRESSION: ${MOOD_EXPRESSIONS[moodKey] || MOOD_EXPRESSIONS.neutral}.
     - POSTURE: Dynamic and proportional.
     
-    [ENVIRONMENT & ATMOSPHERE]
+    [UNIFIED SCENE]
     - SETTING: ${scene}.
-    - ART STYLE: ${getAtmosphereVisual(atmosphere)}.
-    - NARRATIVE STYLE: ${atmosphere}.
+    - FULL STYLE UNIFICATION: The entire image — character AND background — is a single cohesive "${atmosphere}" artwork. No realistic elements. Everything follows ${atmosphere} visual logic: ${getAtmosphereVisual(atmosphere)}.
     - LIGHTING/MOOD: ${visualMood}.
     
     [STRICT RULES]
-    1. STYLE INTEGRATION: Seamlessly blend ${activeDna.name} into the "${atmosphere}" aesthetic.
+    1. STYLE INTEGRATION: ${activeDna.name} and the environment must share the EXACT SAME "${atmosphere}" rendering. No mixing of art styles.
     2. IP PROTECTION: No celebrities, no famous cartoon characters. Create a unique interpretation of "${atmosphere}".
     3. QUALITY: Masterpiece quality, perfect anatomy (5 fingers), high resolution.
     4. NO TEXT: Do not generate any text or letters.

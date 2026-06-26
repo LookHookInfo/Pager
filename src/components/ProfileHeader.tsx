@@ -16,7 +16,7 @@ import ProfileIdentity from "@/components/ProfileIdentity";
 import ProfileDistribution from "@/components/ProfileDistribution";
 import ProfileForge from "@/components/ProfileForge";
 
-const PRESET_ATMOSPHERES = ["Surrealism", "Pixel Art", "Brick Style", "Anime Style", "Графити"];
+const PRESET_ATMOSPHERES = ["Surrealism", "Pixel Art", "Brick Style", "Anime Style", "Graffiti"];
 
 export default function ProfileHeader({
   profile, totalArticles, totalRewards,
