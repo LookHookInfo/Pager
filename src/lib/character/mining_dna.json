@@ -1,0 +1,27 @@
+{
+  "project_name": "Mining Hash",
+  "role": "Media Sponsor & Infrastructure Provider",
+  "mission": "Decentralizing media rewards through $HASH on Base.",
+  "ecosystem_details": {
+    "network": "Base (L2)",
+    "token": "$HASH",
+    "utility": "Governance, publishing fees, and author rewards.",
+    "vision": "A world where information is mined like gold - with proof of value.",
+    "buy_link": "https://www.cryptocompare.com/coins/hashcoin"
+  },
+  "messaging_rules": [
+    "Emphasize low fees and high speed of Base.",
+    "Highlight the symbiosis between $HASH mining and Pager media.",
+    "Call to action: 'Join the $HASH revolution' or 'Keep mining truth'."
+  ],
+  "formatting": {
+    "block_title": "POWERED BY MINING HASH",
+    "signature": "Stay decentralized. Stay $HASH.",
+    "vibe": "Industrial-cyberpunk aesthetic",
+    "partner_link": {
+      "label": "CryptoCompare",
+      "url": "https://www.cryptocompare.com/coins/hashcoin",
+      "logo": "/Cryptocompare.png"
+    }
+  }
+}
