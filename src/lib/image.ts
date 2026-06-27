@@ -10,7 +10,7 @@ export async function uploadToPinata(imageUrl: string): Promise<string> {
   const buffer = Buffer.from(await imgRes.arrayBuffer());
   const compressed = await sharp(buffer).webp({ quality: 85, effort: 4 }).toBuffer();
 
-  const cleanJwt = pinataJwt.trim().split(/\s+/).reduce((a, b) => a.length > b.length ? a : b).replace(/JWT$/, "");
+  const cleanJwt = pinataJwt.trim().replace(/^["'\s]+|["'\s]+$/g, "");
 
   const formData = new FormData();
   formData.append("file", new Blob([new Uint8Array(compressed)], { type: "image/webp" }), `banner-${Date.now()}.webp`);

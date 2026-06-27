@@ -51,6 +51,8 @@ export default function WritePage() {
   const [isFetchingMascots, setIsFetchingMascots] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [processingStep, setProcessingStep] = useState<"idle" | "scraping" | "rewriting" | "banner" | "done">("idle");
+  const [contentKey, setContentKey] = useState(0);
+  const [pendingContent, setPendingContent] = useState<string | null>(null);
 
   const addNotification = (message: string, type: "success" | "error" | "info" = "success") => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -72,19 +74,22 @@ export default function WritePage() {
     setIsFetchingMascots(true);
     try {
       const contract = getContract({ client, chain: base, address: MASCOTS_CONTRACT_ADDRESS, abi: MASCOTS_ABI as any });
-      const nextId = await readContract({ contract, method: "function nextTokenId() view returns (uint256)", params: [] });
 
-      const ownedIds: number[] = [];
-      for (let i = 0; i < Number(nextId); i++) {
-        const balance = await readContract({ contract, method: "function balanceOf(address,uint256) view returns (uint256)", params: [account.address, BigInt(i)] });
-        if (balance > 0n) ownedIds.push(i);
-      }
+      const result = await readContract({
+        contract,
+        method: "function getUserMascots(address) view returns (uint256[], uint256[], (address,uint256,uint32,uint32,bool)[])",
+        params: [account.address],
+      });
 
-      if (ownedIds.length > 0) {
-        const { data: dnas } = await supabase.from("mascots_dna").select("id, name, image_url").in("id", ownedIds).eq("contract_address", MASCOTS_CONTRACT_ADDRESS.toLowerCase());
+      const [ownedIds, , details] = result;
+      const activeIds = ownedIds.filter((_, i) => details[i][4]).map(id => Number(id));
 
-        const finalMascots = ownedIds.map(id => {
-          const dna = dnas?.find(d => d.id === id);
+      if (activeIds.length > 0) {
+        const { data: dnas } = await supabase.from("mascots_dna").select("id, name, image_url").in("id", activeIds).eq("contract_address", MASCOTS_CONTRACT_ADDRESS.toLowerCase());
+        const dnaMap = new Map(dnas?.map(d => [d.id, d]) || []);
+
+        const finalMascots = activeIds.map(id => {
+          const dna = dnaMap.get(id);
           return { id: String(id), name: dna?.name || `Protocol #${id}`, image: dna?.image_url || "/logo-pager.png" };
         });
 
@@ -97,12 +102,21 @@ export default function WritePage() {
             setSelectedNftId(finalMascots[0].id);
           }
         }
+      } else {
+        setOwnedMascots([]);
       }
     } catch (e) { console.error("Fetch mascots error:", e); }
     setIsFetchingMascots(false);
   }, [account?.address, profile?.ai_nft_token_id, selectedNftId]);
 
   useEffect(() => { fetchOwnedMascots(); }, [fetchOwnedMascots]);
+
+  useEffect(() => {
+    if (pendingContent && editorRef.current) {
+      editorRef.current.innerHTML = pendingContent;
+      setPendingContent(null);
+    }
+  }, [contentKey, pendingContent]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -113,9 +127,9 @@ export default function WritePage() {
   }, []);
 
   const handleAiRewrite = async () => {
-    if (!externalUrl) return alert("Paste a link first!");
-    if (!selectedNftId) return alert("Select an NFT Mascot first!");
-    if (!account) return alert("Connect wallet");
+    if (!externalUrl) { addNotification("Paste a link first!", "error"); return; }
+    if (!selectedNftId) { addNotification("Select an NFT Mascot first!", "error"); return; }
+    if (!account) { addNotification("Connect wallet", "error"); return; }
 
     setIsAiProcessing(true);
     setProcessingStep("scraping");
@@ -145,7 +159,10 @@ export default function WritePage() {
       if (!textRes.ok) throw new Error(textData.error || "AI text failed");
 
       setTitle(textData.title);
-      if (editorRef.current) editorRef.current.innerHTML = textData.content;
+      if (textData.content) {
+        setPendingContent(textData.content);
+        setContentKey(k => k + 1);
+      }
       if (textData.banner_description) setBannerDescription(textData.banner_description);
 
       setProcessingStep("banner");
@@ -220,13 +237,13 @@ export default function WritePage() {
       const compressed = await imageCompression(file, COMPRESSION_OPTIONS);
       const url = await uploadToStorage(new File([compressed], `${Date.now()}.webp`, { type: "image/webp" }));
       setImageUrl(url);
-    } catch (err: any) { alert(err.message || "Upload failed"); } finally { setIsUploading(false); }
+    } catch (err: any) { addNotification(err.message || "Upload failed", "error"); } finally { setIsUploading(false); }
   };
 
   const handlePublish = async () => {
     const content = editorRef.current?.innerHTML || "";
-    if (!account) return alert("Connect wallet");
-    if (!title || !content || content === "<br>") return alert("Title and Content required");
+    if (!account) { addNotification("Connect wallet", "error"); return; }
+    if (!title || !content || content === "<br>") { addNotification("Title and Content required", "error"); return; }
 
     setStatus("publishing");
     try {
@@ -424,7 +441,7 @@ export default function WritePage() {
           )}
         </div>
 
-        <div ref={editorRef} contentEditable data-placeholder="Start your story here..."
+        <div key={contentKey} ref={editorRef} contentEditable data-placeholder="Start your story here..."
           className="w-full min-h-[500px] text-xl outline-none prose prose-stone max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-gray-200 empty:before:pointer-events-none leading-[1.8] typography-body" />
       </div>
 

@@ -3,22 +3,98 @@ import { getSupabaseServer } from "@/lib/supabase";
 
 export const maxDuration = 30;
 
+const DNA_PROMPT = `Analyze this mascot image and return JSON with exactly two fields:
+"personality": 2 sentences describing the character's temperament, attitude, and voice style.
+"visual": Technical visual description for AI image generation. Cover: proportions and silhouette, physical traits (species, colors, facial features), materials and textures, and a rich cinematic environment description for banners.`;
+
 function extractJson(text: string) {
-  try {
-    const cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (jsonMatch) return JSON.parse(jsonMatch[0]);
-    return JSON.parse(cleaned);
-  } catch (e) {
-    console.error("❌ [DNA Scan] JSON Parse Error. Content:", text.slice(0, 200));
-    return null;
+  const cleaned = text.replace(/```json\s*/g, "").replace(/```/g, "").trim();
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (jsonMatch) return JSON.parse(jsonMatch[0]);
+  return JSON.parse(cleaned);
+}
+
+async function fetchImageAsBase64(url: string): Promise<{ data: string; mime: string }> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  if (!res.ok) throw new Error("Failed to fetch image");
+  const mime = res.headers.get("content-type") || "image/png";
+  const buffer = Buffer.from(await res.arrayBuffer());
+  return { data: buffer.toString("base64"), mime };
+}
+
+async function analyzeWithGoogleGemini(imageUrl: string, apiKey: string) {
+  const image = await fetchImageAsBase64(imageUrl);
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: DNA_PROMPT },
+            { inline_data: { mime_type: image.mime, data: image.data } },
+          ],
+        }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0.4,
+        },
+      }),
+    },
+  );
+
+  if (!res.ok) {
+    const err = await res.text();
+    console.error("❌ [DNA Scan] Google API error:", res.status, err.slice(0, 300));
+    throw new Error("Google AI API error");
   }
+
+  const data = await res.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  if (!text) throw new Error("Empty response from Google AI");
+
+  return extractJson(text);
+}
+
+async function analyzeWithOpenRouter(imageUrl: string, apiKey: string) {
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + apiKey,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://pager.sh",
+      "X-Title": "Pager Protocol",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash",
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: DNA_PROMPT },
+          { type: "image_url", image_url: { url: imageUrl } },
+        ],
+      }],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    console.error("❌ [DNA Scan] OpenRouter error:", res.status, err.slice(0, 300));
+    throw new Error("OpenRouter AI error");
+  }
+
+  const data = await res.json();
+  const content = data.choices?.[0]?.message?.content || "";
+  if (!content) throw new Error("Empty response from OpenRouter");
+
+  return extractJson(content);
 }
 
 export async function POST(req: Request) {
   try {
     const { imageUrl, userAddress } = await req.json();
-
     if (!imageUrl || !userAddress) {
       return NextResponse.json({ error: "Missing data" }, { status: 400 });
     }
@@ -30,81 +106,40 @@ export async function POST(req: Request) {
       .eq("address", userAddress.toLowerCase())
       .maybeSingle();
 
-    const aiApiKey = process.env.OPENROUTER_API_KEY || profile?.ai_api_key;
+    const googleKey = process.env.GEMINI_API_KEY;
+    const openRouterKey = process.env.OPENROUTER_API_KEY || profile?.ai_api_key;
 
-    if (!aiApiKey) {
-      return NextResponse.json({ error: "AI Engine Offline" }, { status: 403 });
-    }
+    let result: any;
 
-    // CURRENT WORKING MODEL:
-    const modelId = "google/gemma-4-31b-it";
-
-    const prompt = `
-      ACT AS A PREEMINENT VISUAL ARCHITECT AND CHARACTER DESIGNER. 
-      Analyze the provided mascot image to extract its "GENETIC CODE" for 100% accurate replication and cinematic world-building.
-
-      ANALYSIS PROTOCOL:
-      1. PROPORTIONS & SCALE: Describe the silhouette. What is the head-to-body ratio? Are accessories oversized? Note the exact scale of items (e.g., "oversized mechanical gauntlets", "compact athletic build", "large expressive head occupies 1/3 of total height").
-      2. PHYSICAL DNA: Identify species, exact eye glow color, and specific facial traits.
-      3. TEXTURE & MATERIAL: Identify every material (e.g., "brushed scratched metal", "soft velvet fabric", "translucent neon-emitting plastic").
-      4. ENVIRONMENT DNA (FOR BANNERS): Based on the character's vibe, describe a RICH, HIGH-DENSITY background. Include lighting (e.g., "volumetric god-rays", "harsh cinematic rim lighting"), particles (e.g., "floating digital embers", "drifting cherry blossoms"), and architectural elements that make the scene feel ALIVE and atmospheric.
-      5. STYLE SIGNATURE: Define the art style (e.g., "High-fidelity 3D render", "Cyberpunk oil painting").
-
-      OUTPUT FORMAT: STRICT JSON
-      { 
-        "personality": "2 sentences about their temperament.", 
-        "visual": "A surgical-grade technical summary. Start with PROPORTIONS and SILHOUETTE, then detail the MASCOT, then describe a RICH CINEMATIC ENVIRONMENT for banners. Ensure descriptions are high-density and packed with atmospheric details to avoid empty backgrounds." 
+    // Priority 1: Direct Google Gemini API (free tier)
+    if (googleKey) {
+      try {
+        result = await analyzeWithGoogleGemini(imageUrl, googleKey);
+      } catch (e) {
+        console.warn("⚠️ [DNA Scan] Google API failed, falling back to OpenRouter:", (e as Error).message);
       }
-      
-      Return ONLY JSON.
-    `;
-
-    console.log("📡 [DNA Scan] Analyzing image with Flash Lite:", imageUrl);
-
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": "Bearer " + aiApiKey,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://pager.sh",
-        "X-Title": "Pager Protocol",
-      },
-      body: JSON.stringify({
-        model: modelId,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: prompt },
-              { type: "image_url", image_url: { url: imageUrl } }
-            ],
-          },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: { message: "Analysis Failed" } }));
-        console.error("❌ [DNA Scan] OpenRouter Error:", err);
-        throw new Error(err.error?.message || "AI Analysis failed");
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || "{}";
-    const result = extractJson(content);
+    // Priority 2: OpenRouter fallback
+    if (!result && openRouterKey) {
+      try {
+        result = await analyzeWithOpenRouter(imageUrl, openRouterKey);
+      } catch (e) {
+        console.error("❌ [DNA Scan] OpenRouter also failed:", (e as Error).message);
+        return NextResponse.json({ error: "All AI providers failed" }, { status: 502 });
+      }
+    }
 
     if (!result) {
-        throw new Error("Failed to parse AI DNA response");
+      return NextResponse.json({ error: "No AI provider configured. Set GEMINI_API_KEY or OPENROUTER_API_KEY" }, { status: 403 });
     }
 
-    console.log("✅ [DNA Scan] Success for:", userAddress);
-
-    return NextResponse.json({ 
-        personality: result.personality || "Mysterious entity.", 
-        visual: result.visual || "Default character look." 
+    return NextResponse.json({
+      personality: result.personality || "Mysterious entity.",
+      visual: result.visual || "Default character look.",
     });
   } catch (error: any) {
-    console.error("❌ [DNA Scan] Critical Error:", error.message);
+    console.error("❌ [DNA Scan] Critical:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

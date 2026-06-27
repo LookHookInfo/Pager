@@ -169,14 +169,20 @@ export default function ProfileHeader({
           body: JSON.stringify({ imageUrl: data.url, userAddress: account.address }),
         });
         const scanData = await scan.json();
-        if (scanData.personality || scanData.visual) {
+        if (!scan.ok) {
+          console.warn("⚠️ [DNA Scan] API error:", scanData.error);
+          notify("AI DNA scan unavailable — fill fields manually", "error");
+        } else if (scanData.personality || scanData.visual) {
           setForgeData(prev => ({
             ...prev, image_url: data.url,
             personality: scanData.personality || prev.personality,
             visual_desc: scanData.visual || prev.visual_desc,
           }));
+          notify("DNA extracted from image", "success");
         }
-      } catch { /* AI scan is optional */ }
+      } catch {
+        notify("AI DNA scan unavailable — fill fields manually", "error");
+      }
       setIsAnalyzingDna(false);
     } catch (e: any) { notify(e.message, "error"); } finally { setIsForging(false); setIsAnalyzingDna(false); }
   };
@@ -196,7 +202,7 @@ export default function ProfileHeader({
 
       const { error: dbError } = await supabase.from("mascots_dna").upsert([{
         id: tokenId, name: forgeData.name, personality: forgeData.personality,
-        voice: forgeData.personality.slice(0, 100), physical_desc: forgeData.visual_desc || forgeData.personality,
+        voice: forgeData.personality, physical_desc: forgeData.visual_desc,
         image_url: forgeData.image_url, creator_address: account.address.toLowerCase(),
         price: forgeData.price, max_supply: 10000, contract_address: MASCOTS_CONTRACT_ADDRESS.toLowerCase(),
       }], { onConflict: "id" });

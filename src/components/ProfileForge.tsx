@@ -1,6 +1,31 @@
 "use client";
 
-import { Camera, Loader2, Scan, Database, Zap, Activity, EyeIcon, Fingerprint } from "lucide-react";
+import { Camera, Loader2, Scan, Database, Zap, Activity, EyeIcon, Fingerprint, Info } from "lucide-react";
+import { useState } from "react";
+
+function DnaTooltip({ label, children }: { label: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex items-center">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        className="ml-1.5 text-gray-300 hover:text-black transition-colors"
+      >
+        <Info size={10} />
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-black text-white text-[9px] leading-relaxed rounded-sm shadow-2xl z-50 pointer-events-none">
+          <div className="font-black uppercase tracking-widest mb-1.5 text-[8px] text-gray-400">{label}</div>
+          <div className="text-white/90">{children}</div>
+          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-black" />
+        </div>
+      )}
+    </span>
+  );
+}
 
 interface Props {
   forgeData: any;
@@ -67,8 +92,11 @@ export default function ProfileForge({
         />
 
         <div className="space-y-2">
-          <div className="flex items-center gap-2 text-[9px] font-black uppercase text-gray-400 ml-1">
-            <Activity size={10} className="text-blue-500" /> Behavioral DNA
+          <div className="flex items-center text-[9px] font-black uppercase text-gray-400 ml-1">
+            <Activity size={10} className="text-blue-500 shrink-0" /> Behavioral DNA
+            <DnaTooltip label="Behavioral DNA">
+              Controls how the mascot writes articles — personality, temperament, vocabulary, and humor. Fed into the LLM as the character's core identity.
+            </DnaTooltip>
           </div>
           <textarea
             value={forgeData.personality}
@@ -80,8 +108,11 @@ export default function ProfileForge({
         </div>
 
         <div className="space-y-2">
-          <div className="flex items-center gap-2 text-[9px] font-black uppercase text-gray-400 ml-1">
-            <EyeIcon size={10} className="text-green-500" /> Physical DNA
+          <div className="flex items-center text-[9px] font-black uppercase text-gray-400 ml-1">
+            <EyeIcon size={10} className="text-green-500 shrink-0" /> Physical DNA
+            <DnaTooltip label="Physical DNA">
+              Controls how the mascot appears in AI-generated banners — silhouette, colors, clothing, build. Fed into FLUX as the visual description for image generation.
+            </DnaTooltip>
           </div>
           <textarea
             value={forgeData.visual_desc}

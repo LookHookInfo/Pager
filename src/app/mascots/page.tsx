@@ -10,8 +10,6 @@ import { supabase } from "@/lib/supabase";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
-const BATCH_SIZE = 5;
-
 export default function MascotsPage() {
   const account = useActiveAccount();
   const { mutate: sendTransaction } = useSendTransaction();
@@ -33,36 +31,45 @@ export default function MascotsPage() {
       });
 
       const [tokenIds, details] = result;
-      const foundMascots: any[] = [];
 
-      for (let i = 0; i < tokenIds.length; i += BATCH_SIZE) {
-        const batchIndices = Array.from({ length: Math.min(BATCH_SIZE, tokenIds.length - i) }, (_, j) => i + j);
+      const activeTokenIds = tokenIds.filter((_, i) => details[i][4]);
+      if (activeTokenIds.length === 0) { setMascots([]); setIsLoading(false); return; }
 
-        const batchResults = await Promise.allSettled(batchIndices.map(async (idx) => {
-          const tokenId = tokenIds[idx];
-          const detail = details[idx];
-          if (!detail[4]) return null;
+      const numericIds = activeTokenIds.map(id => Number(id));
 
-          const { data: dna } = await supabase
-            .from("mascots_dna").select("*").eq("id", Number(tokenId))
-            .eq("contract_address", MASCOTS_CONTRACT_ADDRESS.toLowerCase()).maybeSingle();
+      const { data: dnas } = await supabase
+        .from("mascots_dna").select("id, name, image_url, voice")
+        .in("id", numericIds)
+        .eq("contract_address", MASCOTS_CONTRACT_ADDRESS.toLowerCase());
 
-          let balance = 0n;
-          if (account?.address) {
-            balance = await readContract({ contract, method: "function balanceOf(address,uint256) view returns (uint256)", params: [account.address, tokenId] });
-          }
+      const dnaMap = new Map(dnas?.map(d => [d.id, d]) || []);
 
-          return {
-            id: Number(tokenId), creator: detail[0], price: detail[1],
-            currentSupply: detail[2], totalSold: detail[3], isActive: detail[4],
-            metadata: dna ? { name: dna.name, image: dna.image_url, voice: dna.voice }
-              : { name: `Protocol #${tokenId}`, image: "/logo-pager.png", voice: "Genome encrypted." },
-            owned: balance > 0n,
-          };
-        }));
-
-        batchResults.forEach(r => { if (r.status === "fulfilled" && r.value) foundMascots.push(r.value); });
+      let ownedBalances = new Map<number, boolean>();
+      if (account?.address && numericIds.length > 0) {
+        try {
+          const balances = await readContract({
+            contract,
+            method: "function balanceOfBatch(address[],uint256[]) view returns (uint256[])",
+            params: [numericIds.map(() => account.address), numericIds.map(BigInt)],
+          });
+          ownedBalances = new Map(numericIds.map((id, i) => [id, balances[i] > 0n]));
+        } catch {}
       }
+
+      const foundMascots = activeTokenIds.map((tokenId, i) => {
+        const idx = tokenIds.indexOf(tokenId);
+        const detail = details[idx];
+        const numId = Number(tokenId);
+        const dna = dnaMap.get(numId);
+        return {
+          id: numId, creator: detail[0], price: detail[1],
+          currentSupply: detail[2], totalSold: detail[3], isActive: detail[4],
+          metadata: dna
+            ? { name: dna.name, image: dna.image_url, voice: dna.voice }
+            : { name: `Protocol #${numId}`, image: "/logo-pager.png", voice: "Genome encrypted." },
+          owned: ownedBalances.get(numId) || false,
+        };
+      });
 
       setMascots(foundMascots);
     } catch (err) {
@@ -75,7 +82,7 @@ export default function MascotsPage() {
   useEffect(() => { fetchAllMascots(); }, [fetchAllMascots]);
 
   const handlePurchase = async (tokenId: number, price: bigint) => {
-    if (!account) return alert("Connect wallet");
+    if (!account) { alert("Connect wallet"); return; }
     setBusyId(String(tokenId));
     try {
       const hashContract = getContract({ client, chain: base, address: HASH_TOKEN_ADDRESS });

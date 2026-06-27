@@ -6,7 +6,7 @@ import { decryptData } from "@/lib/security";
 import { verifySignature, getAuthMessage } from "@/lib/auth";
 import sharp from "sharp";
 
-export const maxDuration = 60;
+export const maxDuration = 90;
 export const dynamic = "force-dynamic";
 
 /**
@@ -34,8 +34,7 @@ async function uploadToPinata(imageUrl: string): Promise<string> {
       .webp({ quality: 85, effort: 4 })
       .toBuffer();
 
-    // Robust JWT cleaning
-    const cleanJwt = pinataJwt.trim().split(/\s+/).reduce((a, b) => a.length > b.length ? a : b).replace(/JWT$/, "");
+    const cleanJwt = pinataJwt.trim().replace(/^["'\s]+|["'\s]+$/g, "");
     
     const formData = new FormData();
     // Convert Buffer to Uint8Array for proper Blob compatibility in Node environments
