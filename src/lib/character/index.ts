@@ -33,11 +33,19 @@ const ATMOSPHERE_TEXT_INSTRUCTIONS: Record<string, string> = {
 };
 
 function getAtmosphereVisual(atmosphere: string): string {
-  return ATMOSPHERE_VISUALS[atmosphere] || "cinematic lighting, volumetric rays, deep colors, atmospheric depth";
+  const known = ATMOSPHERE_VISUALS[atmosphere];
+  if (known) return known;
+  const clean = atmosphere.replace(/["'`]/g, "").trim().slice(0, 60);
+  if (!clean) return "cinematic lighting, volumetric rays, deep colors, atmospheric depth";
+  return `fully rendered in ${clean} visual style with authentic ${clean} aesthetic, distinctive ${clean} color palette, consistent ${clean} design language, high-fidelity ${clean} atmosphere`;
 }
 
 function getAtmosphereTextInstruction(atmosphere: string): string {
-  return ATMOSPHERE_TEXT_INSTRUCTIONS[atmosphere] || "Match the narrative style precisely. Use vivid descriptions aligned with the atmosphere.";
+  const known = ATMOSPHERE_TEXT_INSTRUCTIONS[atmosphere];
+  if (known) return known;
+  const clean = atmosphere.replace(/["'`]/g, "").trim().slice(0, 60);
+  if (!clean) return "Match the narrative style precisely. Use vivid descriptions aligned with the atmosphere.";
+  return `Write entirely within the ${clean} universe — every metaphor, reference, and description must evoke ${clean}. Stay authentic to ${clean} lore and aesthetic.`;
 }
 
 /**
@@ -49,7 +57,8 @@ export function getCharacterVisualPrompt(
   characterType: CharacterType = "nft",
   articleTitle?: string,
   atmosphere: string = "Cinematic Digital Art",
-  activeDna?: CustomDna
+  activeDna?: CustomDna,
+  articleContext?: string,
 ): string {
   const moodKey = mood.toLowerCase();
   const visualMood = MOOD_ATMOSPHERES[moodKey] || MOOD_ATMOSPHERES.neutral;
@@ -69,6 +78,7 @@ export function getCharacterVisualPrompt(
     
     [UNIFIED SCENE]
     - SETTING: ${scene}.
+    - ARTICLE CONTEXT (illustrate these real-world elements from the story): ${articleContext || scene}.
     - FULL STYLE UNIFICATION: The entire image — character AND background — is a single cohesive "${atmosphere}" artwork. No realistic elements. Everything follows ${atmosphere} visual logic: ${getAtmosphereVisual(atmosphere)}.
     - LIGHTING/MOOD: ${visualMood}.
     

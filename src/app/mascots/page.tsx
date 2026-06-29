@@ -5,7 +5,7 @@ import { getContract, readContract, prepareContractCall } from "thirdweb";
 import { useActiveAccount, useSendTransaction } from "thirdweb/react";
 import { base } from "thirdweb/chains";
 import { client, MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI, HASH_TOKEN_ADDRESS } from "@/lib/web3";
-import { ShoppingCart, Loader2, Zap, CheckCircle2, RefreshCw, Info } from "lucide-react";
+import { ShoppingCart, Loader2, Zap, CheckCircle2, RefreshCw, Info, Trash2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -81,6 +81,24 @@ export default function MascotsPage() {
 
   useEffect(() => { fetchAllMascots(); }, [fetchAllMascots]);
 
+  const handleDiscard = async (tokenId: number) => {
+    if (!account) { alert("Connect wallet"); return; }
+    if (!confirm("Remove your key for this mascot?")) return;
+    setBusyId(String(tokenId));
+    setStatusText("Burning...");
+    try {
+      const contract = getContract({ client, chain: base, address: MASCOTS_CONTRACT_ADDRESS, abi: MASCOTS_ABI as any });
+      const tx = prepareContractCall({ contract, method: "function discardMascot(uint256)", params: [BigInt(tokenId)] });
+      sendTransaction(tx, {
+        onSuccess: () => {
+          setMascots(prev => prev.map(m => m.id === tokenId ? { ...m, owned: false, totalSold: Number(m.totalSold) - 1 } : m));
+          setBusyId(null); setStatusText("");
+        },
+        onError: (err) => { alert(err.message); setBusyId(null); setStatusText(""); },
+      });
+    } catch (e: any) { alert(e.message); setBusyId(null); setStatusText(""); }
+  };
+
   const handlePurchase = async (tokenId: number, price: bigint) => {
     if (!account) { alert("Connect wallet"); return; }
     setBusyId(String(tokenId));
@@ -141,6 +159,10 @@ export default function MascotsPage() {
                 {m.owned && (
                   <div className="absolute inset-0 bg-black/20 backdrop-blur-[1px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                     <div className="bg-black text-white text-[8px] font-black uppercase px-2 py-1 flex items-center gap-1.5 shadow-2xl"><CheckCircle2 size={10} className="text-green-500" /> Active</div>
+                    <button onClick={(e) => { e.stopPropagation(); handleDiscard(m.id); }} disabled={busyId !== null}
+                      className="absolute bottom-2 right-2 bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-sm shadow-xl transition-all disabled:opacity-50">
+                      <Trash2 size={10} />
+                    </button>
                   </div>
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4">

@@ -362,6 +362,7 @@ export default function ProfileHeader({
                       value={formData.ai_atmosphere}
                       onChange={e => setFormData({ ...formData, ai_atmosphere: e.target.value })}
                       placeholder="e.g. Star Wars, Noir..."
+                      maxLength={100}
                       className="w-full text-xs p-3 border border-black outline-none bg-white"
                     />
                   )}

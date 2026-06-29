@@ -4,72 +4,10 @@ import { resolveNftDna } from "@/lib/character/nft";
 import { getSupabaseServer } from "@/lib/supabase";
 import { decryptData } from "@/lib/security";
 import { verifySignature, getAuthMessage } from "@/lib/auth";
-import sharp from "sharp";
+import { uploadToPinata, generateBflImage } from "@/lib/image";
 
 export const maxDuration = 90;
 export const dynamic = "force-dynamic";
-
-/**
- * SERVER-SIDE PERSISTENCE & COMPRESSION: 
- * Downloads the AI image, compresses it using 'sharp', and uploads it to Pinata.
- */
-async function uploadToPinata(imageUrl: string): Promise<string> {
-  const pinataJwt = process.env.PINATA_JWT;
-  if (!pinataJwt) {
-    console.error("❌ [Server Persist] PINATA_JWT missing");
-    return imageUrl;
-  }
-
-  try {
-    console.log("📡 [Server Persist] Downloading AI sample...");
-    const imgRes = await fetch(imageUrl);
-    if (!imgRes.ok) throw new Error(`Failed to fetch AI image: ${imgRes.status}`);
-    
-    const arrayBuffer = await imgRes.arrayBuffer();
-    const inputBuffer = Buffer.from(arrayBuffer);
-
-    console.log("📡 [Server Persist] Compressing image with sharp...");
-    // Convert to WebP with high quality (85%) and reasonable size
-    const compressedBuffer = await sharp(inputBuffer)
-      .webp({ quality: 85, effort: 4 })
-      .toBuffer();
-
-    const cleanJwt = pinataJwt.trim().replace(/^["'\s]+|["'\s]+$/g, "");
-    
-    const formData = new FormData();
-    // Convert Buffer to Uint8Array for proper Blob compatibility in Node environments
-    const blob = new Blob([new Uint8Array(compressedBuffer)], { type: 'image/webp' });
-    formData.append("file", blob, `ai-banner-${Date.now()}.webp`);
-    
-    const metadata = JSON.stringify({ 
-      name: `pager-ai-${Date.now()}`,
-      keyvalues: { project: "Pager", type: "AI-Banner", source: "BFL", format: "webp" }
-    });
-    formData.append("pinataMetadata", metadata);
-    formData.append("pinataOptions", JSON.stringify({ cidVersion: 1 }));
-
-    console.log(`📡 [Server Persist] Uploading compressed banner (~${Math.round(compressedBuffer.length / 1024)} KB) to Pinata...`);
-    const res = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${cleanJwt}` },
-      body: formData,
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      const gateway = process.env.NEXT_PUBLIC_PINATA_GATEWAY || "https://gateway.pinata.cloud/ipfs/";
-      const permanentUrl = `${gateway.endsWith("/") ? gateway : gateway + "/"}${data.IpfsHash}`;
-      console.log("✅ [Server Persist] Success:", permanentUrl);
-      return permanentUrl;
-    } else {
-      const errText = await res.text();
-      console.error("❌ [Server Persist] Pinata error:", errText);
-    }
-  } catch (e) {
-    console.error("❌ [Server Persist] Critical failure:", e);
-  }
-  return imageUrl;
-}
 
 function normalizeReference(url: string): string {
   if (!url) return "";
@@ -98,83 +36,6 @@ function extractJson(text: string) {
   } catch (e) {
     console.error("❌ [AI Process] JSON Parse Error. Content:", text.slice(0, 200));
     throw new Error("AI returned invalid JSON format. Please try again.");
-  }
-}
-
-async function generateBflImage(prompt: string): Promise<string> {
-  const apiKey = process.env.BFL_API_KEY;
-  if (!apiKey) throw new Error("BFL API Key missing in environment");
-
-  console.log("🎨 [BFL] Starting generation for prompt:", prompt.slice(0, 100) + "...");
-
-  try {
-    // 1. Create Task - FLUX.2 PRO
-    const res = await fetch("https://api.bfl.ai/v1/flux-2-pro", {
-      method: "POST",
-      headers: {
-        "x-key": apiKey,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        prompt,
-        width: 1344,
-        height: 768,
-        prompt_upsampling: true
-      })
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      console.error("❌ [BFL API] Task Creation Failed:", err);
-      throw new Error(`BFL Creation Failed: ${res.status}`);
-    }
-
-    const data = await res.json();
-    const taskId = data.id;
-    const pollingUrl = `https://api.bfl.ai/v1/get_result?id=${taskId}`;
-    
-    console.log(`📡 [BFL] Task created: ${taskId}. Polling...`);
-
-    // 2. Poll Result (Increased to 40 attempts x 2s = 80s)
-    // Note: Vercel might still timeout, but we try our best.
-    for (let i = 0; i < 40; i++) { 
-      await new Promise(r => setTimeout(r, 2000));
-      
-      try {
-        const statusRes = await fetch(pollingUrl, {
-          headers: { "x-key": apiKey }
-        });
-        
-        if (!statusRes.ok) {
-          console.warn(`⚠️ [BFL] Polling error (${statusRes.status}), retrying...`);
-          continue;
-        }
-        
-        const statusData = await statusRes.json();
-        console.log(`⏳ [BFL] Status (${i}): ${statusData.status}`);
-
-        if (statusData.status === "Ready") {
-          const sampleUrl = statusData.result?.sample || "";
-          if (sampleUrl) {
-            console.log("✅ [BFL] Image ready, uploading to Pinata...");
-            return await uploadToPinata(sampleUrl);
-          }
-          throw new Error("BFL returned Ready but no sample URL");
-        } 
-        
-        if (statusData.status === "Failed" || statusData.status === "Error") {
-          console.error("❌ [BFL API] Generation Error:", statusData);
-          throw new Error(`BFL Generation Failed: ${statusData.error || 'Unknown error'}`);
-        }
-      } catch (pollErr: any) {
-        console.error("⚠️ [BFL] Poll iteration failed:", pollErr.message);
-      }
-    }
-    
-    throw new Error("BFL Generation Timed Out (80s)");
-  } catch (e: any) {
-    console.error("❌ [BFL API] Exception:", e.message);
-    throw e;
   }
 }
 
@@ -263,7 +124,9 @@ export async function POST(req: Request) {
       image_url: normalizeReference(nftMetadata.image)
     };
 
-    const finalAtmosphere = providedAtmosphere || userProfile?.ai_atmosphere || "Rick and Morty";
+    let finalAtmosphere = (providedAtmosphere || userProfile?.ai_atmosphere || "Surrealism")
+      .replace(/["`${}]/g, "").trim().slice(0, 100);
+    if (!finalAtmosphere) finalAtmosphere = "Surrealism";
     
     // STRICT MODEL SELECTION:
     // TEXT: Gemini 2.5 Flash (Balanced speed/quality)
@@ -298,7 +161,7 @@ export async function POST(req: Request) {
         "title": "Short catchy title in character voice",
         "body": "Rewritten article (4-6 paragraphs) with HTML tags for emphasis only (<strong>, <em>). Use character slang.",
         "analysis": "Short 2-sentence market insight about BTC/Web3 from this character's perspective",
-        "banner": "Highly detailed visual description for a banner image based on the article topic and character style"
+        "banner": "EXTREMELY DETAILED visual scene (4-5 sentences) illustrating the ARTICLE'S CORE SUBJECT as a literal, concrete scene. Describe specific elements from the article — objects, setting, action, technology, people. Then describe how ${activeDna.name} is positioned within this scene reacting to it. Make the article's TOPIC VISIBLE and immediately recognizable."
       }
       
       ARTICLE TO REWRITE:
@@ -336,7 +199,14 @@ export async function POST(req: Request) {
     }
 
     const fullHtml = finalBody + getBtcAnalysisBlock(finalFormat(result.analysis || "Market analysis."), { activeDna, profile: userProfile }) + getMiningSponsorBlock();
-    const visualPrompt = getCharacterVisualPrompt(result.banner || finalTitle, mood, "nft", finalTitle, finalAtmosphere, activeDna);
+    // Extract article context for the visual prompt
+    const articleContext = fullHtml
+      .replace(/<[^>]*>/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 800);
+
+    const visualPrompt = getCharacterVisualPrompt(result.banner || finalTitle, mood, "nft", finalTitle, finalAtmosphere, activeDna, articleContext);
     
     // Banner generation via FLUX.2 PRO with auto-persistence to Pinata
     let bannerUrl = "";

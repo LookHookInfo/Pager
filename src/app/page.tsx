@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { ArrowUpRight, Newspaper, Radio, ChevronLeft, ChevronRight } from "lucide-react";
 import LikeButton from "@/components/LikeButton";
+import BannerImage from "@/components/BannerImage";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 
@@ -86,10 +87,10 @@ export default async function Home({ searchParams }: { searchParams: { page?: st
               <Link href={`/article/${article.id}`} className="flex-1 order-first md:order-last flex items-center justify-center">
                 <div className="w-full aspect-video overflow-hidden bg-gray-100 border border-[var(--border-soft)] rounded-sm">
                   {article.image_url ? (
-                    <img 
-                      src={article.image_url} 
-                      alt={article.title} 
-                      className="w-full h-full object-cover object-center grayscale-[0.2] hover:grayscale-0 transition-all duration-500" 
+                    <BannerImage
+                      src={article.image_url}
+                      alt={article.title}
+                      className="w-full h-full object-cover object-center grayscale-[0.2] hover:grayscale-0 transition-all duration-500"
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">

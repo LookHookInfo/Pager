@@ -32,35 +32,74 @@ export default function ProfileMascots({ address }: { address: string }) {
       const { data: profile } = await supabase.from("profiles").select("ai_nft_token_id").eq("address", address.toLowerCase()).single();
       setActiveMascotId(profile?.ai_nft_token_id || null);
 
-      const { data: allDnas } = await supabase
-        .from("mascots_dna").select("*").eq("creator_address", address.toLowerCase()).order("id", { ascending: false });
-
-      if (!allDnas?.length) { setMascots([]); setIsLoading(false); return; }
-
-      const dnas = allDnas.filter(d => !d.contract_address || d.contract_address.toLowerCase() === MASCOTS_CONTRACT_ADDRESS.toLowerCase());
-
       const contract = getContract({ client, chain: base, address: MASCOTS_CONTRACT_ADDRESS, abi: MASCOTS_ABI as any });
+      const mascotMap = new Map<number, any>();
+
+      const { data: createdDnas } = await supabase
+        .from("mascots_dna").select("*").eq("creator_address", address.toLowerCase())
+        .eq("contract_address", MASCOTS_CONTRACT_ADDRESS.toLowerCase());
+
+      if (createdDnas) {
+        for (const dna of createdDnas) {
+          mascotMap.set(dna.id, { ...dna, source: "created" });
+        }
+      }
+
+      const { data: ownedDnas } = await supabase
+        .from("mascots_dna").select("*").eq("contract_address", MASCOTS_CONTRACT_ADDRESS.toLowerCase());
+
+      let ownedTokenIds: number[] = [];
+      if (account?.address) {
+        try {
+          const result = await readContract({
+            contract,
+            method: "function getUserMascots(address) view returns (uint256[], uint256[], (address,uint256,uint32,uint32,bool)[])",
+            params: [account.address],
+          });
+          const [tokenIds, , details] = result;
+          ownedTokenIds = tokenIds.filter((_, i) => details[i][4]).map(id => Number(id));
+        } catch {}
+      }
+
+      const ownedSet = new Set(ownedTokenIds);
+      const neededIds = new Set([...mascotMap.keys(), ...ownedTokenIds]);
+
+      if (!neededIds.size) { setMascots([]); setIsLoading(false); return; }
+
+      if (ownedDnas) {
+        for (const dna of ownedDnas) {
+          if (ownedSet.has(dna.id) && !mascotMap.has(dna.id)) {
+            mascotMap.set(dna.id, { ...dna, source: "owned" });
+          }
+        }
+      }
+
+      const mascotIds = [...mascotMap.keys()];
       const foundMascots: any[] = [];
 
-      for (let i = 0; i < dnas.length; i += BATCH_SIZE) {
-        const batch = dnas.slice(i, i + BATCH_SIZE);
-        const results = await Promise.allSettled(batch.map(async (dna) => {
-          const k = await readContract({ contract, method: "function keys(uint256) view returns (address,uint256,uint32,uint32,bool)", params: [BigInt(dna.id)] });
+      for (let i = 0; i < mascotIds.length; i += BATCH_SIZE) {
+        const batchIds = mascotIds.slice(i, i + BATCH_SIZE);
+        const results = await Promise.allSettled(batchIds.map(async (id) => {
+          const dna = mascotMap.get(id)!;
+          const k = await readContract({ contract, method: "function keys(uint256) view returns (address,uint256,uint32,uint32,bool)", params: [BigInt(id)] });
           const isActive = k[4] && k[0] !== "0x0000000000000000000000000000000000000000";
           let balance = 0n;
           if (account?.address && isActive) {
-            balance = await readContract({ contract, method: "function balanceOf(address,uint256) view returns (uint256)", params: [account.address, BigInt(dna.id)] });
+            balance = await readContract({ contract, method: "function balanceOf(address,uint256) view returns (uint256)", params: [account.address, BigInt(id)] });
           }
           return {
-            id: dna.id, price: isActive ? k[1] : BigInt(toWei(dna.price || "101")),
+            id,
+            price: isActive ? k[1] : BigInt(toWei(dna.price || "101")),
             currentSupply: k[2], totalSold: k[3], maxSupply: 10000n, isActive, creator: k[0],
-            metadata: { name: dna.name, image: dna.image_url, voice: dna.voice }, owned: balance > 0n,
+            metadata: { name: dna.name, image: dna.image_url, voice: dna.voice },
+            owned: balance > 0n,
+            isCreator: dna.creator_address?.toLowerCase() === address.toLowerCase(),
           };
         }));
-
         results.forEach(r => { if (r.status === "fulfilled") foundMascots.push(r.value); });
       }
 
+      foundMascots.sort((a, b) => b.id - a.id);
       setMascots(foundMascots);
     } catch (err) {
       console.error("ProfileMascots error:", err);

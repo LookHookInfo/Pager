@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { mood = "neutral", title, bannerDescription, atmosphere: providedAtmosphere, nftTokenId, userAddress, signature, message } = body;
+    const { mood = "neutral", title, bannerDescription, atmosphere: providedAtmosphere, nftTokenId, userAddress, signature, message, content } = body;
 
     if (!userAddress) return NextResponse.json({ error: "Address required" }, { status: 400 });
     if (!nftTokenId) return NextResponse.json({ error: "NFT Mascot required" }, { status: 400 });
@@ -48,8 +48,21 @@ export async function POST(req: Request) {
         : nftMetadata.image,
     };
 
-    const atmosphere = providedAtmosphere || profile?.ai_atmosphere || "Surrealism";
-    const prompt = getCharacterVisualPrompt(bannerDescription || title, mood, "nft", title, atmosphere, activeDna);
+    let atmosphere = (providedAtmosphere || profile?.ai_atmosphere || "Surrealism")
+      .replace(/["`${}]/g, "").trim().slice(0, 100);
+    if (!atmosphere) atmosphere = "Surrealism";
+
+    // Extract concise article context for the visual prompt
+    const articleContext = content
+      ? content
+          .replace(/<[^>]*>/g, "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 800)
+      : "";
+
+    const prompt = getCharacterVisualPrompt(bannerDescription || title, mood, "nft", title, atmosphere, activeDna, articleContext);
+    console.log(`🎨 [Banner] Generating with atmosphere="${atmosphere}", prompt length=${prompt.length}`);
     const imageUrl = await generateBflImage(prompt);
 
     if (!imageUrl) return NextResponse.json({ error: "Banner generation failed" }, { status: 500 });

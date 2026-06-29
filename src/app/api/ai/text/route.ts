@@ -66,7 +66,9 @@ export async function POST(req: Request) {
       image_url: normalizeReference(nftMetadata.image),
     };
 
-    const atmosphere = providedAtmosphere || profile?.ai_atmosphere || "Surrealism";
+    let atmosphere = (providedAtmosphere || profile?.ai_atmosphere || "Surrealism")
+      .replace(/["`${}]/g, "").trim().slice(0, 100);
+    if (!atmosphere) atmosphere = "Surrealism";
 
     const systemPrompt = getCharacterSystemPrompt(mood, "nft", activeDna, atmosphere);
     const userPrompt = `
@@ -86,7 +88,7 @@ export async function POST(req: Request) {
         "title": "Short catchy title in character voice",
         "body": "Rewritten article with HTML tags (<strong>, <em>)",
         "analysis": "Short 2-sentence BTC/Web3 market insight",
-        "banner": "Detailed visual description for a banner image"
+        "banner": "EXTREMELY DETAILED visual scene (4-5 sentences) illustrating the ARTICLE'S CORE SUBJECT as a literal, concrete scene. Describe specific elements from the article — objects, setting, action, technology, people. Then describe how the mascot character ${activeDna.name} is positioned within this scene reacting to it. Make the article's TOPIC VISIBLE and immediately recognizable. Example: if article is about Bitcoin ETF → show Bitcoin coins, institutional building, charts, mascot analyzing data. If about DeFi hack → show broken smart contract, vault door open, mascot investigating. If about mining → show ASIC rigs, cooling fans, energy grid, mascot in mining facility."
       }
 
       ARTICLE:

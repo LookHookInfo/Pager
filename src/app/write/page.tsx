@@ -26,6 +26,24 @@ interface Notification {
   id: string; message: string; type: "success" | "error" | "info";
 }
 
+async function fetchWithRetry(url: string, options: RequestInit, retries = 2): Promise<Response> {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const res = await fetch(url, options);
+      if (res.ok) return res;
+      if (res.status >= 500 && i < retries) {
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      if (i >= retries) throw err;
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  throw new Error("fetchWithRetry exhausted");
+}
+
 export default function WritePage() {
   const account = useActiveAccount();
   const router = useRouter();
@@ -167,15 +185,17 @@ export default function WritePage() {
 
       setProcessingStep("banner");
 
-      const bannerRes = await fetch("/api/ai/banner", {
+      const articleContent = editorRef.current?.innerHTML || textData.content || "";
+      const bannerRes = await fetchWithRetry("/api/ai/banner", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: textData.title, bannerDescription: textData.banner_description, mood,
           nftTokenId: selectedNftId, atmosphere: profile?.ai_atmosphere || "Surrealism",
           userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
+          content: articleContent,
         }),
         signal: AbortSignal.timeout(95000),
-      });
+      }, 2);
       // Banner generation requires 10 $HASH credits. Top up in Profile settings.
       if (!bannerRes.ok) throw new Error((await bannerRes.json()).error || "Banner generation failed");
       const bannerData = await bannerRes.json();
@@ -200,15 +220,17 @@ export default function WritePage() {
       const authMsg = getAuthMessage("authorize session", account.address.toLowerCase());
       const authSig = await account.signMessage({ message: authMsg });
 
-      const res = await fetch("/api/ai/banner", {
+      const articleContent = editorRef.current?.innerHTML || "";
+      const res = await fetchWithRetry("/api/ai/banner", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title, bannerDescription, mood, nftTokenId: selectedNftId,
-          atmosphere: profile?.ai_atmosphere || "Rick and Morty",
+          atmosphere: profile?.ai_atmosphere || "Surrealism",
           userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
+          content: articleContent,
         }),
         signal: AbortSignal.timeout(95000),
-      });
+      }, 2);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Regeneration failed");
       if (data.image_url) { setImageUrl(data.image_url); addNotification("Banner updated!"); fetchProfile(); }

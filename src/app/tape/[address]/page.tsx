@@ -1,6 +1,7 @@
 import { getSupabaseServer } from "@/lib/supabase";
 import { Newspaper, Radio, ChevronLeft, ChevronRight } from "lucide-react";
 import LikeButton from "@/components/LikeButton";
+import BannerImage from "@/components/BannerImage";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import ProfileHeader from "@/components/ProfileHeader";
@@ -181,10 +182,10 @@ export default async function TapePage({
                   <Link href={`/article/${article.id}`} className="flex-1">
                     <div className="aspect-[16/10] bg-white border border-[var(--border-soft)] overflow-hidden rounded-sm">
                       {article.image_url ? (
-                        <img 
-                          src={article.image_url} 
+                        <BannerImage
+                          src={article.image_url}
                           alt={article.title}
-                          className="w-full h-full object-cover grayscale-[0.3] group-hover:grayscale-0 transition-all duration-500" 
+                          className="w-full h-full object-cover grayscale-[0.3] group-hover:grayscale-0 transition-all duration-500"
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-gray-100 bg-gray-50">
