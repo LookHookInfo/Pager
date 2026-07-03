@@ -35,27 +35,18 @@ export async function GET(req: Request) {
     const id = searchParams.get('id');
     const address = searchParams.get('address');
     
-    let title = "Pager - Web3 Media";
-    let subTitle = "A minimalist decentralized news platform built on Base.";
-    let label = "Intel / Report";
     let bannerUrl = "";
 
     const supabase = getSupabaseServer();
 
     if (id) {
-      const { data } = await supabase.from('articles').select('title, content, image_url').eq('id', id).single();
+      const { data } = await supabase.from('articles').select('image_url').eq('id', id).single();
       if (data) {
-        title = data.title;
-        subTitle = data.content.replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim().slice(0, 110) + '...';
-        label = "Intel / Report";
         bannerUrl = getOptimizedImageUrl(data.image_url || "");
       }
     } else if (address) {
-      const { data } = await supabase.from('profiles').select('name, bio, avatar_url').eq('address', address.toLowerCase()).single();
+      const { data } = await supabase.from('profiles').select('avatar_url').eq('address', address.toLowerCase()).single();
       if (data) {
-        title = data.name || "Anonymous Author";
-        subTitle = data.bio || `Web3 feed of ${address.slice(0, 6)}...${address.slice(-4)}`;
-        label = "Protocol / Tape";
         bannerUrl = getOptimizedImageUrl(data.avatar_url || "");
       }
     }
@@ -66,16 +57,13 @@ export async function GET(req: Request) {
           height: '100%', 
           width: '100%', 
           display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: 'flex-start', 
-          justifyContent: 'space-between', 
+          flexDirection: 'column',
           backgroundColor: '#000', 
-          padding: '80px', 
           fontFamily: 'sans-serif',
           position: 'relative',
           overflow: 'hidden'
         }}>
-          {/* ФОНОВОЕ ИЗОБРАЖЕНИЕ (ОПТИМИЗИРОВАННОЕ) */}
+          {/* ФОНОВОЕ ИЗОБРАЖЕНИЕ — яркое, без затемнения */}
           {bannerUrl && (
             <img 
               src={bannerUrl} 
@@ -86,83 +74,37 @@ export async function GET(req: Request) {
                 width: '100%', 
                 height: '100%', 
                 objectFit: 'cover', 
-                opacity: 0.5,
+                opacity: 1,
               }} 
             />
           )}
 
-          {/* Затемнение фона для читаемости текста */}
-          <div style={{ 
-            position: 'absolute', 
-            top: 0, 
-            left: 0, 
-            right: 0, 
-            bottom: 0, 
-            background: 'linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0.9) 100%)',
-            zIndex: 1
-          }} />
-
-          {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', width: '100%', position: 'relative', zIndex: 10 }}>
-            <div style={{ fontSize: '36px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '-0.05em', color: 'white' }}>Pager</div>
-            <div style={{ marginLeft: '16px', width: '3px', height: '28px', backgroundColor: '#fff' }} />
-            <div style={{ marginLeft: '16px', fontSize: '14px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.3em', color: '#d1d5db' }}>
-              {label}
-            </div>
-          </div>
-
-          {/* Main Content */}
-          <div style={{ display: 'flex', flexDirection: 'column', width: '100%', marginBottom: '40px', position: 'relative', zIndex: 10 }}>
-            <div style={{ 
-              fontSize: title.length > 50 ? '60px' : '74px', 
-              fontWeight: '900', 
-              color: 'white', 
-              marginBottom: '24px', 
-              lineHeight: 1.1, 
-              letterSpacing: '-0.02em',
-              textShadow: '0 4px 12px rgba(0,0,0,0.5)'
-            }}>
-              {title}
-            </div>
-            <div style={{ 
-              fontSize: '30px', 
-              color: '#e5e7eb', 
-              lineHeight: 1.5, 
-              fontWeight: '500', 
-              maxWidth: '950px',
-              textShadow: '0 2px 8px rgba(0,0,0,0.5)'
-            }}>
-              {subTitle}
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div style={{ 
-            display: 'flex', 
-            width: '100%', 
-            borderTop: '5px solid white', 
-            paddingTop: '40px', 
-            alignItems: 'center', 
-            justifyContent: 'space-between',
+          {/* Контент прижат к низу */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'flex-end',
+            width: '100%',
+            height: '100%',
             position: 'relative',
             zIndex: 10
           }}>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-               <div style={{ 
-                 padding: '10px 20px', 
-                 backgroundColor: 'white', 
-                 borderRadius: '6px', 
-                 display: 'flex', 
-                 alignItems: 'center', 
-                 justifyContent: 'center', 
-                 marginRight: '20px' 
-               }}>
-                 <div style={{ color: 'black', fontSize: '16px', fontWeight: 'bold', textTransform: 'uppercase' }}>Base Network</div>
-               </div>
-               <div style={{ fontSize: '24px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'white' }}>lookhook.info</div>
-            </div>
-            <div style={{ fontSize: '20px', color: '#fff', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Web3 Protocol
+            {/* Белая разделяющая черта */}
+            <div style={{ 
+              width: '100%',
+              borderTop: '5px solid white',
+              marginBottom: '0'
+            }} />
+
+            {/* Нижняя панель с затемнением только под чертой */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              padding: '32px 80px',
+              background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.7) 100%)',
+            }}>
+              <div style={{ fontSize: '28px', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '-0.03em', color: 'white' }}>Pager Media</div>
             </div>
           </div>
         </div>
