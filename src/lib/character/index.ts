@@ -16,20 +16,21 @@ export interface CustomDna {
 }
 
 // Atmosphere visual descriptors for image generation
+// ALL styles share a caricature foundation — exaggerated cartoon proportions, bold thick outlines, expressive features
 const ATMOSPHERE_VISUALS: Record<string, string> = {
-  Surrealism: "adult swim cartoon style: hand-drawn animation aesthetic with rough sketchy lineart, cel-shaded flat colors, rubber hose limbs, weird surreal anatomy, distorted cartoon physics, mind-bending impossible scenes, vibrant toxic color palettes, mad scientist laboratory vibe, interdimensional portal aesthetic, mutilated cartoon logic, messy expressive brushstrokes, dynamic smear frames, grotesque yet hilarious character distortions, retro cartoon surrealism. The mascot is fully drawn in this style — like a character from a surreal sci-fi cartoon show.",
-  "Pixel Art": "retro 8-bit/16-bit aesthetic, blocky pixelated rendering, limited color palette, chunky sprites, CRT glow, gameboy-era textures, pixel-perfect edges",
-  "Brick Style": "LEGO-like blocky construction, visible brick joints, modular building aesthetic, primary colors, plastic texture, studded surfaces, toy-like volumetric build",
-  "Anime Style": "cel-shaded animation style, sharp clean lineart, vibrant gradient hair, large expressive eyes, dramatic lighting, sakura petals, cinematic anime composition, motion lines",
-  "Graffiti": "unified graffiti mural art style: the mascot character is a vibrant spray-painted graffiti illustration — bold wide outlines, dripping aerosol fills, stencil textures, paint splatters, wildstyle urban art. The character and background together form a seamless mural on brick wall canvas. Vibrant street color palette, tag culture elements, all rendered as one cohesive graffiti artwork, hip-hop aesthetic.",
+  Surrealism: "CARICATURE SURREAL CARTOON: EXAGGERATED rubber hose caricature proportions, wildly distorted cartoon anatomy, giant oversized heads and tiny bodies, bulging crazy eyes, massive goofy grins. Adult swim hand-drawn caricature aesthetic with rough sketchy lineart, cel-shaded flat colors. Mind-bending impossible caricature scenes — giant melting clocks bigger than buildings, characters stretched like taffy, portals with eyeballs. Vibrant toxic color palettes, mad scientist laboratory vibe, interdimensional portal aesthetic. Messy expressive brushstrokes, dynamic smear frames, grotesque yet hilarious character distortions. EVERYTHING IS A CARICATURE — no realistic proportions allowed.",
+  "Pixel Art": "CARICATURE PIXEL ART: EXTREME oversized chunky 8-bit caricature — HUGE visible square pixels the size of fists, ultra-blocky retro game proportions, exaggerated big-headed characters with massive pixelated eyes and giant blocky hands. Retro 8-bit/16-bit caricature aesthetic with violently limited color palette (max 8 colors per sprite), chunky megasprites, exaggerated pixel bleed, intentional quantization banding. CRT scanline overlay, Gameboy-era texture grit. Characters have comically oversized pixelated weapons/items, exaggerated jump/action poses with giant motion pixel trails. Everything is deliberately chunky and blocky — HUGE PIXELS you can count, nothing smooth, maximum retro caricature energy.",
+  "Brick Style": "CARICATURE LEGO BRICK: Everything is built from MASSIVE oversized LEGO bricks with VISIBLE gigantic studs on every surface. Exaggerated caricature proportions — characters have giant blocky LEGO heads with classic yellow plastic skin, huge cylindrical LEGO hands, oversized brick-built features. Giant chunky bricks stacked in comically impossible ways, primary colors (bright red, yellow, blue, green) with bold plastic sheen. Every surface shows large visible LEGO studs, clutch power gaps between bricks, exaggerated modular construction. Characters stand on giant LEGO baseplates, buildings are massive brick towers defying physics. The entire world is CARICATURE LEGO — think LEGO Movie meets cartoon exaggeration with gigantic chunky bricks, oversized stud details, and toy-like volumetric build. PLASTIC TEXTURE visible everywhere with bold cartoon lighting.",
+  "Anime Style": "CARICATURE ANIME: EXTREME over-the-top caricature anime — SUPER-DEFORMED (SD/chibi) proportions with ENORMOUS shiny eyes (60% of face), tiny noses, giant expressive mouths with visible teeth grit. Huge dramatic sweatdrops, massive angular action lines, comically oversized hair spikes defying gravity, exaggerated speed lines everywhere. THICK dynamic cel-shaded lineart with vibrant gradient explosions, dramatic lens flares, excessive sakura petals, over-the-top aura effects (flames, lightning, sparkle backgrounds). Characters strike extreme dramatic poses with giant exaggerated emotion faces — HUGE teary eyes, massive angry veins popping, enormous happy grins showing all teeth. Full cinematic anime composition with caricature distortion — characters can stretch, squash, and deform for comedic effect while staying in anime aesthetic.",
+  "Graffiti": "CARICATURE GRAFFITI MURAL: EXTREME caricature graffiti illustration — massively oversized spray-painted features, wildly exaggerated wildstyle proportions, huge dripping aerosol drips, giant bold cartoon outlines like comic book borders. The mascot character is a vibrant caricature graffiti piece — enormous wide eyes painted with drip effects, comically oversized spray cans, exaggerated urban proportions (huge heads, baggy clothes drawn in spray paint). Bold wide aerosol outlines, dripping paint fills, stencil textures, paint splatters, giant tags in background. The character and environment form a seamless cohesive graffiti mural on brick wall canvas. Vibrant street color palette with exaggerated neon pops, all rendered as one unified caricature graffiti artwork with maximum hip-hop attitude.",
 };
 
 const ATMOSPHERE_TEXT_INSTRUCTIONS: Record<string, string> = {
-  Surrealism: "Adult swim cartoon logic: interdimensional absurdity, mad scientist energy, reality-bending metaphors, dark humor mixed with childish nonsense. Write like a deranged cartoon narrator — chaotic, funny, mind-bending, burping through the fourth wall.",
-  "Pixel Art": "Write as if narrating a retro video game. Short punchy sentences, arcade-style energy, 8-bit bravado. Use game mechanics as metaphors.",
-  "Brick Style": "Describe everything as modular, buildable, constructed. Use engineering and assembly metaphors. Structured, systematic, blueprint-like thinking.",
-  "Anime Style": "Dramatic over-the-top narration, emotional intensity, protagonist energy. Use training arc, power-up, and rival metaphors. Maximum aura.",
-  "Graffiti": "Raw street energy, underground vibe, rebellious tone. Use urban metaphors, graffiti culture references, spray-paint attitude. Keep it edgy and authentic.",
+  Surrealism: "CARICATURE SURREAL NARRATOR: Adult swim cartoon logic with extreme exaggeration — interdimensional absurdity, mad scientist energy, reality-bending metaphors. Write like a deranged cartoon narrator on acid — chaotic, funny, mind-bending, burping through the fourth wall. Exaggerate everything. Every sentence must feel cartoonishly distorted.",
+  "Pixel Art": "CARICATURE 8-BIT NARRATOR: Write as if narrating a chunky retro video game on steroids. Short punchy cartoon sentences, arcade-style overreaction energy, 8-bit bravado with exaggerated sound effects (BOOM! BEEP! KAPOW!). Use game mechanics as cartoon metaphors. Everything is a power-up, a boss fight, a cheat code. Maximum pixelated caricature energy.",
+  "Brick Style": "CARICATURE BRICK NARRATOR: Describe everything as modular, BUILT, CONSTRUCTED from gigantic chunky bricks. Use engineering and assembly metaphors pushed to cartoon extremes. Every concept is a brick being stacked, every idea clicks into place with an audible CLICK sound effect. Structured, systematic, blueprint-like thinking but in a cartoonishly exaggerated LEGO universe where everything is plastic, primary-colored, and studded.",
+  "Anime Style": "CARICATURE ANIME NARRATOR: EXTREME over-the-top dramatic narration, emotional intensity cranked to 11, protagonist energy overflowing. Use training arc, power-up transformation, and arch-rival metaphors. Scream words in ALL CAPS for emphasis. Talk about aura, spirit energy, limit breaks. Maximum dramatic caricature — every event is the most important moment in the universe, every market move is a final boss battle. Nothing is subtle, everything is SUPER.",
+  "Graffiti": "CARICATURE GRAFFITI NARRATOR: Raw street energy with cartoon exaggeration, underground vibe, rebellious tone pushed to comic extremes. Use urban metaphors, graffiti culture references, spray-paint attitude. Exaggerate every statement like a massive colorful tag on a wall. Keep it edgy, loud, and authentically caricature. Every sentence drips like fresh paint — bold, messy, impossible to ignore.",
 };
 
 function getAtmosphereVisual(atmosphere: string): string {
@@ -37,7 +38,7 @@ function getAtmosphereVisual(atmosphere: string): string {
   if (known) return known;
   const clean = atmosphere.replace(/["'`]/g, "").trim().slice(0, 60);
   if (!clean) return "cinematic lighting, volumetric rays, deep colors, atmospheric depth";
-  return `fully rendered in ${clean} visual style with authentic ${clean} aesthetic, distinctive ${clean} color palette, consistent ${clean} design language, high-fidelity ${clean} atmosphere`;
+  return `CARICATURE CARTOON ANIMATION STYLE: the entire image is a caricature illustration in "${clean}" cartoon aesthetic — exaggerated cartoon proportions, giant expressive heads, thick bold outlines, vibrant cel-shaded colors, rubbery physics, big googly eyes, over-the-top action poses. Everything is stylized caricature: ${clean} visual style with huge ${clean} details, giant ${clean} elements, bold ${clean} color palette, exaggerated ${clean} design language rendered as a cohesive caricature cartoon artwork. NO realism — pure cartoon exaggeration in ${clean} universe.`;
 }
 
 function getAtmosphereTextInstruction(atmosphere: string): string {
@@ -45,7 +46,7 @@ function getAtmosphereTextInstruction(atmosphere: string): string {
   if (known) return known;
   const clean = atmosphere.replace(/["'`]/g, "").trim().slice(0, 60);
   if (!clean) return "Match the narrative style precisely. Use vivid descriptions aligned with the atmosphere.";
-  return `Write entirely within the ${clean} universe — every metaphor, reference, and description must evoke ${clean}. Stay authentic to ${clean} lore and aesthetic.`;
+  return `CARICATURE CARTOON NARRATOR (мультипликация): Write entirely within the "${clean}" cartoon universe — every metaphor, reference, and description must be exaggerated caricature in ${clean} style. Think animated cartoon logic: everything is bigger, louder, more dramatic than reality. Use cartoon sound effects (BOOM! CRASH! ZAP!), exaggerated descriptions, rubbery physics metaphors. Stay authentic to ${clean} lore and aesthetic but with MAXIMUM CARTOON EXAGGERATION.`;
 }
 
 /**
@@ -84,11 +85,12 @@ export function getCharacterVisualPrompt(
     
     [STRICT RULES]
     1. STYLE INTEGRATION: ${activeDna.name} and the environment must share the EXACT SAME "${atmosphere}" rendering. No mixing of art styles.
-    2. IP PROTECTION: No celebrities, no famous cartoon characters. Create a unique interpretation of "${atmosphere}".
-    3. QUALITY: Masterpiece quality, perfect anatomy (5 fingers), high resolution.
-    4. NO TEXT: Do not generate any text or letters.
+    2. CARICATURE MANDATORY: This is a CARICATURE / CARTOON illustration. Exaggerated proportions (big head, expressive face, dynamic squash-and-stretch poses), thick bold outlines, vibrant cel-shaded/flat colors. NO realism. NO photorealistic elements. EVERYTHING must look like a cartoon caricature.
+    3. IP PROTECTION: No celebrities, no famous cartoon characters. Create a unique interpretation of "${atmosphere}".
+    4. QUALITY: Masterpiece quality caricature, clean visible outlines, high resolution.
+    5. NO TEXT: Do not generate any text or letters.
     
-    Final Output: Professional illustration for a Web3 protocol in ${atmosphere} style.
+    Final Output: Professional caricature illustration for a Web3 protocol in ${atmosphere} style.
     ${articleTitle ? `(Theme: ${articleTitle.toUpperCase()})` : ""}
   `.trim();
 }

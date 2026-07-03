@@ -26,13 +26,11 @@ export default function MascotsPage() {
 
       const result = await readContract({
         contract,
-        method: "function getAllMascots(uint256,uint256) view returns (uint256[], (address,uint256,uint32,uint32,bool)[], uint256)",
+        method: "function getActiveMascots(uint256,uint256) view returns (uint256[], (address,uint256,uint32,uint32,bool)[], uint256)",
         params: [0n, 100n],
       });
 
-      const [tokenIds, details] = result;
-
-      const activeTokenIds = tokenIds.filter((_, i) => details[i][4]);
+      const [activeTokenIds, details] = result;
       if (activeTokenIds.length === 0) { setMascots([]); setIsLoading(false); return; }
 
       const numericIds = activeTokenIds.map(id => Number(id));
@@ -57,8 +55,7 @@ export default function MascotsPage() {
       }
 
       const foundMascots = activeTokenIds.map((tokenId, i) => {
-        const idx = tokenIds.indexOf(tokenId);
-        const detail = details[idx];
+        const detail = details[i];
         const numId = Number(tokenId);
         const dna = dnaMap.get(numId);
         return {

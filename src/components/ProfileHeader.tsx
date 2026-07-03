@@ -53,13 +53,11 @@ export default function ProfileHeader({
   const [displayData, setDisplayData] = useState<{ name: string; bio: string; website?: string }>({ name: "Anonymous Author", bio: "" });
 
   const [forgeData, setForgeData] = useState({
-    name: "", personality: "", visual_desc: "", image_url: "", price: "101",
+    name: "", personality: "", voice: "", visual_desc: "", image_url: "", price: "",
   });
-  const [forgeStep, setForgeStep] = useState<"dna" | "mint">("dna");
   const [isForging, setIsForging] = useState(false);
   const [isAnalyzingDna, setIsAnalyzingDna] = useState(false);
   const [forgeErrors, setForgeErrors] = useState<string[]>([]);
-  const [pendingTokenId, setPendingTokenId] = useState<number | null>(null);
 
   useEffect(() => {
     const data = {
@@ -176,6 +174,7 @@ export default function ProfileHeader({
           setForgeData(prev => ({
             ...prev, image_url: data.url,
             personality: scanData.personality || prev.personality,
+            voice: scanData.voice || prev.voice,
             visual_desc: scanData.visual || prev.visual_desc,
           }));
           notify("DNA extracted from image", "success");
@@ -187,39 +186,31 @@ export default function ProfileHeader({
     } catch (e: any) { notify(e.message, "error"); } finally { setIsForging(false); setIsAnalyzingDna(false); }
   };
 
-  const handleSealGenes = async () => {
+  const handleForge = async () => {
     if (!account) { notify("Connect wallet", "error"); return; }
     const errors: string[] = [];
     if (!forgeData.image_url) errors.push("image");
     if (!forgeData.name) errors.push("name");
     if (!forgeData.personality) errors.push("personality");
+    if (!forgeData.price || +forgeData.price <= 0) errors.push("price");
     if (errors.length) { setForgeErrors(errors); notify("Fill required fields", "error"); return; }
     setForgeErrors([]);
     setIsForging(true);
     try {
       const contract = getContract({ client, chain: base, address: MASCOTS_CONTRACT_ADDRESS, abi: MASCOTS_ABI as any });
+      const hashContract = getContract({ client, chain: base, address: HASH_TOKEN_ADDRESS });
+
       const tokenId = Number(await readContract({ contract, method: "function nextTokenId() view returns (uint256)", params: [] }));
 
       const { error: dbError } = await supabase.from("mascots_dna").upsert([{
         id: tokenId, name: forgeData.name, personality: forgeData.personality,
-        voice: forgeData.personality, physical_desc: forgeData.visual_desc,
+        voice: forgeData.voice || forgeData.personality, physical_desc: forgeData.visual_desc,
         image_url: forgeData.image_url, creator_address: account.address.toLowerCase(),
         price: forgeData.price, max_supply: 10000, contract_address: MASCOTS_CONTRACT_ADDRESS.toLowerCase(),
       }], { onConflict: "id" });
 
       if (dbError) throw dbError;
-      setPendingTokenId(tokenId);
-      setForgeStep("mint");
-      notify("Genome sealed. Now ignite the key.");
-    } catch (e: any) { notify(e.message, "error"); } finally { setIsForging(false); }
-  };
 
-  const handleIgniteKey = async () => {
-    if (!account || pendingTokenId === null) return;
-    setIsForging(true);
-    try {
-      const contract = getContract({ client, chain: base, address: MASCOTS_CONTRACT_ADDRESS, abi: MASCOTS_ABI as any });
-      const hashContract = getContract({ client, chain: base, address: HASH_TOKEN_ADDRESS });
       const creationFee = await readContract({ contract, method: "function CREATION_FEE() view returns (uint256)", params: [] });
       const allowance = await readContract({ contract: hashContract, method: "function allowance(address,address) view returns (uint256)", params: [account.address as any, MASCOTS_CONTRACT_ADDRESS as any] });
 
@@ -232,8 +223,7 @@ export default function ProfileHeader({
       sendTransaction(tx, {
         onSuccess: () => {
           notify("Protocol activated!");
-          setForgeStep("dna");
-          setForgeData({ name: "", personality: "", visual_desc: "", image_url: "", price: "101" });
+          setForgeData({ name: "", personality: "", voice: "", visual_desc: "", image_url: "", price: "" });
           router.refresh();
           setIsForging(false);
         },
@@ -371,15 +361,12 @@ export default function ProfileHeader({
 
               <ProfileForge
                 forgeData={forgeData}
-                forgeStep={forgeStep}
                 isForging={isForging}
                 isAnalyzingDna={isAnalyzingDna}
                 forgeErrors={forgeErrors}
                 onMascotImageUpload={handleMascotImageUpload}
                 onForgeDataChange={setForgeData}
-                onSealGenes={handleSealGenes}
-                onIgniteKey={handleIgniteKey}
-                onBackToDna={() => setForgeStep("dna")}
+                onForge={handleForge}
               />
 
               <button onClick={handleSave} disabled={isSaving} className="w-full bg-black text-white py-5 text-[11px] font-black uppercase tracking-[0.4em] shadow-2xl flex items-center justify-center gap-3 hover:bg-gray-900 transition-all sticky bottom-8 z-10">

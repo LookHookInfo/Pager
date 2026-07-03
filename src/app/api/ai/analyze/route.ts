@@ -3,8 +3,9 @@ import { getSupabaseServer } from "@/lib/supabase";
 
 export const maxDuration = 30;
 
-const DNA_PROMPT = `Analyze this mascot image and return JSON with exactly two fields:
-"personality": 2 sentences describing the character's temperament, attitude, and voice style.
+const DNA_PROMPT = `Analyze this mascot image and return JSON with exactly three fields:
+"personality": 2-3 sentences describing the character's temperament, values, worldview, and analytical style. Who they are at their core.
+"voice": 2-3 sentences describing how the character SPEAKS — unique vocabulary, sentence rhythm, catchphrases, slang, rhetorical style. Must be DISTINCT from personality. Example: "Short punchy sentences. Military jargon. Calls everyone 'soldier'. Ends every take with 'over and out'."
 "visual": Technical visual description for AI image generation. Cover: proportions and silhouette, physical traits (species, colors, facial features), materials and textures, and a rich cinematic environment description for banners.`;
 
 function extractJson(text: string) {
@@ -136,6 +137,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       personality: result.personality || "Mysterious entity.",
+      voice: result.voice || result.personality || "Cryptic speaker.",
       visual: result.visual || "Default character look.",
     });
   } catch (error: any) {

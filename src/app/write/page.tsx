@@ -113,19 +113,18 @@ export default function WritePage() {
 
         setOwnedMascots(finalMascots);
 
-        if (!selectedNftId) {
-          if (profile?.ai_nft_token_id && finalMascots.some(m => m.id === profile.ai_nft_token_id)) {
-            setSelectedNftId(profile.ai_nft_token_id);
-          } else if (finalMascots.length > 0) {
-            setSelectedNftId(finalMascots[0].id);
-          }
+        const profileTokenId = profile?.ai_nft_token_id;
+        if (profileTokenId && finalMascots.some(m => m.id === profileTokenId)) {
+          setSelectedNftId(profileTokenId);
+        } else if (finalMascots.length > 0) {
+          setSelectedNftId(finalMascots[0].id);
         }
       } else {
         setOwnedMascots([]);
       }
     } catch (e) { console.error("Fetch mascots error:", e); }
     setIsFetchingMascots(false);
-  }, [account?.address, profile?.ai_nft_token_id, selectedNftId]);
+  }, [account?.address, profile?.ai_nft_token_id]);
 
   useEffect(() => { fetchOwnedMascots(); }, [fetchOwnedMascots]);
 
@@ -242,12 +241,9 @@ export default function WritePage() {
     try {
       const res = await fetch(`/api/profile?address=${account.address.toLowerCase()}`);
       const data = await res.json();
-      if (res.ok && data.profile) {
-        setProfile(data.profile);
-        if (data.profile.ai_nft_token_id && !selectedNftId) setSelectedNftId(data.profile.ai_nft_token_id);
-      }
+      if (res.ok && data.profile) setProfile(data.profile);
     } catch (err) { console.error(err); }
-  }, [account?.address, selectedNftId]);
+  }, [account?.address]);
 
   useEffect(() => { fetchProfile(); }, [fetchProfile]);
 

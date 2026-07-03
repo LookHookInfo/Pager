@@ -9,8 +9,6 @@ import { ShoppingCart, Loader2, Zap, CheckCircle2, RefreshCw, UserCheck, Flame, 
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
-const BATCH_SIZE = 5;
-
 export default function ProfileMascots({ address }: { address: string }) {
   const account = useActiveAccount();
   const { mutate: sendTransaction } = useSendTransaction();
@@ -48,7 +46,12 @@ export default function ProfileMascots({ address }: { address: string }) {
       const { data: ownedDnas } = await supabase
         .from("mascots_dna").select("*").eq("contract_address", MASCOTS_CONTRACT_ADDRESS.toLowerCase());
 
-      let ownedTokenIds: number[] = [];
+      // getUserMascots returns tokenIds + balances + details in ONE RPC call
+      let ownedData: {
+        tokenIds: readonly bigint[];
+        balances: readonly bigint[];
+        details: readonly (readonly [string, bigint, number, number, boolean])[];
+      } | null = null;
       if (account?.address) {
         try {
           const result = await readContract({
@@ -56,14 +59,32 @@ export default function ProfileMascots({ address }: { address: string }) {
             method: "function getUserMascots(address) view returns (uint256[], uint256[], (address,uint256,uint32,uint32,bool)[])",
             params: [account.address],
           });
-          const [tokenIds, , details] = result;
-          ownedTokenIds = tokenIds.filter((_, i) => details[i][4]).map(id => Number(id));
+          ownedData = {
+            tokenIds: result[0] as readonly bigint[],
+            balances: result[1] as readonly bigint[],
+            details: result[2] as readonly (readonly [string, bigint, number, number, boolean])[],
+          };
         } catch {}
+      }
+
+      // Build owned lookup from single RPC response — saves N balanceOf + keys calls
+      const ownedDetailsMap = new Map<number, { balance: bigint; detail: readonly [string, bigint, number, number, boolean] }>();
+      const ownedTokenIds: number[] = [];
+      if (ownedData) {
+        for (let i = 0; i < ownedData.tokenIds.length; i++) {
+          const id = Number(ownedData.tokenIds[i]);
+          if (ownedData.details[i][4]) {
+            ownedTokenIds.push(id);
+            ownedDetailsMap.set(id, {
+              balance: ownedData.balances[i],
+              detail: ownedData.details[i],
+            });
+          }
+        }
       }
 
       const ownedSet = new Set(ownedTokenIds);
       const neededIds = new Set([...mascotMap.keys(), ...ownedTokenIds]);
-
       if (!neededIds.size) { setMascots([]); setIsLoading(false); return; }
 
       if (ownedDnas) {
@@ -75,28 +96,64 @@ export default function ProfileMascots({ address }: { address: string }) {
       }
 
       const mascotIds = [...mascotMap.keys()];
+
+      // Separate owned (have cached data) and unknown (need on-chain fetch)
+      const ownedIds = mascotIds.filter(id => ownedDetailsMap.has(id));
+      const unknownIds = mascotIds.filter(id => !ownedDetailsMap.has(id));
+
+      // Batch fetch unknown keys — single RPC for all non-owned tokens
+      let unknownKeys = new Map<number, readonly [string, bigint, number, number, boolean]>();
+      if (unknownIds.length > 0) {
+        try {
+          const batched = await Promise.allSettled(
+            unknownIds.map(id =>
+              readContract({
+                contract,
+                method: "function keys(uint256) view returns (address,uint256,uint32,uint32,bool)",
+                params: [BigInt(id)],
+              })
+            )
+          );
+          batched.forEach((r, i) => {
+            if (r.status === "fulfilled") {
+              unknownKeys.set(unknownIds[i], r.value as readonly [string, bigint, number, number, boolean]);
+            }
+          });
+        } catch {}
+      }
+
       const foundMascots: any[] = [];
 
-      for (let i = 0; i < mascotIds.length; i += BATCH_SIZE) {
-        const batchIds = mascotIds.slice(i, i + BATCH_SIZE);
-        const results = await Promise.allSettled(batchIds.map(async (id) => {
-          const dna = mascotMap.get(id)!;
-          const k = await readContract({ contract, method: "function keys(uint256) view returns (address,uint256,uint32,uint32,bool)", params: [BigInt(id)] });
-          const isActive = k[4] && k[0] !== "0x0000000000000000000000000000000000000000";
-          let balance = 0n;
-          if (account?.address && isActive) {
-            balance = await readContract({ contract, method: "function balanceOf(address,uint256) view returns (uint256)", params: [account.address, BigInt(id)] });
-          }
-          return {
-            id,
-            price: isActive ? k[1] : BigInt(toWei(dna.price || "101")),
-            currentSupply: k[2], totalSold: k[3], maxSupply: 10000n, isActive, creator: k[0],
-            metadata: { name: dna.name, image: dna.image_url, voice: dna.voice },
-            owned: balance > 0n,
-            isCreator: dna.creator_address?.toLowerCase() === address.toLowerCase(),
-          };
-        }));
-        results.forEach(r => { if (r.status === "fulfilled") foundMascots.push(r.value); });
+      // Owned tokens — data already cached from getUserMascots (NO extra RPC)
+      for (const id of ownedIds) {
+        const dna = mascotMap.get(id)!;
+        const cached = ownedDetailsMap.get(id)!;
+        const k = cached.detail;
+        const isActive = k[4] && k[0] !== "0x0000000000000000000000000000000000000000";
+        foundMascots.push({
+          id,
+          price: k[1],
+          currentSupply: k[2], totalSold: k[3], maxSupply: 10000n, isActive, creator: k[0],
+          metadata: { name: dna.name, image: dna.image_url, voice: dna.voice },
+          owned: cached.balance > 0n,
+          isCreator: dna.creator_address?.toLowerCase() === address.toLowerCase(),
+        });
+      }
+
+      // Unknown tokens — already batched above (1 RPC total)
+      for (const id of unknownIds) {
+        const dna = mascotMap.get(id)!;
+        const k = unknownKeys.get(id);
+        if (!k) continue;
+        const isActive = k[4] && k[0] !== "0x0000000000000000000000000000000000000000";
+        foundMascots.push({
+          id,
+          price: isActive ? k[1] : BigInt(toWei(dna.price || "101")),
+          currentSupply: k[2], totalSold: k[3], maxSupply: 10000n, isActive, creator: k[0],
+          metadata: { name: dna.name, image: dna.image_url, voice: dna.voice },
+          owned: false,
+          isCreator: dna.creator_address?.toLowerCase() === address.toLowerCase(),
+        });
       }
 
       foundMascots.sort((a, b) => b.id - a.id);

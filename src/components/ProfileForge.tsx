@@ -17,10 +17,10 @@ function DnaTooltip({ label, children }: { label: string; children: React.ReactN
         <Info size={10} />
       </button>
       {open && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-black text-white text-[9px] leading-relaxed rounded-sm shadow-2xl z-50 pointer-events-none">
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 p-3 bg-black text-white text-[9px] leading-relaxed rounded-sm shadow-2xl z-50 pointer-events-none">
           <div className="font-black uppercase tracking-widest mb-1.5 text-[8px] text-gray-400">{label}</div>
           <div className="text-white/90">{children}</div>
-          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-black" />
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-black" />
         </div>
       )}
     </span>
@@ -29,27 +29,24 @@ function DnaTooltip({ label, children }: { label: string; children: React.ReactN
 
 interface Props {
   forgeData: any;
-  forgeStep: "dna" | "mint";
   isForging: boolean;
   isAnalyzingDna: boolean;
   forgeErrors: string[];
   onMascotImageUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onForgeDataChange: (data: any) => void;
-  onSealGenes: () => void;
-  onIgniteKey: () => void;
-  onBackToDna: () => void;
+  onForge: () => void;
 }
 
 export default function ProfileForge({
-  forgeData, forgeStep, isForging, isAnalyzingDna, forgeErrors,
-  onMascotImageUpload, onForgeDataChange, onSealGenes, onIgniteKey, onBackToDna,
+  forgeData, isForging, isAnalyzingDna, forgeErrors,
+  onMascotImageUpload, onForgeDataChange, onForge,
 }: Props) {
   const set = (patch: any) => onForgeDataChange({ ...forgeData, ...patch });
 
   return (
-    <div className="p-8 border-2 border-black rounded-sm bg-white shadow-2xl space-y-6 relative overflow-hidden">
+    <div className="p-8 border-2 border-black rounded-sm bg-white shadow-2xl space-y-6 relative">
       {isAnalyzingDna && (
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-10 flex flex-col items-center justify-center text-white gap-4 animate-in fade-in duration-300">
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-10 flex flex-col items-center justify-center text-white gap-4 animate-in fade-in duration-300 rounded-sm">
           <div className="relative">
             <div className="w-16 h-16 border-4 border-white/20 border-t-white rounded-full animate-spin" />
             <Scan className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 animate-pulse" size={24} />
@@ -77,7 +74,6 @@ export default function ProfileForge({
           className="absolute inset-0 opacity-0 cursor-pointer"
           accept="image/*"
           onChange={onMascotImageUpload}
-          disabled={forgeStep === "mint"}
         />
       </div>
 
@@ -88,22 +84,35 @@ export default function ProfileForge({
           onChange={e => { set({ name: e.target.value }); }}
           placeholder="Protocol Name"
           className={`w-full text-xs font-bold p-3 border outline-none transition-colors ${forgeErrors.includes("name") ? "border-red-500 bg-red-50/10" : "border-gray-100 bg-gray-50/50"}`}
-          disabled={forgeStep === "mint"}
         />
 
         <div className="space-y-2">
           <div className="flex items-center text-[9px] font-black uppercase text-gray-400 ml-1">
-            <Activity size={10} className="text-blue-500 shrink-0" /> Behavioral DNA
-            <DnaTooltip label="Behavioral DNA">
-              Controls how the mascot writes articles — personality, temperament, vocabulary, and humor. Fed into the LLM as the character's core identity.
+            <Activity size={10} className="text-blue-500 shrink-0" /> Personality
+            <DnaTooltip label="Personality">
+              Temperament, values, worldview, analytical style. Drives how they think and interpret news.
             </DnaTooltip>
           </div>
           <textarea
             value={forgeData.personality}
             onChange={e => set({ personality: e.target.value })}
-            placeholder="Character mindset & voice..."
-            className={`w-full text-xs p-3 border outline-none transition-colors min-h-[80px] ${forgeErrors.includes("personality") ? "border-red-500 bg-red-50/10" : "border-gray-100 bg-gray-50/50"}`}
-            disabled={forgeStep === "mint"}
+            placeholder="Cynical Bitcoin maxi. Trusts on-chain data. Most alts are exit liquidity."
+            className={`w-full text-xs p-3 border outline-none transition-colors min-h-[70px] ${forgeErrors.includes("personality") ? "border-red-500 bg-red-50/10" : "border-gray-100 bg-gray-50/50"}`}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center text-[9px] font-black uppercase text-gray-400 ml-1">
+            <Activity size={10} className="text-purple-500 shrink-0" /> Voice
+            <DnaTooltip label="Voice">
+              Vocabulary, sentence rhythm, catchphrases, slang. How they SPEAK — not who they ARE.
+            </DnaTooltip>
+          </div>
+          <textarea
+            value={forgeData.voice}
+            onChange={e => set({ voice: e.target.value })}
+            placeholder="Noir detective. Calls everyone kid. Ends every take with case closed."
+            className={`w-full text-xs p-3 border outline-none transition-colors min-h-[70px] ${forgeErrors.includes("voice") ? "border-red-500 bg-red-50/10" : "border-gray-100 bg-gray-50/50"}`}
           />
         </div>
 
@@ -111,15 +120,14 @@ export default function ProfileForge({
           <div className="flex items-center text-[9px] font-black uppercase text-gray-400 ml-1">
             <EyeIcon size={10} className="text-green-500 shrink-0" /> Physical DNA
             <DnaTooltip label="Physical DNA">
-              Controls how the mascot appears in AI-generated banners — silhouette, colors, clothing, build. Fed into FLUX as the visual description for image generation.
+              Silhouette, colors, clothing, build, environment. Describes how the mascot LOOKS in AI banners.
             </DnaTooltip>
           </div>
           <textarea
             value={forgeData.visual_desc}
             onChange={e => set({ visual_desc: e.target.value })}
-            placeholder="Clothing, build, colors..."
+            placeholder="Tall lanky humanoid. Silver metallic skin. Trench coat. Neon circuits. Cyberpunk alley."
             className="w-full text-xs p-3 border border-gray-100 outline-none bg-gray-50/50 min-h-[80px]"
-            disabled={forgeStep === "mint"}
           />
         </div>
 
@@ -128,31 +136,17 @@ export default function ProfileForge({
           value={forgeData.price}
           onChange={e => set({ price: e.target.value })}
           placeholder="Price ($HASH)"
-          className="w-full text-xs font-bold p-3 border border-gray-100 outline-none bg-gray-50/50"
-          disabled={forgeStep === "mint"}
+          className={`w-full text-xs font-bold p-3 border outline-none bg-gray-50/50 ${forgeErrors.includes("price") ? "border-red-500 bg-red-50/10" : "border-gray-100"}`}
         />
       </div>
 
-      {forgeStep === "dna" ? (
-        <button
-          onClick={onSealGenes}
-          disabled={isForging || isAnalyzingDna || !forgeData.image_url}
-          className="w-full bg-black text-white py-4 text-[10px] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-3 hover:bg-gray-800 transition-all shadow-xl disabled:opacity-50"
-        >
-          {isForging ? <Loader2 size={14} className="animate-spin" /> : <><Database size={14} /> Seal Genes (Step 1)</>}
-        </button>
-      ) : (
-        <div className="space-y-3">
-          <button
-            onClick={onIgniteKey}
-            disabled={isForging}
-            className="w-full bg-yellow-400 text-black py-4 text-[10px] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-3 hover:bg-yellow-500 transition-all shadow-xl"
-          >
-            {isForging ? <Loader2 size={14} className="animate-spin" /> : <><Zap size={14} /> Ignite Key (Step 2)</>}
-          </button>
-          <button onClick={onBackToDna} className="w-full text-[9px] font-bold uppercase text-gray-400 hover:text-black">Edit DNA Again</button>
-        </div>
-      )}
+      <button
+        onClick={onForge}
+        disabled={isForging || isAnalyzingDna || !forgeData.image_url}
+        className="w-full bg-black text-white py-4 text-[10px] font-black uppercase tracking-[0.3em] flex items-center justify-center gap-3 hover:bg-gray-800 transition-all shadow-xl disabled:opacity-50"
+      >
+        {isForging ? <Loader2 size={14} className="animate-spin" /> : <><Zap size={14} /> Forge Mascot</>}
+      </button>
     </div>
   );
 }

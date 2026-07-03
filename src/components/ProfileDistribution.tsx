@@ -117,21 +117,52 @@ export default function ProfileDistribution({ formData, onFormChange }: Props) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <input type="text" value={formData.cta_telegram} onChange={e => set({ cta_telegram: e.target.value })} placeholder="CTA Telegram Link" className="w-full text-xs p-3 border border-gray-200 outline-none bg-white focus:border-black transition-colors" />
-        <input type="text" value={formData.cta_forum} onChange={e => set({ cta_forum: e.target.value })} placeholder="CTA Forum Link" className="w-full text-xs p-3 border border-gray-200 outline-none bg-white focus:border-black transition-colors" />
+      <div className="space-y-3 pt-4 border-t border-gray-50">
+        <div className="flex items-center gap-2">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400 shrink-0"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400">Author CTAs</h4>
+        </div>
+        <p className="text-[9px] text-gray-400 ml-1 -mt-1 mb-2">
+          These links appear in the <strong className="text-black">BTC Impact Analysis</strong> block as "FOLLOW FOR MORE INTEL". Telegram recommended, Forum optional.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input type="text" value={formData.cta_telegram} onChange={e => set({ cta_telegram: e.target.value })} placeholder="https://t.me/your-channel" className="w-full text-xs p-3 border border-gray-200 outline-none bg-white focus:border-black transition-colors" />
+          <input type="text" value={formData.cta_forum} onChange={e => set({ cta_forum: e.target.value })} placeholder="https://t.me/your-forum" className="w-full text-xs p-3 border border-gray-200 outline-none bg-white focus:border-black transition-colors" />
+        </div>
       </div>
 
       <div className="space-y-4 pt-4 border-t border-gray-50">
-        <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400">Protocol References (3 Max)</h4>
-        {formData.ref_links.map((link: any, idx: number) => (
-          <div key={idx} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400 shrink-0"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400">Referral Links</h4>
+            <span className="text-[8px] font-bold text-gray-300">(3 max)</span>
+          </div>
+          <button
+            onClick={() => set({ ref_links: [...(formData.ref_links || []), { label: "", url: "" }] })}
+            disabled={(formData.ref_links || []).length >= 3}
+            className="text-[9px] font-black uppercase text-blue-500 hover:text-blue-600 flex items-center gap-1 bg-white px-2 py-1 border border-gray-200 rounded-sm disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <Plus size={10} /> Add Link
+          </button>
+        </div>
+        <p className="text-[9px] text-gray-400 ml-1 -mt-2 mb-3">
+          These links appear in the <strong className="text-black">BTC Impact Analysis</strong> block at the bottom of every article you publish. Users see them as trading platform recommendations.
+        </p>
+        {(formData.ref_links || []).map((link: any, idx: number) => (
+          <div key={idx} className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-white border border-gray-100 rounded-sm relative">
+            <button
+              onClick={() => set({ ref_links: formData.ref_links.filter((_: any, i: number) => i !== idx) })}
+              className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+            >
+              <Trash2 size={10} />
+            </button>
             <input type="text" value={link.label} onChange={e => {
               const r = [...formData.ref_links]; r[idx] = { ...r[idx], label: e.target.value }; set({ ref_links: r });
-            }} placeholder="Label" className="md:col-span-1 text-xs font-bold p-3 border border-gray-200 outline-none bg-white" />
+            }} placeholder="e.g. ByBit" className="md:col-span-1 text-xs font-bold p-3 border border-gray-200 outline-none bg-gray-50/50 focus:border-black focus:bg-white transition-all" />
             <input type="text" value={link.url} onChange={e => {
               const r = [...formData.ref_links]; r[idx] = { ...r[idx], url: e.target.value }; set({ ref_links: r });
-            }} placeholder="https://..." className="md:col-span-2 text-xs p-3 border border-gray-200 outline-none bg-white" />
+            }} placeholder="https://your-referral-link.com" className="md:col-span-2 text-xs p-3 border border-gray-200 outline-none bg-gray-50/50 focus:border-black focus:bg-white transition-all" />
           </div>
         ))}
       </div>
