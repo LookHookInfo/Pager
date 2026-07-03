@@ -1768,4 +1768,3 @@ abi
 		"type": "function"
 	}
 ]
-.
