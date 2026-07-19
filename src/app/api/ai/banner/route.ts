@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCharacterVisualPrompt, CustomDna } from "@/lib/character";
 import { resolveNftDna } from "@/lib/character/nft";
 import { getSupabaseServer } from "@/lib/supabase";
-import { generateBflImage, DEFAULT_BFL_MODEL, type BflModelId } from "@/lib/image";
+import { generateBflImage } from "@/lib/image";
 import { verifySignature, getAuthMessage } from "@/lib/auth";
 
 export const maxDuration = 90;
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { mood = "neutral", title, bannerDescription, atmosphere: providedAtmosphere, nftTokenId, userAddress, signature, message, content, imageModel } = body;
+    const { mood = "neutral", title, bannerDescription, atmosphere: providedAtmosphere, nftTokenId, userAddress, signature, message, content } = body;
 
     if (!userAddress) return NextResponse.json({ error: "Address required" }, { status: 400 });
     if (!nftTokenId) return NextResponse.json({ error: "NFT Mascot required" }, { status: 400 });
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     }
 
     const supabase = getSupabaseServer();
-    const { data: profile } = await supabase.from("profiles").select("ai_credits, ai_atmosphere, ai_image_model").eq("address", normalizedAddress).maybeSingle();
+    const { data: profile } = await supabase.from("profiles").select("ai_credits, ai_atmosphere").eq("address", normalizedAddress).maybeSingle();
 
     const credits = profile?.ai_credits || 0;
     // Banner generation costs 10 $HASH credits. Top up in Profile settings.
@@ -63,8 +63,7 @@ export async function POST(req: Request) {
 
     const prompt = getCharacterVisualPrompt(bannerDescription || title, mood, "nft", title, atmosphere, activeDna, articleContext);
     console.log(`🎨 [Banner] Generating with atmosphere="${atmosphere}", prompt length=${prompt.length}`);
-    const activeModel = (imageModel || profile?.ai_image_model || DEFAULT_BFL_MODEL) as BflModelId;
-    const imageUrl = await generateBflImage(prompt, activeModel);
+    const imageUrl = await generateBflImage(prompt);
 
     if (!imageUrl) return NextResponse.json({ error: "Banner generation failed" }, { status: 500 });
 
