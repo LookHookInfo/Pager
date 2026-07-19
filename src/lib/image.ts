@@ -1,7 +1,7 @@
 import sharp from "sharp";
-export { BFL_MODELS, DEFAULT_BFL_MODEL, type BflModelId } from "@/lib/bfl-models";
+export { BFL_MODELS, DEFAULT_BFL_MODEL, type BflModelId, getModelConfig } from "@/lib/bfl-models";
 import type { BflModelId } from "@/lib/bfl-models";
-import { DEFAULT_BFL_MODEL } from "@/lib/bfl-models";
+import { DEFAULT_BFL_MODEL, getModelConfig } from "@/lib/bfl-models";
 
 async function tryPinataWithBuffer(
   compressed: Buffer,
@@ -81,12 +81,13 @@ export async function generateBflImage(prompt: string, modelId: BflModelId = DEF
   const apiKey = process.env.BFL_API_KEY;
   if (!apiKey) throw new Error("BFL_API_KEY missing");
 
+  const modelConfig = getModelConfig(modelId);
   const endpoint = `https://api.bfl.ai/v1/${modelId}`;
 
   const res = await fetch(endpoint, {
     method: "POST",
     headers: { "x-key": apiKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt, width: 1344, height: 768, prompt_upsampling: true }),
+    body: JSON.stringify({ prompt, width: 1344, height: 768, prompt_upsampling: modelConfig.promptUpsampling }),
   });
 
   if (!res.ok) {

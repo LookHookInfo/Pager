@@ -15,6 +15,7 @@ import Link from "next/link";
 import { client, MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI } from "@/lib/web3";
 import { getAuthMessage } from "@/lib/auth";
 import { MOODS } from "@/lib/moods";
+import { BFL_MODELS, DEFAULT_BFL_MODEL, type BflModelId } from "@/lib/bfl-models";
 import imageCompression from "browser-image-compression";
 
 const COMPRESSION_OPTIONS = {
@@ -66,6 +67,7 @@ export default function WritePage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [ownedMascots, setOwnedMascots] = useState<any[]>([]);
   const [selectedNftId, setSelectedNftId] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<BflModelId>(DEFAULT_BFL_MODEL);
   const [isFetchingMascots, setIsFetchingMascots] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [processingStep, setProcessingStep] = useState<"idle" | "scraping" | "rewriting" | "banner" | "done">("idle");
@@ -191,7 +193,7 @@ export default function WritePage() {
           title: textData.title, bannerDescription: textData.banner_description, mood,
           nftTokenId: selectedNftId, atmosphere: profile?.ai_atmosphere || "Surrealism",
           userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
-          content: articleContent,
+          content: articleContent, imageModel: selectedModel,
         }),
         signal: AbortSignal.timeout(95000),
       }, 2);
@@ -226,7 +228,7 @@ export default function WritePage() {
           title, bannerDescription, mood, nftTokenId: selectedNftId,
           atmosphere: profile?.ai_atmosphere || "Surrealism",
           userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
-          content: articleContent,
+          content: articleContent, imageModel: selectedModel,
         }),
         signal: AbortSignal.timeout(95000),
       }, 2);
@@ -246,6 +248,10 @@ export default function WritePage() {
   }, [account?.address]);
 
   useEffect(() => { fetchProfile(); }, [fetchProfile]);
+
+  useEffect(() => {
+    if (profile?.ai_image_model) setSelectedModel(profile.ai_image_model as BflModelId);
+  }, [profile?.ai_image_model]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -367,9 +373,9 @@ export default function WritePage() {
               <div className="flex flex-col gap-4">
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
                   <input type="text" placeholder="Paste source link..." value={externalUrl} onChange={e => setExternalUrl(e.target.value)}
-                    className="md:col-span-4 px-4 py-3 text-sm border border-gray-200 focus:border-black outline-none bg-white transition-colors font-medium rounded-sm" />
+                    className="md:col-span-3 px-4 py-3 text-sm border border-gray-200 focus:border-black outline-none bg-white transition-colors font-medium rounded-sm" />
 
-                  <div className="md:col-span-3 relative" ref={dropdownRef}>
+                  <div className="md:col-span-2 relative" ref={dropdownRef}>
                     <button onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                       className="w-full flex items-center justify-between px-3 py-3 bg-white border border-gray-200 rounded-sm hover:border-black transition-all group">
                       <div className="flex items-center gap-2.5 overflow-hidden">
@@ -398,7 +404,7 @@ export default function WritePage() {
                     )}
                   </div>
 
-                  <div className="md:col-span-3 relative">
+                  <div className="md:col-span-2 relative">
                     <select value={mood} onChange={e => setMood(e.target.value)}
                       className="w-full px-3 py-3 text-[10px] font-black uppercase tracking-widest border border-gray-200 outline-none bg-white cursor-pointer appearance-none pr-8 rounded-sm hover:border-black transition-all">
                       {MOODS.map(m => <option key={m.id} value={m.id}>{m.icon} {m.label}</option>)}
@@ -406,8 +412,16 @@ export default function WritePage() {
                     <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
 
+                  <div className="md:col-span-2 relative">
+                    <select value={selectedModel} onChange={e => setSelectedModel(e.target.value as BflModelId)}
+                      className="w-full px-3 py-3 text-[10px] font-black uppercase tracking-widest border border-gray-200 outline-none bg-white cursor-pointer appearance-none pr-8 rounded-sm hover:border-black transition-all">
+                      {BFL_MODELS.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
+
                   <button onClick={handleAiRewrite} disabled={isAiProcessing || !externalUrl || !selectedNftId}
-                    className="md:col-span-4 bg-black text-white text-[10px] font-black uppercase tracking-widest py-3 px-6 hover:bg-gray-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl rounded-sm">
+                    className="md:col-span-3 bg-black text-white text-[10px] font-black uppercase tracking-widest py-3 px-6 hover:bg-gray-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl rounded-sm">
                     {isAiProcessing ? <Loader2 size={14} className="animate-spin" /> : <><Sparkles size={14} /> Initiate Forge</>}
                   </button>
                 </div>
