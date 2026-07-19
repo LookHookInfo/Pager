@@ -81,11 +81,7 @@ export async function generateBflImage(prompt: string, modelId: BflModelId = DEF
   const apiKey = process.env.BFL_API_KEY;
   if (!apiKey) throw new Error("BFL_API_KEY missing");
 
-  const endpoint = modelId === "flux-2-klein"
-    ? "https://api.bfl.ai/v1/flux-2-klein"
-    : modelId === "flux-1-1-pro-ultra"
-      ? "https://api.bfl.ai/v1/flux-1-1-pro-ultra"
-      : `https://api.bfl.ai/v1/${modelId}`;
+  const endpoint = `https://api.bfl.ai/v1/${modelId}`;
 
   const res = await fetch(endpoint, {
     method: "POST",
