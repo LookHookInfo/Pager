@@ -4,7 +4,7 @@ import { resolveNftDna } from "@/lib/character/nft";
 import { getSupabaseServer } from "@/lib/supabase";
 import { decryptData } from "@/lib/security";
 import { verifySignature, getAuthMessage } from "@/lib/auth";
-import { uploadToPinata, generateBflImage } from "@/lib/image";
+import { uploadToPinata, generateBflImage, DEFAULT_BFL_MODEL, type BflModelId } from "@/lib/image";
 
 export const maxDuration = 90;
 export const dynamic = "force-dynamic";
@@ -53,7 +53,8 @@ export async function POST(req: Request) {
       userAddress = "",
       signature,
       message,
-      skipBanner = false
+      skipBanner = false,
+      imageModel
     } = body;
 
     if (!userAddress) return NextResponse.json({ error: "User address required" }, { status: 400 });
@@ -131,11 +132,12 @@ export async function POST(req: Request) {
     // STRICT MODEL SELECTION:
     // TEXT: Gemini 2.5 Flash (Balanced speed/quality)
     // BANNERS: FLUX.2 PRO (Direct BFL API)
-    const textModel = "google/gemini-2.5-flash"; 
+    const textModel = "google/gemini-2.5-flash";
+    const activeModel = (imageModel || userProfile?.ai_image_model || DEFAULT_BFL_MODEL) as BflModelId;
 
     if (onlyBanner) {
       const visualPrompt = getCharacterVisualPrompt(bannerDescription || providedTitle, mood, "nft", providedTitle, finalAtmosphere, activeDna);
-      const bannerUrl = await generateBflImage(visualPrompt);
+      const bannerUrl = await generateBflImage(visualPrompt, activeModel);
       if (!bannerUrl) return NextResponse.json({ error: "Banner generation failed" }, { status: 500 });
       return NextResponse.json({ image_url: bannerUrl });
     }
@@ -208,10 +210,10 @@ export async function POST(req: Request) {
 
     const visualPrompt = getCharacterVisualPrompt(result.banner || finalTitle, mood, "nft", finalTitle, finalAtmosphere, activeDna, articleContext);
     
-    // Banner generation via FLUX.2 PRO with auto-persistence to Pinata
+    // Banner generation via FLUX with auto-persistence to Pinata
     let bannerUrl = "";
     if (!skipBanner) {
-      bannerUrl = await generateBflImage(visualPrompt);
+      bannerUrl = await generateBflImage(visualPrompt, activeModel);
       
       // СПИСЫВАЕМ КРЕДИТЫ ТОЛЬКО ПРИ УСПЕХЕ
       if (bannerUrl) {

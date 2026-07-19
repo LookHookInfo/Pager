@@ -1,4 +1,7 @@
 import sharp from "sharp";
+export { BFL_MODELS, DEFAULT_BFL_MODEL, type BflModelId } from "@/lib/bfl-models";
+import type { BflModelId } from "@/lib/bfl-models";
+import { DEFAULT_BFL_MODEL } from "@/lib/bfl-models";
 
 async function tryPinataWithBuffer(
   compressed: Buffer,
@@ -51,7 +54,6 @@ export async function uploadToPinata(imageUrl: string): Promise<string> {
     const buffer = Buffer.from(await imgRes.arrayBuffer());
     const compressed = await sharp(buffer).webp({ quality: 85, effort: 4 }).toBuffer();
 
-    // Try JWT first (3 attempts, staggered)
     if (pinataJwt) {
       for (let i = 1; i <= 3; i++) {
         const url = await tryPinataWithBuffer(compressed, "jwt", pinataJwt);
@@ -60,7 +62,6 @@ export async function uploadToPinata(imageUrl: string): Promise<string> {
       }
     }
 
-    // Fallback to API Key + Secret (3 attempts)
     if (pinataApiKey && pinataApiSecret) {
       for (let i = 1; i <= 3; i++) {
         const url = await tryPinataWithBuffer(compressed, "apikey", undefined, pinataApiKey, pinataApiSecret);
@@ -76,11 +77,17 @@ export async function uploadToPinata(imageUrl: string): Promise<string> {
   return imageUrl;
 }
 
-export async function generateBflImage(prompt: string): Promise<string> {
+export async function generateBflImage(prompt: string, modelId: BflModelId = DEFAULT_BFL_MODEL): Promise<string> {
   const apiKey = process.env.BFL_API_KEY;
   if (!apiKey) throw new Error("BFL_API_KEY missing");
 
-  const res = await fetch("https://api.bfl.ai/v1/flux-2-pro", {
+  const endpoint = modelId === "flux-2-klein"
+    ? "https://api.bfl.ai/v1/flux-2-klein"
+    : modelId === "flux-1-1-pro-ultra"
+      ? "https://api.bfl.ai/v1/flux-1-1-pro-ultra"
+      : `https://api.bfl.ai/v1/${modelId}`;
+
+  const res = await fetch(endpoint, {
     method: "POST",
     headers: { "x-key": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({ prompt, width: 1344, height: 768, prompt_upsampling: true }),

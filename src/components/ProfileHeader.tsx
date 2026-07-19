@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase";
 import { MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI, client, HASH_TOKEN_ADDRESS } from "@/lib/web3";
 import { base } from "thirdweb/chains";
 import { getAuthMessage } from "@/lib/auth";
+import { BFL_MODELS, DEFAULT_BFL_MODEL, type BflModelId } from "@/lib/bfl-models";
 import ProfileIdentity from "@/components/ProfileIdentity";
 import ProfileDistribution from "@/components/ProfileDistribution";
 import ProfileForge from "@/components/ProfileForge";
@@ -45,6 +46,7 @@ export default function ProfileHeader({
   const [formData, setFormData] = useState({
     name: "", bio: "", website: "", avatar_url: "",
     ai_atmosphere: PRESET_ATMOSPHERES[0],
+    ai_image_model: DEFAULT_BFL_MODEL,
     binance_accounts: [], telegram_channels: [], telegram_chat_id: "",
     cta_telegram: "", cta_forum: "",
     ref_links: [{ label: "", url: "" }, { label: "", url: "" }, { label: "", url: "" }],
@@ -64,6 +66,7 @@ export default function ProfileHeader({
       name: profile.name || "", bio: profile.bio || "", website: profile.website || "",
       avatar_url: profile.avatar_url || "",
       ai_atmosphere: profile.ai_atmosphere || PRESET_ATMOSPHERES[0],
+      ai_image_model: profile.ai_image_model || DEFAULT_BFL_MODEL,
       binance_accounts: profile.binance_accounts || [],
       telegram_channels: profile.telegram_channels || [],
       telegram_chat_id: profile.telegram_chat_id || "",
@@ -356,6 +359,25 @@ export default function ProfileHeader({
                       className="w-full text-xs p-3 border border-black outline-none bg-white"
                     />
                   )}
+                </div>
+
+                <div className="space-y-3">
+                  <p className="text-[9px] font-black uppercase text-gray-400 ml-1">Image Model</p>
+                  <div className="flex flex-wrap gap-2">
+                    {BFL_MODELS.map(model => (
+                      <div
+                        key={model.id}
+                        onClick={() => setFormData({ ...formData, ai_image_model: model.id })}
+                        className={`text-[8px] font-black uppercase px-3 py-2 border cursor-pointer transition-all ${formData.ai_image_model === model.id ? "bg-black text-white border-black shadow-md" : "bg-white text-gray-400 border-gray-200 hover:border-black"}`}
+                        title={model.description}
+                      >
+                        {model.name}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[8px] text-gray-300 ml-1">
+                    {BFL_MODELS.find(m => m.id === formData.ai_image_model)?.description || ""}
+                  </p>
                 </div>
               </div>
 
