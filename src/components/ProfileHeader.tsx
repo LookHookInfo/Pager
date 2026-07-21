@@ -43,7 +43,7 @@ export default function ProfileHeader({
   const isOwner = account?.address?.toLowerCase() === profile.address?.toLowerCase();
 
   const [formData, setFormData] = useState({
-    name: "", bio: "", website: "", avatar_url: "",
+    name: "", bio: "", website: "", avatar_url: "", cmc_username: "",
     ai_atmosphere: PRESET_ATMOSPHERES[0],
     binance_accounts: [], telegram_channels: [], telegram_chat_id: "",
     cta_telegram: "", cta_forum: "",
@@ -62,7 +62,7 @@ export default function ProfileHeader({
   useEffect(() => {
     const data = {
       name: profile.name || "", bio: profile.bio || "", website: profile.website || "",
-      avatar_url: profile.avatar_url || "",
+      avatar_url: profile.avatar_url || "", cmc_username: profile.cmc_username || "",
       ai_atmosphere: profile.ai_atmosphere || PRESET_ATMOSPHERES[0],
       binance_accounts: profile.binance_accounts || [],
       telegram_channels: profile.telegram_channels || [],

@@ -53,7 +53,7 @@ export async function POST(req: Request) {
       avatar_url, ai_image_model, ai_atmosphere,
       ai_nft_token_id,
       binance_accounts, telegram_channels, telegram_chat_id,
-      cta_telegram, cta_forum, ref_links,
+      cta_telegram, cta_forum, ref_links, cmc_username,
       signature, message
     } = body;
 
@@ -116,7 +116,8 @@ export async function POST(req: Request) {
         telegram_chat_id,
         cta_telegram,
         cta_forum,
-        ref_links
+        ref_links,
+        cmc_username
       }, { onConflict: 'address' })
       .select()
       .single();

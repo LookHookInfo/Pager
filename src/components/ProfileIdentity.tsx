@@ -40,6 +40,16 @@ export default function ProfileIdentity({ formData, displayData, isUploading, on
         placeholder="Biographical Data..."
         className="w-full text-xs p-3 border border-gray-200 outline-none bg-white focus:border-black transition-colors min-h-[80px]"
       />
+      <div className="space-y-1.5">
+        <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-1">CoinMarketCap Username</label>
+        <input
+          type="text"
+          value={formData.cmc_username || ""}
+          onChange={e => onFormChange({ ...formData, cmc_username: e.target.value })}
+          placeholder="Your CMC community username"
+          className="w-full text-xs p-3 border border-gray-200 outline-none bg-white focus:border-black transition-colors"
+        />
+      </div>
     </div>
   );
 }
