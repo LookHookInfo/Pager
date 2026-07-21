@@ -21,11 +21,16 @@ export default function PostActions({ title, id, content = "" }: PostActionsProp
 
   const hashtags = "Web3,Base,Hash";
   const formattedHashtags = `#${hashtags.split(',').join(' #')}`;
-  
-  // Очистка и обрезка контента до 80 символов
-  const cleanContent = content.replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim();
-  const shortDescription = cleanContent.length > 80 
-    ? cleanContent.slice(0, 80).trim() + "..." 
+
+  const decodeHtml = (html: string) => {
+    const txt = document.createElement("textarea");
+    txt.innerHTML = html;
+    return txt.value;
+  };
+
+  const cleanContent = decodeHtml(content.replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim());
+  const shortDescription = cleanContent.length > 80
+    ? cleanContent.slice(0, 80).trim() + "..."
     : cleanContent;
 
   const shareLinks = [
@@ -33,15 +38,13 @@ export default function PostActions({ title, id, content = "" }: PostActionsProp
       name: "Twitter",
       icon: <Twitter size={18} />,
       // Твиттер: Заголовок -> Описание -> Ссылка -> (Отступ через \n\n) -> Хештеги (через параметр)
-      url: `https://twitter.com/intent/tweet?text=${encodeURIComponent(`${title}\n\n${shortDescription}\n\nContinue reading: ${shareUrl}\n\n`)}&hashtags=${hashtags}`,
+      url: `https://twitter.com/intent/tweet?text=${encodeURIComponent(`${title}\n\n${shortDescription}\n\nContinue reading: ${shareUrl || (typeof window !== "undefined" ? `${window.location.origin}/article/${id}` : "")}\n\n`)}&hashtags=${hashtags}`,
       color: "hover:bg-sky-500"
     },
     {
       name: "Telegram",
       icon: <Send size={18} />,
-      // Телеграм: Чтобы ссылка не дублировалась в начале, мы НЕ передаем параметр 'url',
-      // а вставляем всё сообщение целиком в параметр 'text' в нужном порядке.
-      url: `https://t.me/share/url?text=${encodeURIComponent(`${title}\n\n${shortDescription}\n\nContinue reading: ${shareUrl}\n\n${formattedHashtags}`)}`,
+      url: `https://t.me/share/url?url=${encodeURIComponent(shareUrl || (typeof window !== "undefined" ? `${window.location.origin}/article/${id}` : ""))}&text=${encodeURIComponent(`${title}\n\n${shortDescription}\n\n${formattedHashtags}`)}`,
       color: "hover:bg-blue-500"
     }
   ];
