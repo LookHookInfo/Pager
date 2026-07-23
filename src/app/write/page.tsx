@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, Suspense } from "react";
 import { getContract, readContract } from "thirdweb";
 import { useActiveAccount, useSendTransaction } from "thirdweb/react";
 import { base } from "thirdweb/chains";
 import { supabase } from "@/lib/supabase";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Image as ImageIcon, Send, X, AlertCircle,
   Loader2, Upload, Sparkles, PenLine, Settings2,
@@ -44,9 +44,10 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = 2): P
   throw new Error("fetchWithRetry exhausted");
 }
 
-export default function WritePage() {
+function WritePageInner() {
   const account = useActiveAccount();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { mutate: sendTransaction } = useSendTransaction();
 
   const editorRef = useRef<HTMLDivElement>(null);
@@ -127,6 +128,14 @@ export default function WritePage() {
   }, [account?.address, profile?.ai_nft_token_id]);
 
   useEffect(() => { fetchOwnedMascots(); }, [fetchOwnedMascots]);
+
+  useEffect(() => {
+    const urlParam = searchParams.get("url");
+    if (urlParam) {
+      setExternalUrl(urlParam);
+      setActiveMode("ai");
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (pendingContent && editorRef.current) {
@@ -471,5 +480,17 @@ export default function WritePage() {
         ))}
       </div>
     </main>
+  );
+}
+
+export default function WritePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-main)]">
+        <Loader2 size={24} className="animate-spin text-gray-300" />
+      </div>
+    }>
+      <WritePageInner />
+    </Suspense>
   );
 }

@@ -51,6 +51,7 @@ export default function Navbar() {
         </div>
         
         <div className="flex items-center gap-6">
+          <Link href="/news" className={`text-sm font-medium transition-colors ${pathname === "/news" ? "text-black" : "text-[var(--text-secondary)] hover:text-black"}`}>News</Link>
           {account && (
             <div className="hidden md:flex items-center gap-6">
               <Link href="/mascots" className="text-sm font-medium text-[var(--text-secondary)] hover:text-black transition-colors">Mascots</Link>
