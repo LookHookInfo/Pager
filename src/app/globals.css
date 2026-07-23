@@ -165,6 +165,11 @@ body {
   animation-play-state: paused;
 }
 
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
 .connect-btn-medium {
   background: var(--accent) !important;
   color: white !important;

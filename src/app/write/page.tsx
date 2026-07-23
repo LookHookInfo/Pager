@@ -16,6 +16,7 @@ import { client, MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI } from "@/lib/web3";
 import { getAuthMessage } from "@/lib/auth";
 import { MOODS } from "@/lib/moods";
 import imageCompression from "browser-image-compression";
+import ForgeOverlay from "@/components/ForgeOverlay";
 
 const COMPRESSION_OPTIONS = {
   maxSizeMB: 0.7, maxWidthOrHeight: 1920, useWebWorker: true,
@@ -337,6 +338,7 @@ function WritePageInner() {
 
   return (
     <main className="min-h-screen bg-white relative pb-32">
+      <ForgeOverlay step={processingStep} mascotImage={selectedMascot?.image} mascotName={selectedMascot?.name} />
       <nav className="border-b border-[var(--border-soft)] h-16 flex items-center justify-between px-6 md:px-12 sticky top-0 bg-white z-50">
         <div className="flex items-center gap-4">
           <Link href="/" className="text-xl font-black uppercase tracking-tighter">Pager</Link>
