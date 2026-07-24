@@ -1,22 +1,26 @@
 "use client";
 
-import { Share2, Bookmark, Twitter, Send, Copy, Check, AlertCircle } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Share2, Bookmark, Twitter, Send, Copy, Check, AlertCircle, Loader2, RefreshCw } from "lucide-react";
+import { useState } from "react";
 
 interface PostActionsProps {
   title: string;
   id: string;
   content?: string;
   cmcUsername?: string;
+  authorAddress?: string;
 }
 
-const hashtags = "Web3,Base,Hash";
-const formattedHashtags = `#${hashtags.split(',').join(' #')}`;
+const fallbackHashtags = "Web3,Base,Hash";
+const fallbackFormatted = `#${fallbackHashtags.split(',').join(' #')}`;
 
-export default function PostActions({ title, id, content = "", cmcUsername }: PostActionsProps) {
+export default function PostActions({ title, id, content = "", cmcUsername, authorAddress }: PostActionsProps) {
   const [showShareModal, setShowShareModal] = useState(false);
   const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [generatedTweet, setGeneratedTweet] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [tweetError, setTweetError] = useState(false);
 
   const decodeHtml = (html: string) => {
     if (typeof document === "undefined") return html;
@@ -35,38 +39,61 @@ export default function PostActions({ title, id, content = "", cmcUsername }: Po
     return `${window.location.origin}/article/${id}`;
   };
 
+  const generateTweet = async () => {
+    if (generatedTweet) return generatedTweet;
+    setIsGenerating(true);
+    setTweetError(false);
+    try {
+      const res = await fetch("/api/ai/tweet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, content, userAddress: authorAddress, articleUrl: getShareUrl() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setGeneratedTweet(data.tweet);
+      return data.tweet;
+    } catch {
+      setTweetError(true);
+      return null;
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const getFallbackTweet = () => {
+    return `${title}\n\n${shortDescription}\n\nContinue reading: ${getShareUrl()}\n\n${fallbackFormatted}`;
+  };
+
   const shareLinks = [
     {
       name: "Twitter",
-      icon: <Twitter size={18} />,
-      getUrl: () => {
+      icon: isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Twitter size={18} />,
+      getUrl: async () => {
         const url = getShareUrl();
-        return `https://twitter.com/intent/tweet?text=${encodeURIComponent(`${title}\n\n${shortDescription}\n\nContinue reading: ${url}\n\n`)}&hashtags=${hashtags}`;
+        const tweet = await generateTweet();
+        const text = tweet || getFallbackTweet();
+        return `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
       },
-      color: "hover:bg-sky-500"
+      color: "hover:bg-sky-500",
+      needsAsync: true,
     },
     {
       name: "Telegram",
       icon: <Send size={18} />,
       getUrl: () => {
         const url = getShareUrl();
-        return `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(`${title}\n\n${shortDescription}\n\n${formattedHashtags}`)}`;
+        return `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(`${title}\n\n${shortDescription}\n\n${fallbackFormatted}`)}`;
       },
-      color: "hover:bg-blue-500"
+      color: "hover:bg-blue-500",
+      needsAsync: false,
     }
   ];
 
   const buildCmcPostText = () => {
     const url = getShareUrl();
-    return [
-      title,
-      "",
-      shortDescription,
-      "",
-      `${formattedHashtags} #Crypto #Bitcoin`,
-      "",
-      `Read full article on Pager: ${url}`,
-    ].join("\n");
+    const text = generatedTweet || `${title}\n\n${shortDescription}`;
+    return `${text}\n\nRead full article on Pager:\n${url}`;
   };
 
   const handleCmcShare = async () => {
@@ -95,6 +122,12 @@ export default function PostActions({ title, id, content = "", cmcUsername }: Po
     setShowShareModal(false);
   };
 
+  const handleShareClick = async (link: typeof shareLinks[0]) => {
+    const url = await link.getUrl();
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+    setShowShareModal(false);
+  };
+
   return (
     <div className="flex items-center gap-4 relative">
       {toast && (
@@ -109,20 +142,39 @@ export default function PostActions({ title, id, content = "", cmcUsername }: Po
         {showShareModal && (
           <>
             <div className="fixed inset-0 z-[100]" onClick={() => setShowShareModal(false)} />
-            <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-56 bg-white border border-[var(--border-soft)] shadow-xl z-[101] p-2 animate-in fade-in slide-in-from-bottom-2">
+            <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-64 bg-white border border-[var(--border-soft)] shadow-xl z-[101] p-2 animate-in fade-in slide-in-from-bottom-2">
+              {/* Tweet preview */}
+              {generatedTweet && (
+                <div className="px-3 py-2 mb-1 bg-sky-50 rounded-sm border border-sky-100">
+                  <p className="text-[9px] font-bold text-sky-600 uppercase tracking-widest mb-1">Generated Tweet</p>
+                  <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">{generatedTweet}</p>
+                  <div className="flex items-center justify-between mt-2">
+                    <span className={`text-[9px] font-bold ${generatedTweet.length > 250 ? "text-red-500" : "text-green-600"}`}>
+                      {generatedTweet.length}/250
+                    </span>
+                    <button
+                      onClick={() => setGeneratedTweet(null)}
+                      className="text-[9px] font-bold text-sky-500 hover:text-sky-700 flex items-center gap-1"
+                    >
+                      <RefreshCw size={10} /> Regenerate
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="flex flex-col gap-1">
                 {shareLinks.map((link) => (
-                  <a
+                  <button
                     key={link.name}
-                    href={link.getUrl()}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors hover:text-white rounded-sm ${link.color}`}
-                    onClick={() => setShowShareModal(false)}
+                    onClick={() => handleShareClick(link)}
+                    disabled={isGenerating && link.needsAsync}
+                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors hover:text-white rounded-sm ${link.color} disabled:opacity-50`}
                   >
                     {link.icon}
                     <span>{link.name}</span>
-                  </a>
+                    {link.needsAsync && !generatedTweet && !isGenerating && (
+                      <span className="text-[8px] font-bold text-gray-400 ml-auto">AI</span>
+                    )}
+                  </button>
                 ))}
                 <div className="border-t border-gray-100 my-1" />
                 <button
