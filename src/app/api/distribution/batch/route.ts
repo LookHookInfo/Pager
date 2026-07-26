@@ -16,8 +16,11 @@ export async function POST(req: Request) {
 
     const normalizedAddress = profileAddress.toLowerCase();
 
+    // Accept either "authorize session" or "publish article" signature
+    // This allows the frontend to reuse the publish signature for distribution
     const sessionMessage = getAuthMessage("authorize session", normalizedAddress);
-    if (message !== sessionMessage) {
+    const publishMessage = getAuthMessage("publish article", normalizedAddress);
+    if (message !== sessionMessage && message !== publishMessage) {
       return NextResponse.json({ error: "Invalid auth message" }, { status: 401 });
     }
     if (!(await verifySignature(message, signature, normalizedAddress))) {

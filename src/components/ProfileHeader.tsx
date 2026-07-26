@@ -2,21 +2,17 @@
 
 import {
   Globe, Settings2, Save, X, Loader2, Camera, Plus,
-  Sparkles, Database, Edit3, CheckCircle2,
+  Sparkles, Database, CheckCircle2,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useActiveAccount, useSendTransaction } from "thirdweb/react";
-import { getContract, prepareContractCall, toWei, readContract } from "thirdweb";
-import { supabase } from "@/lib/supabase";
-import { MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI, client, HASH_TOKEN_ADDRESS } from "@/lib/web3";
+import { getContract, prepareContractCall, toWei } from "thirdweb";
+import { client, HASH_TOKEN_ADDRESS } from "@/lib/web3";
 import { base } from "thirdweb/chains";
 import { getAuthMessage } from "@/lib/auth";
 import ProfileIdentity from "@/components/ProfileIdentity";
 import ProfileDistribution from "@/components/ProfileDistribution";
-import ProfileForge from "@/components/ProfileForge";
-
-const PRESET_ATMOSPHERES = ["Surrealism", "Pixel Art", "Brick Style", "Anime Style", "Graffiti", "Comics"];
 
 export default function ProfileHeader({
   profile, totalArticles, totalRewards,
@@ -31,7 +27,6 @@ export default function ProfileHeader({
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [isCustomAtmosphere, setIsCustomAtmosphere] = useState(false);
   const [isDepositing, setIsDepositing] = useState(false);
   const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -44,36 +39,26 @@ export default function ProfileHeader({
 
   const [formData, setFormData] = useState({
     name: "", bio: "", website: "", avatar_url: "", cmc_username: "",
-    ai_atmosphere: PRESET_ATMOSPHERES[0],
     binance_accounts: [], telegram_channels: [], telegram_chat_id: "",
-    cta_telegram: "", cta_forum: "",
+    cta_links: [{ label: "", url: "" }, { label: "", url: "" }, { label: "", url: "" }],
     ref_links: [{ label: "", url: "" }, { label: "", url: "" }, { label: "", url: "" }],
   });
 
   const [displayData, setDisplayData] = useState<{ name: string; bio: string; website?: string }>({ name: "Anonymous Author", bio: "" });
 
-  const [forgeData, setForgeData] = useState({
-    name: "", personality: "", voice: "", visual_desc: "", image_url: "", price: "",
-  });
-  const [isForging, setIsForging] = useState(false);
-  const [isAnalyzingDna, setIsAnalyzingDna] = useState(false);
-  const [forgeErrors, setForgeErrors] = useState<string[]>([]);
-
   useEffect(() => {
     const data = {
       name: profile.name || "", bio: profile.bio || "", website: profile.website || "",
-      avatar_url: profile.avatar_url || "", cmc_username: profile.cmc_username || "",
-      ai_atmosphere: profile.ai_atmosphere || PRESET_ATMOSPHERES[0],
+      avatar_url: profile.avatar_url || "",
+      cmc_username: profile.cmc_username || "",
       binance_accounts: profile.binance_accounts || [],
       telegram_channels: profile.telegram_channels || [],
       telegram_chat_id: profile.telegram_chat_id || "",
-      cta_telegram: profile.cta_telegram || "",
-      cta_forum: profile.cta_forum || "",
+      cta_links: profile.cta_links || [{ label: "", url: "" }, { label: "", url: "" }, { label: "", url: "" }],
       ref_links: profile.ref_links || [{ label: "", url: "" }, { label: "", url: "" }, { label: "", url: "" }],
     };
     setFormData(data);
-    setDisplayData({ name: profile.name || "Anonymous Author", bio: profile.bio || "Web3 enthusiast." });
-    setIsCustomAtmosphere(!PRESET_ATMOSPHERES.includes(data.ai_atmosphere));
+    setDisplayData({ name: profile.name || "Anonymous Author", bio: profile.bio || "Web3 enthusiast.", website: profile.website });
   }, [profile]);
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -146,92 +131,6 @@ export default function ProfileHeader({
     } catch (e: any) { notify(e.message, "error"); } finally { setIsSaving(false); }
   };
 
-  const handleMascotImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !account) return;
-    setIsForging(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
-
-      setForgeData({ ...forgeData, image_url: data.url });
-
-      setIsAnalyzingDna(true);
-      try {
-        const scan = await fetch("/api/ai/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ imageUrl: data.url, userAddress: account.address }),
-        });
-        const scanData = await scan.json();
-        if (!scan.ok) {
-          console.warn("⚠️ [DNA Scan] API error:", scanData.error);
-          notify("AI DNA scan unavailable — fill fields manually", "error");
-        } else if (scanData.personality || scanData.visual) {
-          setForgeData(prev => ({
-            ...prev, image_url: data.url,
-            personality: scanData.personality || prev.personality,
-            voice: scanData.voice || prev.voice,
-            visual_desc: scanData.visual || prev.visual_desc,
-          }));
-          notify("DNA extracted from image", "success");
-        }
-      } catch {
-        notify("AI DNA scan unavailable — fill fields manually", "error");
-      }
-      setIsAnalyzingDna(false);
-    } catch (e: any) { notify(e.message, "error"); } finally { setIsForging(false); setIsAnalyzingDna(false); }
-  };
-
-  const handleForge = async () => {
-    if (!account) { notify("Connect wallet", "error"); return; }
-    const errors: string[] = [];
-    if (!forgeData.image_url) errors.push("image");
-    if (!forgeData.name) errors.push("name");
-    if (!forgeData.personality) errors.push("personality");
-    if (!forgeData.price || +forgeData.price <= 0) errors.push("price");
-    if (errors.length) { setForgeErrors(errors); notify("Fill required fields", "error"); return; }
-    setForgeErrors([]);
-    setIsForging(true);
-    try {
-      const contract = getContract({ client, chain: base, address: MASCOTS_CONTRACT_ADDRESS, abi: MASCOTS_ABI as any });
-      const hashContract = getContract({ client, chain: base, address: HASH_TOKEN_ADDRESS });
-
-      const tokenId = Number(await readContract({ contract, method: "function nextTokenId() view returns (uint256)", params: [] }));
-
-      const { error: dbError } = await supabase.from("mascots_dna").upsert([{
-        id: tokenId, name: forgeData.name, personality: forgeData.personality,
-        voice: forgeData.voice || forgeData.personality, physical_desc: forgeData.visual_desc,
-        image_url: forgeData.image_url, creator_address: account.address.toLowerCase(),
-        price: forgeData.price, max_supply: 10000, contract_address: MASCOTS_CONTRACT_ADDRESS.toLowerCase(),
-      }], { onConflict: "id" });
-
-      if (dbError) throw dbError;
-
-      const creationFee = await readContract({ contract, method: "function CREATION_FEE() view returns (uint256)", params: [] });
-      const allowance = await readContract({ contract: hashContract, method: "function allowance(address,address) view returns (uint256)", params: [account.address as any, MASCOTS_CONTRACT_ADDRESS as any] });
-
-      if (allowance < creationFee) {
-        const approve = prepareContractCall({ contract: hashContract, method: "function approve(address,uint256)", params: [MASCOTS_CONTRACT_ADDRESS, creationFee] });
-        await new Promise((res, rej) => sendTransaction(approve, { onSuccess: res, onError: rej }));
-      }
-
-      const tx = prepareContractCall({ contract, method: "function createMascot(uint256)", params: [BigInt(toWei(forgeData.price))] });
-      sendTransaction(tx, {
-        onSuccess: () => {
-          notify("Protocol activated!");
-          setForgeData({ name: "", personality: "", voice: "", visual_desc: "", image_url: "", price: "" });
-          router.refresh();
-          setIsForging(false);
-        },
-        onError: (err) => { notify(err.message, "error"); setIsForging(false); },
-      });
-    } catch (e: any) { notify(e.message, "error"); setIsForging(false); }
-  };
-
   const getDomain = (u: string) => {
     try { return new URL(u.startsWith("http") ? u : `https://${u}`).hostname.replace("www.", ""); } catch { return u; }
   };
@@ -251,12 +150,17 @@ export default function ProfileHeader({
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-8">
         <div className="space-y-6 flex-1">
           <div className="flex items-center gap-6">
-            <div className="w-24 h-24 bg-white border border-[var(--border-soft)] rounded-full flex items-center justify-center font-black text-3xl text-black shadow-sm overflow-hidden relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+            <div
+              className={`w-24 h-24 bg-white border border-[var(--border-soft)] rounded-full flex items-center justify-center font-black text-3xl text-black shadow-sm overflow-hidden relative group${isOwner ? " cursor-pointer" : ""}`}
+              onClick={isOwner ? () => fileInputRef.current?.click() : undefined}
+            >
               {formData.avatar_url ? <img src={formData.avatar_url} className="w-full h-full object-cover" alt="" /> : displayData.name.charAt(0).toUpperCase()}
-              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                {isUploading ? <Loader2 size={24} className="text-white animate-spin" /> : <Camera size={24} className="text-white" />}
-              </div>
-              <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} />
+              {isOwner && (
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  {isUploading ? <Loader2 size={24} className="text-white animate-spin" /> : <Camera size={24} className="text-white" />}
+                </div>
+              )}
+              {isOwner && <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} />}
             </div>
             <div className="space-y-2 flex-1">
               <div className="flex items-center gap-3">
@@ -266,7 +170,11 @@ export default function ProfileHeader({
               <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold uppercase tracking-widest text-gray-400">
                 <span><span className="text-black">{totalArticles}</span> Stories</span>
                 <div className="w-1 h-1 bg-gray-200 rounded-full" />
-                <span><span className="text-black">{Math.floor(totalRewards)}</span> $HASH Earned</span>
+                <span>
+                  <span className={`${(profile.ai_credits || 0) < 50 ? "text-red-500" : "text-black"}`}>{profile.ai_credits || 0}</span>
+                  <span className={`${(profile.ai_credits || 0) < 50 ? "text-red-400" : ""}`}> Credits</span>
+                  {(profile.ai_credits || 0) < 50 && <span className="text-[8px] text-red-400 ml-1">LOW</span>}
+                </span>
                 {displayData.website && (
                   <>
                     <div className="w-1 h-1 bg-gray-200 rounded-full" />
@@ -275,6 +183,15 @@ export default function ProfileHeader({
                     </a>
                   </>
                 )}
+                {profile.twitter && (
+                  <>
+                    <div className="w-1 h-1 bg-gray-200 rounded-full" />
+                    <a href={profile.twitter.startsWith("http") ? profile.twitter : `https://x.com/${profile.twitter}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-blue-500 hover:text-blue-600 font-black">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg> {profile.twitter.replace(/^https?:\/\/(x\.com|twitter\.com)\//, '@')}
+                    </a>
+                  </>
+                )}
+
               </div>
             </div>
           </div>
@@ -317,61 +234,17 @@ export default function ProfileHeader({
                     <Sparkles size={14} /> Intelligence Core
                   </h4>
                   <div className="flex items-center gap-2">
-                    <div className="px-3 py-1 bg-white border border-gray-200 rounded-full flex items-center gap-2 shadow-sm">
-                      <Database size={12} className="text-blue-500" />
-                      <span className="text-[10px] font-black">{profile.ai_credits || 0} Credits</span>
+                    <div className={`px-3 py-1 bg-white border rounded-full flex items-center gap-2 shadow-sm ${(profile.ai_credits || 0) < 50 ? "border-red-200" : "border-gray-200"}`}>
+                      <Database size={12} className={`${(profile.ai_credits || 0) < 50 ? "text-red-500" : "text-blue-500"}`} />
+                      <span className={`text-[10px] font-black ${(profile.ai_credits || 0) < 50 ? "text-red-500" : ""}`}>{profile.ai_credits || 0} Credits</span>
                     </div>
                     <button onClick={handleDeposit} disabled={isDepositing} className="p-1.5 bg-black text-white rounded-full hover:bg-gray-800 transition-all disabled:opacity-50" title="Top Up">
                       {isDepositing ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
                     </button>
                   </div>
                 </div>
-
-                <div className="space-y-3">
-                  <p className="text-[9px] font-black uppercase text-gray-400 ml-1">Narrative Atmosphere</p>
-                  <div className="flex flex-wrap gap-2">
-                    {PRESET_ATMOSPHERES.map(style => (
-                      <div
-                        key={style}
-                        onClick={() => { setFormData({ ...formData, ai_atmosphere: style }); setIsCustomAtmosphere(false); }}
-                        className={`text-[8px] font-black uppercase px-3 py-2 border cursor-pointer transition-all ${!isCustomAtmosphere && formData.ai_atmosphere === style ? "bg-black text-white border-black shadow-md" : "bg-white text-gray-400 border-gray-200 hover:border-black"}`}
-                      >
-                        {style}
-                      </div>
-                    ))}
-                    <div
-                      onClick={() => setIsCustomAtmosphere(true)}
-                      className={`text-[8px] font-black uppercase px-3 py-2 border cursor-pointer transition-all ${isCustomAtmosphere ? "bg-black text-white border-black shadow-md" : "bg-white text-gray-400 border-gray-200 hover:border-black"} flex items-center gap-1.5`}
-                    >
-                      <Edit3 size={10} /> Custom
-                    </div>
-                  </div>
-                  {isCustomAtmosphere && (
-                    <input
-                      type="text"
-                      value={formData.ai_atmosphere}
-                      onChange={e => setFormData({ ...formData, ai_atmosphere: e.target.value })}
-                      placeholder="e.g. Star Wars, Noir..."
-                      maxLength={100}
-                      className="w-full text-xs p-3 border border-black outline-none bg-white"
-                    />
-                  )}
-                </div>
+                <p className="text-[10px] text-gray-400 font-medium">Mascot creation is on the <a href="/mascots" className="underline hover:text-black">Mascots page</a>.</p>
               </div>
-
-              <ProfileForge
-                forgeData={forgeData}
-                isForging={isForging}
-                isAnalyzingDna={isAnalyzingDna}
-                forgeErrors={forgeErrors}
-                onMascotImageUpload={handleMascotImageUpload}
-                onForgeDataChange={setForgeData}
-                onForge={handleForge}
-              />
-
-              <button onClick={handleSave} disabled={isSaving} className="w-full bg-black text-white py-5 text-[11px] font-black uppercase tracking-[0.4em] shadow-2xl flex items-center justify-center gap-3 hover:bg-gray-900 transition-all sticky bottom-8 z-10">
-                {isSaving ? <Loader2 size={18} className="animate-spin" /> : <><Save size={18} /> Seal All Changes</>}
-              </button>
             </div>
           </div>
         </div>

@@ -21,7 +21,7 @@ async function getArticle(id: string) {
 
 async function getAuthorProfile(address: string) {
   const supabase = getSupabaseServer();
-  const { data } = await supabase.from('profiles').select('cmc_username').eq('address', address.toLowerCase()).maybeSingle();
+  const { data } = await supabase.from('profiles').select('cmc_username, name, avatar_url').eq('address', address.toLowerCase()).maybeSingle();
   return data;
 }
 
@@ -90,11 +90,17 @@ export default async function ArticlePage({ params }: { params: { id: string } }
           </div>
           <h1 className="text-4xl md:text-6xl typography-title mb-10 leading-[1.05]">{article.title}</h1>
           <div className="flex items-center gap-3 py-6 border-t border-[var(--border-soft)]">
-             <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center border border-[var(--border-soft)]">
-                <Link href={`/tape/${article.author_address}`}><div className="w-full h-full rounded-full flex items-center justify-center hover:bg-gray-200 transition-colors"><span className="text-[10px] font-bold">0x</span></div></Link>
-             </div>
+             <Link href={`/tape/${article.author_address}`} className="shrink-0">
+               <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center border border-[var(--border-soft)] overflow-hidden hover:ring-2 hover:ring-black/10 transition-all">
+                 {authorProfile?.avatar_url ? (
+                   <img src={authorProfile.avatar_url} alt="" className="w-full h-full object-cover" />
+                 ) : (
+                   <span className="text-xs font-bold">{(authorProfile?.name || "0x").charAt(0)}</span>
+                 )}
+               </div>
+             </Link>
              <div className="flex flex-col">
-                <Link href={`/tape/${article.author_address}`} className="text-sm font-bold hover:underline">Author Tape</Link>
+                <Link href={`/tape/${article.author_address}`} className="text-sm font-bold hover:underline">{authorProfile?.name || "Anonymous Author"}</Link>
                 <span className="text-[10px] text-gray-400 font-mono">{article.author_address.slice(0,6)}...{article.author_address.slice(-4)}</span>
              </div>
           </div>

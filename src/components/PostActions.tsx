@@ -1,6 +1,6 @@
 "use client";
 
-import { Share2, Bookmark, Twitter, Send, Copy, Check, AlertCircle, Loader2, RefreshCw } from "lucide-react";
+import { Share2, Twitter, Send, Copy, Check, AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 interface PostActionsProps {
@@ -136,7 +136,6 @@ export default function PostActions({ title, id, content = "", cmcUsername, auth
           <span className="text-xs font-bold">{toast}</span>
         </div>
       )}
-      <button className="text-[var(--text-secondary)] hover:text-black transition-colors flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest" title="Bookmark (Coming soon)"><Bookmark size={18} /></button>
       <div className="relative">
         <button onClick={() => setShowShareModal(!showShareModal)} className="text-[var(--text-secondary)] hover:text-black transition-colors flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest"><Share2 size={18} /><span>Share</span></button>
         {showShareModal && (

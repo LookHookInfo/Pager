@@ -1,4 +1,5 @@
 import { verifySignature as thirdwebVerifySignature } from "thirdweb/auth";
+import { NextResponse } from "next/server";
 import { client } from "./web3";
 
 /**
@@ -32,4 +33,24 @@ export async function verifySignature(
 export function getAuthMessage(action: string, address: string): string {
   const timestamp = new Date().toISOString().split('T')[0]; // ГГГГ-ММ-ДД
   return `Pager Protocol Authorization\n\nAction: ${action}\nWallet: ${address.toLowerCase()}\nDate: ${timestamp}\n\nI confirm this action on Pager.`;
+}
+
+/**
+ * Verifies wallet session. Returns null on success, NextResponse error on failure.
+ */
+export async function verifySession(
+  address: string,
+  signature: string,
+  message: string,
+  action: string = "authorize session",
+): Promise<NextResponse | null> {
+  const normalized = address.toLowerCase();
+  const expected = getAuthMessage(action, normalized);
+  if (message !== expected) {
+    return NextResponse.json({ error: "Invalid auth message" }, { status: 401 });
+  }
+  if (!(await verifySignature(message, signature, normalized))) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+  return null;
 }

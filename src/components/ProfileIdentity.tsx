@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, Loader2, Globe } from "lucide-react";
+import { Camera, Loader2 } from "lucide-react";
 import { useRef } from "react";
 
 interface Props {

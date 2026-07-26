@@ -9,6 +9,7 @@ import ProfileMascots from "@/components/ProfileMascots";
 import DeleteButton from "@/components/DeleteButton";
 import { Metadata } from 'next';
 import { maskKey } from "@/lib/security";
+import { stripHtml } from "@/lib/utils";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -105,10 +106,6 @@ export async function generateMetadata({ params }: { params: { address: string }
     },
   };
 }
-
-const stripHtml = (html: string) => {
-  return html.replace(/<[^>]*>?/gm, '');
-};
 
 export default async function TapePage({ 
   params, 

@@ -27,13 +27,27 @@ export async function GET(req: Request) {
       return NextResponse.json({ profile: null });
     }
 
-    // МАСКИРОВАНИЕ КЛЮЧЕЙ BINANCE
+    const maskChatId = (id: string) => {
+      if (!id) return id;
+      if (id.startsWith('-100')) return '-100' + '•'.repeat(Math.max(0, id.length - 7)) + id.slice(-3);
+      if (id.startsWith('-')) return '-' + '•'.repeat(Math.max(0, id.length - 4)) + id.slice(-3);
+      return id;
+    };
+
     const safeProfile = {
       ...data,
       ai_credits: data.ai_credits || 0,
       binance_accounts: (data.binance_accounts || []).map((acc: any) => ({
         ...acc,
         apiKey: acc.apiKey ? maskKey(acc.apiKey) : ""
+      })),
+      telegram_channels: (data.telegram_channels || []).map((ch: any) => ({
+        ...ch,
+        chatId: ch.chatId?.startsWith('-') ? maskChatId(ch.chatId) : ch.chatId
+      })),
+      cta_links: (data.cta_links || []).map((link: any) => ({
+        ...link,
+        url: link.url?.includes('t.me/') && link.url.match(/\/-?\d+/) ? link.url.replace(/\/-?\d+/, '/' + maskChatId(link.url.match(/\/-?\d+/)![0].slice(1))) : link.url
       }))
     };
 
@@ -50,10 +64,10 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { 
       address, name, bio, website, 
-      avatar_url, ai_image_model, ai_atmosphere,
+      avatar_url, ai_image_model,
       ai_nft_token_id,
       binance_accounts, telegram_channels, telegram_chat_id,
-      cta_telegram, cta_forum, ref_links, cmc_username,
+      cta_links, ref_links, cmc_username,
       signature, message
     } = body;
 
@@ -109,13 +123,11 @@ export async function POST(req: Request) {
         website,
         avatar_url,
         ai_image_model,
-        ai_atmosphere,
         ai_nft_token_id,
         binance_accounts: finalBinanceAccounts,
         telegram_channels,
         telegram_chat_id,
-        cta_telegram,
-        cta_forum,
+        cta_links,
         ref_links,
         cmc_username
       }, { onConflict: 'address' })
@@ -126,11 +138,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message || "Database error" }, { status: 500 });
     }
 
+    const maskChatId = (id: string) => {
+      if (!id) return id;
+      if (id.startsWith('-100')) return '-100' + '•'.repeat(Math.max(0, id.length - 7)) + id.slice(-3);
+      if (id.startsWith('-')) return '-' + '•'.repeat(Math.max(0, id.length - 4)) + id.slice(-3);
+      return id;
+    };
+
     const safeProfile = {
       ...data,
       binance_accounts: (data.binance_accounts || []).map((acc: any) => ({
         ...acc,
         apiKey: acc.apiKey ? maskKey(acc.apiKey) : ""
+      })),
+      telegram_channels: (data.telegram_channels || []).map((ch: any) => ({
+        ...ch,
+        chatId: ch.chatId?.startsWith('-') ? maskChatId(ch.chatId) : ch.chatId
+      })),
+      cta_links: (data.cta_links || []).map((link: any) => ({
+        ...link,
+        url: link.url?.includes('t.me/') && link.url.match(/\/-?\d+/) ? link.url.replace(/\/-?\d+/, '/' + maskChatId(link.url.match(/\/-?\d+/)![0].slice(1))) : link.url
       }))
     };
 

@@ -25,8 +25,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
+    // Accept either "authorize session" or "publish article" signature
     const sessionMessage = getAuthMessage("authorize session", normalizedAddress);
-    if (message !== sessionMessage) {
+    const publishMessage = getAuthMessage("publish article", normalizedAddress);
+    if (message !== sessionMessage && message !== publishMessage) {
       return NextResponse.json({ error: 'Invalid auth message' }, { status: 401 });
     }
 
@@ -59,7 +61,7 @@ export async function POST(req: Request) {
     // Расшифровываем OpenRouter ключ если он есть
     const aiKey = profile?.ai_api_key ? decryptData(profile.ai_api_key) : "";
     
-    const authorDisplayName = profile?.name || `${profileAddress.slice(0, 6)}...`;
+    const authorDisplayName = profile?.name || (profileAddress ? `${profileAddress.slice(0, 6)}...` : "Anonymous");
     const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info').replace(/\/$/, '');
 
     let title = article.title;

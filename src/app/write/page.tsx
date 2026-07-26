@@ -9,12 +9,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   Image as ImageIcon, Send, X, AlertCircle,
   Loader2, Upload, Sparkles, PenLine, Settings2,
-  ShoppingCart, ChevronDown, Zap
+  ShoppingCart, ChevronDown, Zap,
+  Bold, Italic, Underline as UnderlineIcon, Link as LinkIcon,
+  List, ListOrdered, Heading2, Quote
 } from "lucide-react";
 import Link from "next/link";
 import { client, MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI } from "@/lib/web3";
 import { getAuthMessage } from "@/lib/auth";
-import { MOODS } from "@/lib/moods";
+import { MOODS, ATMOSPHERE_PRESETS } from "@/lib/moods";
+import { fetchWithRetry } from "@/lib/fetch";
 import imageCompression from "browser-image-compression";
 import ForgeOverlay from "@/components/ForgeOverlay";
 
@@ -25,24 +28,6 @@ const COMPRESSION_OPTIONS = {
 
 interface Notification {
   id: string; message: string; type: "success" | "error" | "info";
-}
-
-async function fetchWithRetry(url: string, options: RequestInit, retries = 2): Promise<Response> {
-  for (let i = 0; i <= retries; i++) {
-    try {
-      const res = await fetch(url, options);
-      if (res.ok) return res;
-      if (res.status >= 500 && i < retries) {
-        await new Promise(r => setTimeout(r, 2000));
-        continue;
-      }
-      return res;
-    } catch (err) {
-      if (i >= retries) throw err;
-      await new Promise(r => setTimeout(r, 2000));
-    }
-  }
-  throw new Error("fetchWithRetry exhausted");
 }
 
 function WritePageInner() {
@@ -60,6 +45,8 @@ function WritePageInner() {
   const [bannerDescription, setBannerDescription] = useState("");
   const [externalUrl, setExternalUrl] = useState("");
   const [mood, setMood] = useState("sarcastic");
+  const [atmosphere, setAtmosphere] = useState(ATMOSPHERE_PRESETS[0]);
+  const [isCustomAtmosphere, setIsCustomAtmosphere] = useState(false);
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [status, setStatus] = useState<"idle" | "publishing" | "success" | "error">("idle");
@@ -71,8 +58,6 @@ function WritePageInner() {
   const [isFetchingMascots, setIsFetchingMascots] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [processingStep, setProcessingStep] = useState<"idle" | "scraping" | "rewriting" | "banner" | "done">("idle");
-  const [contentKey, setContentKey] = useState(0);
-  const [pendingContent, setPendingContent] = useState<string | null>(null);
 
   const addNotification = (message: string, type: "success" | "error" | "info" = "success") => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -105,12 +90,17 @@ function WritePageInner() {
       const activeIds = ownedIds.filter((_, i) => details[i][4]).map(id => Number(id));
 
       if (activeIds.length > 0) {
-        const { data: dnas } = await supabase.from("mascots_dna").select("id, name, image_url").in("id", activeIds).eq("contract_address", MASCOTS_CONTRACT_ADDRESS.toLowerCase());
+        const { data: dnas } = await supabase.from("mascots_dna").select("id, name, image_url, personality").in("id", activeIds).eq("contract_address", MASCOTS_CONTRACT_ADDRESS.toLowerCase());
         const dnaMap = new Map(dnas?.map(d => [d.id, d]) || []);
 
         const finalMascots = activeIds.map(id => {
           const dna = dnaMap.get(id);
-          return { id: String(id), name: dna?.name || `Protocol #${id}`, image: dna?.image_url || "/logo-pager.png" };
+          return {
+            id: String(id),
+            name: dna?.name || `Protocol #${id}`,
+            image: dna?.image_url || "/logo-pager.png",
+            hasDna: !!(dna?.personality),
+          };
         });
 
         setOwnedMascots(finalMascots);
@@ -137,13 +127,6 @@ function WritePageInner() {
       setActiveMode("ai");
     }
   }, [searchParams]);
-
-  useEffect(() => {
-    if (pendingContent && editorRef.current) {
-      editorRef.current.innerHTML = pendingContent;
-      setPendingContent(null);
-    }
-  }, [contentKey, pendingContent]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -178,7 +161,7 @@ function WritePageInner() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           content: scrapeData.textContent, title: scrapeData.title, mood,
-          nftTokenId: selectedNftId, atmosphere: profile?.ai_atmosphere || "Surrealism",
+          nftTokenId: selectedNftId, atmosphere,
           userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
         }),
       });
@@ -186,24 +169,27 @@ function WritePageInner() {
       if (!textRes.ok) throw new Error(textData.error || "AI text failed");
 
       setTitle(textData.title);
-      if (textData.content) {
-        setPendingContent(textData.content);
-        setContentKey(k => k + 1);
+      if (textData.content && editorRef.current) {
+        editorRef.current.innerHTML = textData.content;
       }
       if (textData.banner_description) setBannerDescription(textData.banner_description);
 
       setProcessingStep("banner");
+
+      if ((profile?.ai_credits || 0) < 10) {
+        throw new Error("Not enough $HASH credits for banner. Top up in Profile settings.");
+      }
 
       const articleContent = editorRef.current?.innerHTML || textData.content || "";
       const bannerRes = await fetchWithRetry("/api/ai/banner", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: textData.title, bannerDescription: textData.banner_description, mood,
-          nftTokenId: selectedNftId, atmosphere: profile?.ai_atmosphere || "Surrealism",
+          nftTokenId: selectedNftId, atmosphere,
           userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
           content: articleContent,
         }),
-        signal: AbortSignal.timeout(95000),
+        signal: AbortSignal.timeout(125000),
       }, 2);
       // Banner generation requires 10 $HASH credits. Top up in Profile settings.
       if (!bannerRes.ok) throw new Error((await bannerRes.json()).error || "Banner generation failed");
@@ -224,6 +210,7 @@ function WritePageInner() {
 
   const handleRegenerateBanner = async () => {
     if (!selectedNftId || !title || !account) return;
+    if ((profile?.ai_credits || 0) < 10) { addNotification("Not enough $HASH credits for banner. Top up in Profile settings.", "error"); return; }
     try {
       addNotification("Regenerating banner...", "info");
       const authMsg = getAuthMessage("authorize session", account.address.toLowerCase());
@@ -234,11 +221,11 @@ function WritePageInner() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title, bannerDescription, mood, nftTokenId: selectedNftId,
-          atmosphere: profile?.ai_atmosphere || "Surrealism",
+          atmosphere,
           userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
           content: articleContent,
         }),
-        signal: AbortSignal.timeout(95000),
+        signal: AbortSignal.timeout(125000),
       }, 2);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Regeneration failed");
@@ -301,12 +288,9 @@ function WritePageInner() {
           targets.telegram?.forEach((c: any) => channels.push({ type: "telegram", account: c }));
 
           if (channels.length > 0) {
-            const batchMsg = getAuthMessage("authorize session", account.address.toLowerCase());
-            const batchSig = await account.signMessage({ message: batchMsg });
-
             const distRes = await fetch("/api/distribution/batch", {
               method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ articleId, targets: channels, profileAddress: account.address, signature: batchSig, message: batchMsg }),
+              body: JSON.stringify({ articleId, targets: channels, profileAddress: account.address, signature: authSig, message: authMsg }),
             });
             const distData = await distRes.json();
             if (distData.results) {
@@ -400,9 +384,16 @@ function WritePageInner() {
                             <img src={m.image} className="w-10 h-10 rounded-full object-cover border border-gray-100 shrink-0" alt="" />
                             <div className="flex flex-col min-w-0">
                               <span className="text-[10px] font-black uppercase truncate">{m.name}</span>
-                              <span className="text-[8px] font-bold text-gray-400 uppercase">Protocol Key #{m.id}</span>
+                              <span className="text-[8px] font-bold text-gray-400 uppercase">Mascot #{m.id}</span>
                             </div>
-                            {selectedNftId === m.id && <Zap size={10} className="ml-auto text-yellow-400 fill-yellow-400" />}
+                            <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                              {m.hasDna ? (
+                                <span className="text-[7px] font-bold uppercase text-green-500 bg-green-50 px-1.5 py-0.5 rounded">DNA</span>
+                              ) : (
+                                <span className="text-[7px] font-bold uppercase text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded">No DNA</span>
+                              )}
+                              {selectedNftId === m.id && <Zap size={10} className="text-yellow-400 fill-yellow-400" />}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -417,8 +408,49 @@ function WritePageInner() {
                     <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
 
+                  <div className="md:col-span-2 relative">
+                    {isCustomAtmosphere ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={atmosphere}
+                          onChange={e => setAtmosphere(e.target.value)}
+                          placeholder="Custom atmosphere..."
+                          maxLength={100}
+                          className="w-full px-3 py-3 text-[10px] font-black uppercase tracking-widest border border-gray-200 outline-none bg-white rounded-sm hover:border-black transition-all"
+                        />
+                        <button
+                          onClick={() => { setIsCustomAtmosphere(false); setAtmosphere(ATMOSPHERE_PRESETS[0]); }}
+                          className="shrink-0 p-2 text-gray-400 hover:text-black"
+                          title="Back to presets"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <select
+                          value={ATMOSPHERE_PRESETS.includes(atmosphere) ? atmosphere : ""}
+                          onChange={e => {
+                            if (e.target.value === "__custom__") {
+                              setIsCustomAtmosphere(true);
+                              setAtmosphere("");
+                            } else {
+                              setAtmosphere(e.target.value);
+                            }
+                          }}
+                          className="w-full px-3 py-3 text-[10px] font-black uppercase tracking-widest border border-gray-200 outline-none bg-white cursor-pointer appearance-none pr-8 rounded-sm hover:border-black transition-all"
+                        >
+                          {ATMOSPHERE_PRESETS.map(a => <option key={a} value={a}>{a}</option>)}
+                          <option value="__custom__">Custom...</option>
+                        </select>
+                        <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      </>
+                    )}
+                  </div>
+
                   <button onClick={handleAiRewrite} disabled={isAiProcessing || !externalUrl || !selectedNftId}
-                    className="md:col-span-5 bg-black text-white text-[10px] font-black uppercase tracking-widest py-3 px-6 hover:bg-gray-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl rounded-sm">
+                    className="md:col-span-3 bg-black text-white text-[10px] font-black uppercase tracking-widest py-3 px-6 hover:bg-gray-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl rounded-sm">
                     {isAiProcessing ? <Loader2 size={14} className="animate-spin" /> : <><Sparkles size={14} /> Initiate Forge</>}
                   </button>
                 </div>
@@ -427,6 +459,10 @@ function WritePageInner() {
                 {processingStep !== "idle" ? (
                   <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-black">
                     <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" /> Forge: {processingStep}...
+                  </div>
+                ) : selectedMascot && !selectedMascot.hasDna ? (
+                  <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-amber-600">
+                    <AlertCircle size={12} /> No DNA in database — article generation may fail. Use a mascot with DNA.
                   </div>
                 ) : <div />}
                 <div className="flex items-center gap-3">
@@ -456,8 +492,8 @@ function WritePageInner() {
               className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black">
               {isUploading ? <Loader2 size={16} className="animate-spin" /> : <><Upload size={16} /> Upload</>}
             </button>
-            <button onClick={handleRegenerateBanner} disabled={isAiProcessing || !title || !selectedNftId}
-              className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-500 hover:text-blue-700">
+            <button onClick={handleRegenerateBanner} disabled={isAiProcessing || !title || !selectedNftId || !selectedMascot?.hasDna}
+              className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-500 hover:text-blue-700 disabled:opacity-30 disabled:cursor-not-allowed">
               <Sparkles size={14} /> Regenerate
             </button>
             <input ref={fileInputRef} type="file" onChange={handleFileUpload} className="hidden" accept="image/*" />
@@ -470,7 +506,47 @@ function WritePageInner() {
           )}
         </div>
 
-        <div key={contentKey} ref={editorRef} contentEditable data-placeholder="Start your story here..."
+        <div className="border-b border-gray-100 pb-4 flex items-center gap-1 overflow-x-auto">
+          {[
+            { icon: Bold, cmd: "bold", tip: "Bold" },
+            { icon: Italic, cmd: "italic", tip: "Italic" },
+            { icon: UnderlineIcon, cmd: "underline", tip: "Underline" },
+            { divider: true },
+            { icon: Heading2, cmd: "formatBlock", val: "H2", tip: "Heading" },
+            { icon: Quote, cmd: "formatBlock", val: "BLOCKQUOTE", tip: "Quote" },
+            { divider: true },
+            { icon: List, cmd: "insertUnorderedList", tip: "Bullet List" },
+            { icon: ListOrdered, cmd: "insertOrderedList", tip: "Numbered List" },
+            { divider: true },
+            { icon: LinkIcon, cmd: "createLink", tip: "Insert Link" },
+          ].map((item, i) => {
+            if ("divider" in item && item.divider) {
+              return <div key={i} className="w-px h-5 bg-gray-200 mx-1 shrink-0" />;
+            }
+            const btn = item as { icon: any; cmd: string; val?: string; tip: string };
+            return (
+              <button key={i}
+                title={btn.tip}
+                onMouseDown={e => {
+                  e.preventDefault();
+                  editorRef.current?.focus();
+                  if (btn.cmd === "createLink") {
+                    const url = prompt("Enter URL:");
+                    if (url) document.execCommand("createLink", false, url);
+                  } else if (btn.val) {
+                    document.execCommand(btn.cmd, false, btn.val);
+                  } else {
+                    document.execCommand(btn.cmd, false, undefined);
+                  }
+                }}
+                className="p-2 text-gray-300 hover:text-black hover:bg-gray-50 rounded-sm transition-all shrink-0">
+                <btn.icon size={16} strokeWidth={2.5} />
+              </button>
+            );
+          })}
+        </div>
+
+        <div ref={editorRef} contentEditable data-placeholder="Start your story here..."
           className="w-full min-h-[500px] text-xl outline-none prose prose-stone max-w-none empty:before:content-[attr(data-placeholder)] empty:before:text-gray-200 empty:before:pointer-events-none leading-[1.8] typography-body" />
       </div>
 

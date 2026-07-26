@@ -1,5 +1,3 @@
-import { MINING_DNA } from "@/lib/character";
-
 export interface BinanceAccount {
   label: string;
   apiKey: string;
@@ -15,7 +13,7 @@ export interface TelegramChannel {
   style?: string;
 }
 
-const HASH_TOKEN_LINK = MINING_DNA.ecosystem_details.buy_link;
+const HASH_TOKEN_LINK = "https://www.cryptocompare.com/coins/hashcoin";
 
 function resolveIpfs(url: string | undefined): string {
   if (!url) return "";

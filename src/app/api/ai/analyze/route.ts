@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase";
+import { extractJson } from "@/lib/utils";
 
 export const maxDuration = 30;
 
@@ -7,13 +8,6 @@ const DNA_PROMPT = `Analyze this mascot image and return JSON with exactly three
 "personality": 2-3 sentences describing the character's temperament, values, worldview, and analytical style. Who they are at their core.
 "voice": 2-3 sentences describing how the character SPEAKS — unique vocabulary, sentence rhythm, catchphrases, slang, rhetorical style. Must be DISTINCT from personality. Example: "Short punchy sentences. Military jargon. Calls everyone 'soldier'. Ends every take with 'over and out'."
 "visual": Technical visual description for AI image generation. Cover: proportions and silhouette, physical traits (species, colors, facial features), materials and textures, and a rich cinematic environment description for banners.`;
-
-function extractJson(text: string) {
-  const cleaned = text.replace(/```json\s*/g, "").replace(/```/g, "").trim();
-  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (jsonMatch) return JSON.parse(jsonMatch[0]);
-  return JSON.parse(cleaned);
-}
 
 async function fetchImageAsBase64(url: string): Promise<{ data: string; mime: string }> {
   const res = await fetch(url, { signal: AbortSignal.timeout(10000) });

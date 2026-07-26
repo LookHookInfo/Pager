@@ -1,8 +1,17 @@
 "use client";
 
-import { Plus, Trash2, Send, ShieldCheck, Languages, UserCircle } from "lucide-react";
+import { useState } from "react";
+import { Plus, Trash2, Send, ShieldCheck, Languages, Eye, EyeOff } from "lucide-react";
 
 const LANGUAGES = ["English", "Russian", "Spanish", "Chinese", "French", "German", "Japanese", "Turkish"];
+
+function maskChatId(id: string): string {
+  if (!id) return "";
+  if (id.startsWith("-100")) return "-100••••" + id.slice(-3);
+  if (id.startsWith("-")) return "-•••" + id.slice(-3);
+  if (id.startsWith("@")) return id;
+  return "•••" + id.slice(-3);
+}
 
 interface Props {
   formData: any;
@@ -11,6 +20,15 @@ interface Props {
 
 export default function ProfileDistribution({ formData, onFormChange }: Props) {
   const set = (patch: any) => onFormChange({ ...formData, ...patch });
+  const [revealedIds, setRevealedIds] = useState<Set<number>>(new Set());
+
+  const toggleReveal = (idx: number) => {
+    setRevealedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
+      return next;
+    });
+  };
 
   return (
     <div className="space-y-6 pt-6 border-t border-gray-50">
@@ -18,6 +36,7 @@ export default function ProfileDistribution({ formData, onFormChange }: Props) {
         Distribution Protocols
       </h4>
 
+      {/* Telegram Channels */}
       <div className="space-y-4 p-5 bg-gray-50/50 border border-gray-100 rounded-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -32,43 +51,66 @@ export default function ProfileDistribution({ formData, onFormChange }: Props) {
           </button>
         </div>
         <div className="space-y-3">
-          {(formData.telegram_channels || []).map((ch: any, idx: number) => (
-            <div key={idx} className="space-y-2 p-3 bg-white border border-gray-200 rounded-sm relative">
-              <button
-                onClick={() => set({ telegram_channels: formData.telegram_channels.filter((_: any, i: number) => i !== idx) })}
-                className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
-              >
-                <Trash2 size={10} />
-              </button>
-              <div className="grid grid-cols-2 gap-2">
-                <input type="text" value={ch.label} onChange={e => {
-                  const c = [...formData.telegram_channels]; c[idx] = { ...c[idx], label: e.target.value }; set({ telegram_channels: c });
-                }} placeholder="Channel Name" className="text-xs font-bold p-2 border border-gray-100 outline-none bg-gray-50/30" />
-                <input type="text" value={ch.chatId} onChange={e => {
-                  const c = [...formData.telegram_channels]; c[idx] = { ...c[idx], chatId: e.target.value }; set({ telegram_channels: c });
-                }} placeholder="Chat ID / @channel" className="text-xs font-mono p-2 border border-gray-100 outline-none bg-gray-50/30" />
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <input type="text" value={ch.topicId || ""} onChange={e => {
-                  const c = [...formData.telegram_channels]; c[idx] = { ...c[idx], topicId: e.target.value }; set({ telegram_channels: c });
-                }} placeholder="Topic ID" className="text-xs font-mono p-2 border border-gray-100 outline-none bg-gray-50/30" />
-                <div className="flex items-center gap-2 bg-gray-50/50 p-2 border border-gray-50">
-                  <Languages size={12} className="text-gray-400" />
-                  <select value={ch.language} onChange={e => {
-                    const c = [...formData.telegram_channels]; c[idx] = { ...c[idx], language: e.target.value }; set({ telegram_channels: c });
-                  }} className="bg-transparent text-[10px] font-bold outline-none flex-1">
-                    {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
-                  </select>
+          {(formData.telegram_channels || []).map((ch: any, idx: number) => {
+            const isRevealed = revealedIds.has(idx);
+            const isMasked = ch.chatId && ch.chatId.startsWith("-") && !isRevealed;
+            return (
+              <div key={idx} className="space-y-2 p-3 bg-white border border-gray-200 rounded-sm relative">
+                <button
+                  onClick={() => set({ telegram_channels: formData.telegram_channels.filter((_: any, i: number) => i !== idx) })}
+                  className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                >
+                  <Trash2 size={10} />
+                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="text" value={ch.label} onChange={e => {
+                    const c = [...formData.telegram_channels]; c[idx] = { ...c[idx], label: e.target.value }; set({ telegram_channels: c });
+                  }} placeholder="Channel Name" className="text-xs font-bold p-2 border border-gray-100 outline-none bg-gray-50/30" />
+                  <div className="relative">
+                    <input
+                      type={isMasked ? "password" : "text"}
+                      value={isMasked ? maskChatId(ch.chatId) : ch.chatId}
+                      onChange={e => {
+                        const c = [...formData.telegram_channels]; c[idx] = { ...c[idx], chatId: e.target.value }; set({ telegram_channels: c });
+                      }}
+                      onFocus={() => { if (ch.chatId?.startsWith("-") && !isRevealed) toggleReveal(idx); }}
+                      placeholder="Chat ID / @channel"
+                      className="text-xs font-mono p-2 pr-8 border border-gray-100 outline-none bg-gray-50/30 w-full"
+                    />
+                    {ch.chatId && ch.chatId.startsWith("-") && (
+                      <button
+                        type="button"
+                        onClick={() => toggleReveal(idx)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-black transition-colors"
+                      >
+                        {isRevealed ? <EyeOff size={12} /> : <Eye size={12} />}
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <input type="text" value={ch.style} onChange={e => {
-                  const c = [...formData.telegram_channels]; c[idx] = { ...c[idx], style: e.target.value }; set({ telegram_channels: c });
-                }} placeholder="Style" className="text-xs font-bold p-2 border border-gray-50 outline-none bg-gray-50/50" />
+                <div className="grid grid-cols-3 gap-2">
+                  <input type="text" value={ch.topicId || ""} onChange={e => {
+                    const c = [...formData.telegram_channels]; c[idx] = { ...c[idx], topicId: e.target.value }; set({ telegram_channels: c });
+                  }} placeholder="Topic ID" className="text-xs font-mono p-2 border border-gray-100 outline-none bg-gray-50/30" />
+                  <div className="flex items-center gap-2 bg-gray-50/50 p-2 border border-gray-50">
+                    <Languages size={12} className="text-gray-400" />
+                    <select value={ch.language} onChange={e => {
+                      const c = [...formData.telegram_channels]; c[idx] = { ...c[idx], language: e.target.value }; set({ telegram_channels: c });
+                    }} className="bg-transparent text-[10px] font-bold outline-none flex-1">
+                      {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
+                    </select>
+                  </div>
+                  <input type="text" value={ch.style} onChange={e => {
+                    const c = [...formData.telegram_channels]; c[idx] = { ...c[idx], style: e.target.value }; set({ telegram_channels: c });
+                  }} placeholder="Style" className="text-xs font-bold p-2 border border-gray-50 outline-none bg-gray-50/50" />
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
+      {/* Binance Square */}
       <div className="space-y-4 p-5 bg-gray-50/50 border border-gray-100 rounded-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -117,20 +159,44 @@ export default function ProfileDistribution({ formData, onFormChange }: Props) {
         </div>
       </div>
 
-      <div className="space-y-3 pt-4 border-t border-gray-50">
-        <div className="flex items-center gap-2">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400 shrink-0"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400">Author CTAs</h4>
+      {/* Author CTAs */}
+      <div className="space-y-4 pt-4 border-t border-gray-50">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400 shrink-0"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400">Author CTAs</h4>
+            <span className="text-[8px] font-bold text-gray-300">(3 max)</span>
+          </div>
+          <button
+            onClick={() => set({ cta_links: [...(formData.cta_links || []), { label: "", url: "" }] })}
+            disabled={(formData.cta_links || []).length >= 3}
+            className="text-[9px] font-black uppercase text-blue-500 hover:text-blue-600 flex items-center gap-1 bg-white px-2 py-1 border border-gray-200 rounded-sm disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <Plus size={10} /> Add Link
+          </button>
         </div>
-        <p className="text-[9px] text-gray-400 ml-1 -mt-1 mb-2">
-          These links appear in the <strong className="text-black">BTC Impact Analysis</strong> block as "FOLLOW FOR MORE INTEL". Telegram recommended, Forum optional.
+        <p className="text-[9px] text-gray-400 ml-1 -mt-2 mb-3">
+          These links appear in the <strong className="text-black">BTC Impact Analysis</strong> block as "FOLLOW FOR MORE INTEL". Set a name and URL for each channel.
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input type="text" value={formData.cta_telegram} onChange={e => set({ cta_telegram: e.target.value })} placeholder="https://t.me/your-channel" className="w-full text-xs p-3 border border-gray-200 outline-none bg-white focus:border-black transition-colors" />
-          <input type="text" value={formData.cta_forum} onChange={e => set({ cta_forum: e.target.value })} placeholder="https://t.me/your-forum" className="w-full text-xs p-3 border border-gray-200 outline-none bg-white focus:border-black transition-colors" />
-        </div>
+        {(formData.cta_links || []).map((link: any, idx: number) => (
+          <div key={idx} className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-white border border-gray-100 rounded-sm relative">
+            <button
+              onClick={() => set({ cta_links: formData.cta_links.filter((_: any, i: number) => i !== idx) })}
+              className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+            >
+              <Trash2 size={10} />
+            </button>
+            <input type="text" value={link.label} onChange={e => {
+              const c = [...formData.cta_links]; c[idx] = { ...c[idx], label: e.target.value }; set({ cta_links: c });
+            }} placeholder="e.g. Telegram" className="md:col-span-1 text-xs font-bold p-3 border border-gray-200 outline-none bg-gray-50/50 focus:border-black focus:bg-white transition-all" />
+            <input type="text" value={link.url} onChange={e => {
+              const c = [...formData.cta_links]; c[idx] = { ...c[idx], url: e.target.value }; set({ cta_links: c });
+            }} placeholder="https://t.me/your-channel" className="md:col-span-2 text-xs p-3 border border-gray-200 outline-none bg-gray-50/50 focus:border-black focus:bg-white transition-all" />
+          </div>
+        ))}
       </div>
 
+      {/* Referral Links */}
       <div className="space-y-4 pt-4 border-t border-gray-50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

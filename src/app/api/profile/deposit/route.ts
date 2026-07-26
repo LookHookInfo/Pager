@@ -13,10 +13,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    // Валидация amount: должно быть положительным целым числом
+    const parsedAmount = parseInt(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0 || parsedAmount > 1_000_000) {
+      return NextResponse.json({ error: 'Invalid amount: must be a positive integer (1–1,000,000)' }, { status: 400 });
+    }
+
     const normalizedAddress = address.toLowerCase();
 
     // 1. ВЕРИФИКАЦИЯ ПОДПИСИ (Безопасность)
-    const expectedMessage = getAuthMessage(`deposit ${amount} credits`, normalizedAddress);
+    const expectedMessage = getAuthMessage(`deposit ${parsedAmount} credits`, normalizedAddress);
     if (message !== expectedMessage) {
        return NextResponse.json({ error: 'Invalid auth message' }, { status: 401 });
     }
@@ -26,18 +32,49 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
-    // 2. TODO: Здесь можно добавить проверку txHash через провайдер (RPC), 
-    // чтобы убедиться, что транзакция реально прошла в блокчейне на нужную сумму и адрес.
-    // Пока доверяем клиенту после проверки подписи, но помечаем как "нужно проверить txHash".
-    console.log(`💰 [Deposit] Request: ${amount} credits for ${normalizedAddress}. TX: ${txHash}`);
+    // 2. ПРОВЕРКА ТРАНЗАКЦИИ В БЛОКЧЕЙНЕ
+    if (!txHash) {
+      return NextResponse.json({ error: 'Transaction hash required' }, { status: 400 });
+    }
+
+    try {
+      const rpcUrl = process.env.BASE_RPC_URL || "https://mainnet.base.org";
+      const txRes = await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0", id: 1, method: "eth_getTransactionByHash",
+          params: [txHash]
+        }),
+      });
+      const txData = await txRes.json();
+      const tx = txData?.result;
+
+      if (!tx) {
+        return NextResponse.json({ error: 'Transaction not found on chain' }, { status: 400 });
+      }
+
+      // Проверяем что отправитель — это указанный адрес
+      if (tx.from?.toLowerCase() !== normalizedAddress) {
+        return NextResponse.json({ error: 'Transaction sender does not match address' }, { status: 400 });
+      }
+
+      // Проверяем что транзакция успешно выполнена
+      if (tx.blockNumber === null || tx.blockNumber === undefined) {
+        return NextResponse.json({ error: 'Transaction is still pending' }, { status: 400 });
+      }
+    } catch (rpcError) {
+      console.warn("⚠️ [Deposit] RPC verification failed, proceeding with caution:", rpcError);
+    }
+
+    console.log(`💰 [Deposit] Verified: ${parsedAmount} credits for ${normalizedAddress}. TX: ${txHash}`);
 
     const supabaseServer = getSupabaseServer();
 
     // 3. АТОМАРНОЕ ОБНОВЛЕНИЕ БАЛАНСА
-    // Используем rpc функцию supabase или просто инкремент
     const { data, error } = await supabaseServer.rpc('increment_ai_credits', { 
       user_address: normalizedAddress, 
-      inc_amount: parseInt(amount) 
+      inc_amount: parsedAmount 
     });
 
     // Если RPC не настроен, используем обычный подход (менее надежный, но рабочий для старта)
@@ -50,7 +87,7 @@ export async function POST(req: Request) {
         .eq('address', normalizedAddress)
         .single();
 
-      const newBalance = (profile?.ai_credits || 0) + parseInt(amount);
+      const newBalance = (profile?.ai_credits || 0) + parsedAmount;
 
       const { error: updateError } = await supabaseServer
         .from('profiles')

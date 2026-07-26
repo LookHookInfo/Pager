@@ -4,6 +4,7 @@ import LikeButton from "@/components/LikeButton";
 import BannerImage from "@/components/BannerImage";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
+import { stripHtml } from "@/lib/utils";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -31,10 +32,6 @@ async function getArticles(page: number) {
     totalPages: Math.ceil((count || 0) / ITEMS_PER_PAGE) 
   };
 }
-
-const stripHtml = (html: string) => {
-  return html.replace(/<[^>]*>?/gm, '');
-};
 
 export default async function Home({ searchParams }: { searchParams: { page?: string } }) {
   const currentPage = Number(searchParams.page) || 1;

@@ -5,8 +5,9 @@ import { createWallet, inAppWallet } from "thirdweb/wallets";
 import { base } from "thirdweb/chains";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { LogOut } from "lucide-react";
-import { client, HASH_TOKEN_ADDRESS } from "@/lib/web3";
+import { client } from "@/lib/web3";
 
 const wallets = [
   inAppWallet({
@@ -26,19 +27,24 @@ export default function Navbar() {
   const wallet = useActiveWallet();
   const { disconnect } = useDisconnect();
   const pathname = usePathname();
-
-  const { data: balance, isLoading: isBalanceLoading } = useWalletBalance({
-    client,
-    chain: base,
-    address: account?.address,
-    tokenAddress: HASH_TOKEN_ADDRESS,
-  });
+  const [credits, setCredits] = useState(0);
+  const [creditsLoading, setCreditsLoading] = useState(true);
 
   const { data: ethBalance } = useWalletBalance({
     client,
     chain: base,
     address: account?.address,
   });
+
+  useEffect(() => {
+    if (!account?.address) { setCreditsLoading(false); return; }
+    setCreditsLoading(true);
+    fetch(`/api/profile?address=${account.address}`)
+      .then(r => r.json())
+      .then(d => setCredits(d.profile?.ai_credits || 0))
+      .catch(() => {})
+      .finally(() => setCreditsLoading(false));
+  }, [account?.address]);
 
   const isMyTapePage = account && pathname === `/tape/${account.address}`;
 
@@ -50,7 +56,7 @@ export default function Navbar() {
           <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mt-1">beta</span>
         </div>
         
-        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-6">
           <Link href="/news" className={`text-sm font-medium transition-colors ${pathname === "/news" ? "text-black" : "text-[var(--text-secondary)] hover:text-black"}`}>News</Link>
           {account && (
             <div className="hidden md:flex items-center gap-6">
@@ -59,7 +65,7 @@ export default function Navbar() {
               <div className="h-4 w-[1px] bg-[var(--border-soft)]" />
               <Link href={`/tape/${account.address}`} className="text-sm font-medium text-[var(--text-secondary)] hover:text-black transition-colors">
                 {isMyTapePage ? (
-                  isBalanceLoading ? "..." : `${Math.floor(parseFloat(balance?.displayValue || "0"))} $HASH`
+                  creditsLoading ? "..." : `${credits} Credits`
                 ) : (
                   "My Tape"
                 )}

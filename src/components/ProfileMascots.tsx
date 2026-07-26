@@ -8,6 +8,7 @@ import { client, MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI, HASH_TOKEN_ADDRESS } fro
 import { ShoppingCart, Loader2, Zap, CheckCircle2, RefreshCw, UserCheck, Flame, Trash2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { getAuthMessage } from "@/lib/auth";
 
 export default function ProfileMascots({ address }: { address: string }) {
   const account = useActiveAccount();
@@ -168,12 +169,14 @@ export default function ProfileMascots({ address }: { address: string }) {
   useEffect(() => { fetchAuthorMascots(); }, [fetchAuthorMascots]);
 
   const handleSetActive = async (tokenId: number) => {
-    if (!isOwner) return;
+    if (!isOwner || !account) return;
     setIsSettingActive(true);
     try {
+      const msg = getAuthMessage("update Pager profile", address.toLowerCase());
+      const sig = await account.signMessage({ message: msg });
       await fetch("/api/profile", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address, ai_nft_token_id: String(tokenId) }),
+        body: JSON.stringify({ address, ai_nft_token_id: String(tokenId), signature: sig, message: msg }),
       });
       setActiveMascotId(String(tokenId));
       router.refresh();
@@ -263,7 +266,7 @@ export default function ProfileMascots({ address }: { address: string }) {
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
           <Zap size={12} className="text-yellow-400 fill-yellow-400" />
-          <h3 className="text-[10px] font-black uppercase tracking-widest">Protocol Keys</h3>
+          <h3 className="text-[10px] font-black uppercase tracking-widest">Mascots</h3>
         </div>
         <button onClick={() => fetchAuthorMascots()} className="text-[8px] font-black uppercase text-gray-400 hover:text-black flex items-center gap-1">
           <RefreshCw size={10} className={isLoading ? "animate-spin" : ""} /> Sync

@@ -1,5 +1,9 @@
 import sharp from "sharp";
 
+const PINATA_TIMEOUT = 15000;
+const BFL_POLL_TIMEOUT = 10000;
+const BFL_CREATE_TIMEOUT = 15000;
+
 async function tryPinataWithBuffer(
   compressed: Buffer,
   authType: "jwt" | "apikey",
@@ -22,21 +26,27 @@ async function tryPinataWithBuffer(
     return null;
   }
 
-  const res = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
-    method: "POST",
-    headers,
-    body: formData,
-  });
+  try {
+    const res = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
+      method: "POST",
+      headers,
+      body: formData,
+      signal: AbortSignal.timeout(PINATA_TIMEOUT),
+    });
 
-  if (!res.ok) {
-    const err = await res.text().catch(() => "unknown");
-    console.error(`Pinata ${authType} failed: ${res.status} — ${err.slice(0, 200)}`);
+    if (!res.ok) {
+      const err = await res.text().catch(() => "unknown");
+      console.error(`Pinata ${authType} failed: ${res.status} — ${err.slice(0, 200)}`);
+      return null;
+    }
+
+    const data = await res.json();
+    const gateway = process.env.NEXT_PUBLIC_PINATA_GATEWAY || "https://gateway.pinata.cloud/ipfs/";
+    return `${gateway.replace(/\/+$/, "")}/${data.IpfsHash}`;
+  } catch (e: any) {
+    console.error(`Pinata ${authType} fetch error: ${e.message}`);
     return null;
   }
-
-  const data = await res.json();
-  const gateway = process.env.NEXT_PUBLIC_PINATA_GATEWAY || "https://gateway.pinata.cloud/ipfs/";
-  return `${gateway.replace(/\/+$/, "")}/${data.IpfsHash}`;
 }
 
 export async function uploadToPinata(imageUrl: string): Promise<string> {
@@ -45,25 +55,25 @@ export async function uploadToPinata(imageUrl: string): Promise<string> {
     const pinataApiKey = process.env.PINATA_API_KEY?.trim();
     const pinataApiSecret = process.env.PINATA_API_SECRET?.trim();
 
-    const imgRes = await fetch(imageUrl);
+    const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(10000) });
     if (!imgRes.ok) throw new Error(`fetch failed: ${imgRes.status}`);
 
     const buffer = Buffer.from(await imgRes.arrayBuffer());
     const compressed = await sharp(buffer).webp({ quality: 85, effort: 4 }).toBuffer();
 
     if (pinataJwt) {
-      for (let i = 1; i <= 3; i++) {
+      for (let i = 1; i <= 2; i++) {
         const url = await tryPinataWithBuffer(compressed, "jwt", pinataJwt);
         if (url) return url;
-        if (i < 3) await new Promise(r => setTimeout(r, 1000 * i));
+        if (i < 2) await new Promise(r => setTimeout(r, 1000 * i));
       }
     }
 
     if (pinataApiKey && pinataApiSecret) {
-      for (let i = 1; i <= 3; i++) {
+      for (let i = 1; i <= 2; i++) {
         const url = await tryPinataWithBuffer(compressed, "apikey", undefined, pinataApiKey, pinataApiSecret);
         if (url) return url;
-        if (i < 3) await new Promise(r => setTimeout(r, 1000 * i));
+        if (i < 2) await new Promise(r => setTimeout(r, 1000 * i));
       }
     }
 
@@ -82,6 +92,7 @@ export async function generateBflImage(prompt: string): Promise<string> {
     method: "POST",
     headers: { "x-key": apiKey, "Content-Type": "application/json" },
     body: JSON.stringify({ prompt, width: 1344, height: 768, prompt_upsampling: true }),
+    signal: AbortSignal.timeout(BFL_CREATE_TIMEOUT),
   });
 
   if (!res.ok) {
@@ -92,19 +103,30 @@ export async function generateBflImage(prompt: string): Promise<string> {
   const { id } = await res.json();
   const pollUrl = `https://api.bfl.ai/v1/get_result?id=${id}`;
 
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 50; i++) {
     await new Promise(r => setTimeout(r, 1500));
-    const statusRes = await fetch(pollUrl, { headers: { "x-key": apiKey } });
-    if (!statusRes.ok) continue;
+    try {
+      const statusRes = await fetch(pollUrl, {
+        headers: { "x-key": apiKey },
+        signal: AbortSignal.timeout(BFL_POLL_TIMEOUT),
+      });
+      if (!statusRes.ok) continue;
 
-    const { status, result, error } = await statusRes.json();
-    if (status === "Ready" && result?.sample) {
-      return await uploadToPinata(result.sample);
-    }
-    if (status === "Failed" || status === "Error") {
-      throw new Error(`BFL failed: ${error || "unknown"}`);
+      const { status, result, error } = await statusRes.json();
+      if (status === "Ready" && result?.sample) {
+        return await uploadToPinata(result.sample);
+      }
+      if (status === "Failed" || status === "Error") {
+        throw new Error(`BFL failed: ${error || "unknown"}`);
+      }
+    } catch (e: any) {
+      if (e.name === "TimeoutError") {
+        console.warn(`BFL poll #${i + 1} timed out, retrying...`);
+        continue;
+      }
+      throw e;
     }
   }
 
-  throw new Error("BFL timed out (45s)");
+  throw new Error("BFL timed out (75s)");
 }

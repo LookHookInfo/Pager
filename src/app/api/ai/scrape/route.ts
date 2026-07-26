@@ -12,6 +12,35 @@ export async function POST(req: Request) {
     const targetUrl: string = url.trim();
     let cleanUrl: string = targetUrl.startsWith("http") ? targetUrl : "https://" + targetUrl;
 
+    // URL validation: block internal/private IPs (SSRF protection)
+    try {
+      const parsed = new URL(cleanUrl);
+      const hostname = parsed.hostname.toLowerCase();
+
+      // Block localhost, internal IPs, cloud metadata
+      if (
+        hostname === "localhost" ||
+        hostname === "127.0.0.1" ||
+        hostname === "0.0.0.0" ||
+        hostname === "[::1]" ||
+        hostname.startsWith("192.168.") ||
+        hostname.startsWith("10.") ||
+        hostname.startsWith("172.") ||
+        hostname === "169.254.169.254" ||
+        hostname.endsWith(".internal") ||
+        hostname.endsWith(".local")
+      ) {
+        return NextResponse.json({ error: "Internal/private URLs are not allowed" }, { status: 403 });
+      }
+
+      // Only allow http/https
+      if (!["http:", "https:"].includes(parsed.protocol)) {
+        return NextResponse.json({ error: "Only HTTP/HTTPS URLs are allowed" }, { status: 403 });
+      }
+    } catch {
+      return NextResponse.json({ error: "Invalid URL format" }, { status: 400 });
+    }
+
     // --- TELEGRAM OPTIMIZATION ---
     // Исправленная регулярка: [a-zA-Z0-9_]
     const isTelegramMessage = /t\.me\/[a-zA-Z0-9_]+\/\d+/.test(cleanUrl);

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { getCharacterVisualPrompt, CustomDna } from "@/lib/character";
-import { resolveNftDna } from "@/lib/character/nft";
+import { getCharacterVisualPrompt } from "@/lib/character";
+import { resolveDna } from "@/lib/character/resolve";
 import { getSupabaseServer } from "@/lib/supabase";
 import { generateBflImage } from "@/lib/image";
-import { verifySignature, getAuthMessage } from "@/lib/auth";
+import { verifySession } from "@/lib/auth";
 
-export const maxDuration = 90;
+export const maxDuration = 120;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
@@ -18,16 +18,11 @@ export async function POST(req: Request) {
 
     const normalizedAddress = userAddress.toLowerCase();
 
-    const sessionMessage = getAuthMessage("authorize session", normalizedAddress);
-    if (message !== sessionMessage) {
-      return NextResponse.json({ error: "Invalid auth message" }, { status: 401 });
-    }
-    if (!(await verifySignature(message, signature, normalizedAddress))) {
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-    }
+    const authError = await verifySession(normalizedAddress, signature, message);
+    if (authError) return authError;
 
     const supabase = getSupabaseServer();
-    const { data: profile } = await supabase.from("profiles").select("ai_credits, ai_atmosphere").eq("address", normalizedAddress).maybeSingle();
+    const { data: profile } = await supabase.from("profiles").select("ai_credits").eq("address", normalizedAddress).maybeSingle();
 
     const credits = profile?.ai_credits || 0;
     // Banner generation costs 10 $HASH credits. Top up in Profile settings.
@@ -35,20 +30,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `Not enough $HASH credits for banner. Top up in Profile settings.` }, { status: 402 });
     }
 
-    const nftMetadata = await resolveNftDna(nftTokenId);
-    if (!nftMetadata) return NextResponse.json({ error: "Failed to load NFT DNA" }, { status: 404 });
+    // ATOMIC DEBIT: debit credits BEFORE generation to prevent race conditions
+    const { error: debitErr } = await supabase.rpc("decrement_ai_credits", {
+      user_address: normalizedAddress,
+      dec_amount: 10,
+    });
+    if (debitErr) {
+      // Fallback: manual update
+      await supabase.from("profiles").update({ ai_credits: credits - 10 }).eq("address", normalizedAddress);
+    }
 
-    const activeDna: CustomDna = {
-      name: nftMetadata.name,
-      personality: nftMetadata.pager_dna.personality,
-      voice: nftMetadata.pager_dna.voice,
-      physical_description: nftMetadata.pager_dna.physical_description,
-      image_url: nftMetadata.image.startsWith("ipfs://")
-        ? nftMetadata.image.replace("ipfs://", "https://gateway.ipn.io/ipfs/")
-        : nftMetadata.image,
-    };
+    const activeDna = await resolveDna(nftTokenId);
+    if (!activeDna) return NextResponse.json({ error: `Mascot DNA not found for token #${nftTokenId}. This mascot may not have DNA uploaded. Try a different mascot.` }, { status: 404 });
 
-    let atmosphere = (providedAtmosphere || profile?.ai_atmosphere || "Surrealism")
+    let atmosphere = (providedAtmosphere || "Surrealism")
       .replace(/["`${}]/g, "").trim().slice(0, 100);
     if (!atmosphere) atmosphere = "Surrealism";
 
@@ -61,19 +56,14 @@ export async function POST(req: Request) {
           .slice(0, 800)
       : "";
 
-    const prompt = getCharacterVisualPrompt(bannerDescription || title, mood, "nft", title, atmosphere, activeDna, articleContext);
+    const prompt = getCharacterVisualPrompt(bannerDescription || title, mood, title, atmosphere, activeDna, articleContext);
     console.log(`🎨 [Banner] Generating with atmosphere="${atmosphere}", prompt length=${prompt.length}`);
     const imageUrl = await generateBflImage(prompt);
 
-    if (!imageUrl) return NextResponse.json({ error: "Banner generation failed" }, { status: 500 });
-
-    const { error: debitError } = await supabase.rpc("decrement_ai_credits", {
-      user_address: normalizedAddress,
-      dec_amount: 10,
-    });
-
-    if (debitError) {
-      await supabase.from("profiles").update({ ai_credits: credits - 10 }).eq("address", normalizedAddress);
+    if (!imageUrl) {
+      // Refund credits if generation failed
+      await supabase.rpc("increment_ai_credits", { user_address: normalizedAddress, inc_amount: 10 });
+      return NextResponse.json({ error: "Banner generation failed" }, { status: 500 });
     }
 
     return NextResponse.json({ image_url: imageUrl });

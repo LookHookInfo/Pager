@@ -1,11 +1,7 @@
-import btcDna from "./btc_dna.json";
-import miningDna from "./mining_dna.json";
-import { MOOD_ATMOSPHERES, MOOD_EXPRESSIONS } from "@/lib/moods";
+import { MOOD_ATMOSPHERES, MOOD_EXPRESSIONS, MOOD_WRITING_GUIDES } from "@/lib/moods";
+import { BTC_ANALYSIS_RULES } from "./blocks";
 
-export const BTC_DNA = btcDna;
-export const MINING_DNA = miningDna;
-
-export type CharacterType = "nft";
+export { getBtcAnalysisBlock, getMiningSponsorBlock } from "./blocks";
 
 export interface CustomDna {
   name: string;
@@ -52,12 +48,12 @@ function getAtmosphereTextInstruction(atmosphere: string): string {
 }
 
 /**
- * Generates a cinematic visual prompt for image generation engines.
+ * Generates a visual prompt for image generation engines.
+ * Priority: article meaning → emotional feeling → concrete details → style.
  */
 export function getCharacterVisualPrompt(
   scene: string,
   mood: string = "neutral",
-  characterType: CharacterType = "nft",
   articleTitle?: string,
   atmosphere: string = "Cinematic Digital Art",
   activeDna?: CustomDna,
@@ -65,37 +61,39 @@ export function getCharacterVisualPrompt(
 ): string {
   const moodKey = mood.toLowerCase();
   const visualMood = MOOD_ATMOSPHERES[moodKey] || MOOD_ATMOSPHERES.neutral;
-  
+
   if (!activeDna) throw new Error("DNA Protocol missing.");
 
   return `
-    REFERENCE_IMAGE: ${activeDna.image_url} (character reference only)
-    TASK: High-fidelity 16:9 illustration in "${atmosphere}" style.
-    
-    [PRIMARY SUBJECT: ${activeDna.name}]
-    - PHYSICAL DNA: ${activeDna.physical_description}.
-    - CHARACTER IDENTITY: Keep the character's core identity (silhouette, color scheme, key traits) from REFERENCE_IMAGE, but fully render in "${atmosphere}" art style.
-    - RENDERING: The character MUST be drawn as a ${atmosphere} illustration — not photorealistic, not default digital art.
-    - EXPRESSION: ${MOOD_EXPRESSIONS[moodKey] || MOOD_EXPRESSIONS.neutral}.
-    - POSTURE: Dynamic and proportional.
-    
-    [UNIFIED SCENE — THIS IS THE MOST IMPORTANT PART]
-    - SETTING: ${scene}.
-    - ARTICLE CONTEXT (these are the REAL-WORLD elements from the story that MUST be visually represented): ${articleContext || scene}.
-    - VISUAL STORYTELLING: The banner must immediately communicate WHAT the article is about. Include recognizable objects, technology, symbols, and environmental details from the article context above. A viewer should understand the topic just by looking at the image.
-    - FULL STYLE UNIFICATION: The entire image — character AND background — is a single cohesive "${atmosphere}" artwork. No realistic elements. Everything follows ${atmosphere} visual logic: ${getAtmosphereVisual(atmosphere)}.
-    - LIGHTING/MOOD: ${visualMood}.
-    
-    [STRICT RULES]
-    1. STYLE INTEGRATION: ${activeDna.name} and the environment must share the EXACT SAME "${atmosphere}" rendering. No mixing of art styles.
-    2. CARICATURE MANDATORY: This is a CARICATURE / CARTOON illustration. Exaggerated proportions (big head, expressive face, dynamic squash-and-stretch poses), thick bold outlines, vibrant cel-shaded/flat colors. NO realism. NO photorealistic elements. EVERYTHING must look like a cartoon caricature.
-    3. INFORMATIVE BANNER: The scene must contain specific visual elements from the article — not generic backgrounds. If the article mentions Bitcoin, show Bitcoin. If it mentions a specific protocol, show its symbols. If it mentions a hack, show broken code/vaults.
-    4. IP PROTECTION: No celebrities, no famous cartoon characters. Create a unique interpretation of "${atmosphere}".
-    5. QUALITY: Masterpiece quality caricature, clean visible outlines, high resolution.
-    6. NO TEXT: Do not generate any text or letters.
-    
-    Final Output: Professional caricature illustration for a Web3 protocol in ${atmosphere} style.
-    ${articleTitle ? `(Theme: ${articleTitle.toUpperCase()})` : ""}
+    TASK: Create a 16:9 editorial illustration that instantly communicates the CORE MEANING of this article.
+
+    [WHAT THIS ARTICLE IS ABOUT — THIS IS THE MOST CRITICAL SECTION]
+    The scene must tell a clear visual story. A viewer who knows nothing about crypto must understand the topic just by looking.
+    - CORE SUBJECT: ${scene}
+    - ARTICLE DETAILS: ${articleContext || scene}
+    - EMOTIONAL CORE: What feeling does this article carry? Use this mood: ${visualMood}
+
+    [SCENE COMPOSITION]
+    - Set the mascot character ${activeDna.name} (${activeDna.physical_description}) INTO the scene as a participant, not a decoration.
+    - The mascot interacts with REAL objects from the article: coins, charts, contracts, servers, logos, documents, buildings.
+    - Background must show the article's setting: trading floor, server room, courtroom, DeFi vault, mining farm, etc.
+    - Every object in the scene must relate to the article's content. No random props.
+
+    [VISUAL STYLE: ${atmosphere}]
+    ${getAtmosphereVisual(atmosphere)}
+    - Render in "${atmosphere}" art style throughout — character and background unified.
+    - Expression: ${MOOD_EXPRESSIONS[moodKey] || MOOD_EXPRESSIONS.neutral}.
+    - Lighting: ${visualMood}.
+
+    [RULES]
+    1. MEANING FIRST: The image must clearly answer "What is this article about?" through visual elements alone.
+    2. CONCRETE OBJECTS: Show specific things from the article — Bitcoin logos, smart contract code, trading charts with actual numbers, specific protocol symbols, government buildings, ASIC rigs.
+    3. LOGICAL SCENE: The composition must make physical sense. Characters stand on ground, objects obey gravity, cause and effect visible.
+    4. MASCOT INTEGRATION: ${activeDna.name} participates in the scene (analyzing a chart, inspecting code, pointing at data) — not just standing in front of a random background.
+    5. EMOTIONAL CLARITY: The mood and lighting reinforce the article's message — bullish = green/gold energy, bearish = red/storm, hack = red alert/broken vaults.
+    6. NO TEXT OR LETTERS in the image.
+
+    ${articleTitle ? `Article: "${articleTitle.toUpperCase()}"` : ""}
   `.trim();
 }
 
@@ -104,11 +102,13 @@ export function getCharacterVisualPrompt(
  */
 export function getCharacterSystemPrompt(
   mood: string = "neutral",
-  characterType: CharacterType = "nft",
   activeDna?: CustomDna,
   atmosphere: string = "Modern Web3"
 ): string {
   if (!activeDna) throw new Error("Identity Protocol missing.");
+
+  const moodKey = mood.toLowerCase();
+  const moodGuide = MOOD_WRITING_GUIDES[moodKey] || MOOD_WRITING_GUIDES.neutral;
 
   return `
     # IDENTITY PROTOCOL: ${activeDna.name}
@@ -123,108 +123,18 @@ export function getCharacterSystemPrompt(
     - Narrative Atmosphere: ${atmosphere}
     - Atmosphere Writing Guide: ${getAtmosphereTextInstruction(atmosphere)}
     - Current Emotional State (Mood): ${mood}
+    - MOOD WRITING INSTRUCTIONS: ${moodGuide}
     - Role: You are a professional Web3 analyst and commentator.
     
     ## CORE DIRECTIVES
     1. VOICE CONSISTENCY: Use your unique vocabulary and sentence structure. If you are aggressive, stay aggressive. If you are technical, use jargon.
-    2. CONTENT INTEGRITY: Do NOT change the facts or the main subject of the input text. If the article is about Bitcoin, keep it about Bitcoin.
-    3. ATMOSPHERE INTEGRATION: Weave the atmosphere naturally into your narrative without breaking character.
-    4. MARKET LOGIC: Apply these Market Analysis rules: ${JSON.stringify(BTC_DNA.analysis_rules)}
+    2. MOOD APPLICATION: Follow the MOOD WRITING INSTRUCTIONS above. Every paragraph must reflect this emotional state.
+    3. CONTENT INTEGRITY: Do NOT change the facts or the main subject of the input text. If the article is about Bitcoin, keep it about Bitcoin.
+    4. ATMOSPHERE INTEGRATION: Weave the atmosphere naturally into your narrative without breaking character.
+    5. MARKET LOGIC: Apply these Market Analysis rules: ${JSON.stringify(BTC_ANALYSIS_RULES)}
     
     ## FORMATTING
     - Transform input text into your unique voice.
     - Keep the core news value intact.
   `.trim();
-}
-
-/**
- * Генерирует блок анализа BTC с персональными ссылками автора.
- */
-export function getBtcAnalysisBlock(
-  analysis: string,
-  options: {
-    activeDna?: CustomDna;
-    profile?: any;
-  } = {},
-): string {
-  const { activeDna, profile } = options;
-
-  const charName = activeDna?.name || "Mascot";
-  const tgLink = profile?.cta_telegram || "https://t.me/CoinPager";
-  const forumLink = profile?.cta_forum || "https://t.me/ChainInside";
-
-  const defaultRefs = [
-    { label: "ByBit", url: "https://www.bybit.com/invite?ref=QMXPMD" },
-    { label: "OKX", url: "https://www.okx.com/join/91607600" },
-    { label: "Binance", url: "https://www.binance.info/ru/activity/referral-entry/CPA/together?ref=CPA_00KIBLGG5W" },
-  ];
-
-  const userRefs = profile?.ref_links && Array.isArray(profile.ref_links) && profile.ref_links.length > 0
-    ? profile.ref_links
-    : defaultRefs;
-
-  const refHtml = userRefs
-    .filter((ref: any) => ref && ref.label && ref.url)
-    .map((ref: any) => `<a href="${ref.url}" target="_blank" style="color: #000; font-weight: bold; text-decoration: underline; margin: 0 8px;">${ref.label}</a>`)
-    .join(" | ");
-
-  return `
-<div style="margin-top: 48px; padding: 24px; background-color: #f9fafb; border-left: 4px solid #000;">
-  <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; color: #6b7280;">
-    ⚡ BTC IMPACT ANALYSIS
-  </h3>
-  <p style="margin: 0; font-style: italic; color: #374151; line-height: 1.6;">
-    <strong>${charName} Insights:</strong> ${analysis}
-  </p>
-  
-  <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-    <p style="margin: 0 0 12px 0; font-size: 12px; font-weight: bold; color: #000;">
-      FOLLOW FOR MORE INTEL:
-      <a href="${tgLink}" target="_blank" style="margin-left: 12px; color: #000; text-decoration: none; border-bottom: 2px solid #000;">Telegram</a>
-      <a href="${forumLink}" target="_blank" style="margin-left: 12px; color: #000; text-decoration: none; border-bottom: 2px solid #000;">Blockchain Forum</a>
-    </p>
-    <p style="margin: 0; font-size: 11px; color: #6b7280;">
-      TRADING REWARDS: ${refHtml}
-    </p>
-  </div>
-</div>
-`;
-}
-
-/**
- * Генерирует стандартизированный блок спонсора Mining Hash.
- */
-export function getMiningSponsorBlock(): string {
-  const partner = (miningDna as any).formatting?.partner_link;
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL 
-    ? process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "") 
-    : "";
-  
-  let partnerHtml = "";
-  if (partner && partner.label) {
-    const logoSrc = partner.logo ? (partner.logo.startsWith('http') ? partner.logo : `${baseUrl}${partner.logo}`) : "";
-    
-    partnerHtml = `
-    <div style="margin-top: 16px; margin-bottom: 12px;">
-      <a href="${partner.url || '#'}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: #f3f4f6; padding: 6px 12px; border-radius: 4px; border: 1px solid #e5e7eb;">
-        ${logoSrc ? `<img src="${logoSrc}" width="16" height="16" style="display: inline-block; vertical-align: middle; border-radius: 2px;" alt="" />` : ""}
-        <span style="font-size: 11px; font-weight: 800; color: #1f2937; text-transform: uppercase; letter-spacing: 0.05em;">
-          ${partner.label}
-        </span>
-      </a>
-    </div>
-    `;
-  }
-
-  return `
-<div style="margin-top: 40px; padding-top: 24px; border-top: 1px solid #e5e7eb; text-align: center; clear: both;">
-  <p style="margin: 0 0 8px 0; font-size: 10px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; color: #9ca3af;">
-    ${miningDna.formatting.block_title}
-  </p>
-  <p style="margin: 0 0 16px 0; font-size: 14px; color: #4b5563; line-height: 1.5; max-width: 500px; margin-left: auto; margin-right: auto;">
-    ${miningDna.mission}
-  </p>
-  ${partnerHtml}
-</div>
-`;
 }

@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { getContract, readContract, prepareContractCall } from "thirdweb";
+import { getContract, readContract, prepareContractCall, toWei } from "thirdweb";
 import { useActiveAccount, useSendTransaction } from "thirdweb/react";
 import { base } from "thirdweb/chains";
 import { client, MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI, HASH_TOKEN_ADDRESS } from "@/lib/web3";
-import { ShoppingCart, Loader2, Zap, CheckCircle2, RefreshCw, Info, Trash2 } from "lucide-react";
+import { ShoppingCart, Loader2, Zap, CheckCircle2, RefreshCw, Info, Trash2, Plus } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
+import ProfileForge from "@/components/ProfileForge";
 
 export default function MascotsPage() {
   const account = useActiveAccount();
@@ -18,6 +18,20 @@ export default function MascotsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [statusText, setStatusText] = useState("");
+  const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [showForge, setShowForge] = useState(false);
+
+  const [forgeData, setForgeData] = useState({
+    name: "", personality: "", voice: "", visual_desc: "", image_url: "", price: "",
+  });
+  const [isForging, setIsForging] = useState(false);
+  const [isAnalyzingDna, setIsAnalyzingDna] = useState(false);
+  const [forgeErrors, setForgeErrors] = useState<string[]>([]);
+
+  const notify = (msg: string, type: "success" | "error" = "success") => {
+    setNotification({ message: msg, type });
+    setTimeout(() => setNotification(null), 5000);
+  };
 
   const fetchAllMascots = useCallback(async () => {
     setIsLoading(true);
@@ -125,9 +139,105 @@ export default function MascotsPage() {
     } catch (e: any) { setBusyId(null); setStatusText(""); alert(e.message); }
   };
 
+  const handleMascotImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !account) return;
+    setIsForging(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+
+      setForgeData(prev => ({ ...prev, image_url: data.url }));
+
+      setIsAnalyzingDna(true);
+      try {
+        const scan = await fetch("/api/ai/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageUrl: data.url, userAddress: account.address }),
+        });
+        const scanData = await scan.json();
+        if (!scan.ok) {
+          notify("AI DNA scan unavailable — fill fields manually", "error");
+        } else if (scanData.personality || scanData.visual) {
+          setForgeData(prev => ({
+            ...prev, image_url: data.url,
+            personality: scanData.personality || prev.personality,
+            voice: scanData.voice || prev.voice,
+            visual_desc: scanData.visual || prev.visual_desc,
+          }));
+          notify("DNA extracted from image", "success");
+        }
+      } catch {
+        notify("AI DNA scan unavailable — fill fields manually", "error");
+      }
+      setIsAnalyzingDna(false);
+    } catch (e: any) { notify(e.message, "error"); } finally { setIsForging(false); setIsAnalyzingDna(false); }
+  };
+
+  const handleForge = async () => {
+    if (!account) { notify("Connect wallet", "error"); return; }
+    const errors: string[] = [];
+    if (!forgeData.image_url) errors.push("image");
+    if (!forgeData.name) errors.push("name");
+    if (!forgeData.personality) errors.push("personality");
+    if (!forgeData.price || +forgeData.price <= 0) errors.push("price");
+    if (errors.length) { setForgeErrors(errors); notify("Fill required fields", "error"); return; }
+    setForgeErrors([]);
+    setIsForging(true);
+    try {
+      const contract = getContract({ client, chain: base, address: MASCOTS_CONTRACT_ADDRESS, abi: MASCOTS_ABI as any });
+      const hashContract = getContract({ client, chain: base, address: HASH_TOKEN_ADDRESS });
+
+      const tokenId = Number(await readContract({ contract, method: "function nextTokenId() view returns (uint256)", params: [] }));
+
+      const { error: dbError } = await supabase.from("mascots_dna").upsert([{
+        id: tokenId, name: forgeData.name, personality: forgeData.personality,
+        voice: forgeData.voice || forgeData.personality, physical_desc: forgeData.visual_desc,
+        image_url: forgeData.image_url, creator_address: account.address.toLowerCase(),
+        price: forgeData.price, max_supply: 10000, contract_address: MASCOTS_CONTRACT_ADDRESS.toLowerCase(),
+      }], { onConflict: "id" });
+
+      if (dbError) throw dbError;
+
+      const creationFee = await readContract({ contract, method: "function CREATION_FEE() view returns (uint256)", params: [] });
+      const allowance = await readContract({ contract: hashContract, method: "function allowance(address,address) view returns (uint256)", params: [account.address as any, MASCOTS_CONTRACT_ADDRESS as any] });
+
+      if (allowance < creationFee) {
+        const approve = prepareContractCall({ contract: hashContract, method: "function approve(address,uint256)", params: [MASCOTS_CONTRACT_ADDRESS, creationFee] });
+        await new Promise((res, rej) => sendTransaction(approve, { onSuccess: res, onError: rej }));
+      }
+
+      const tx = prepareContractCall({ contract, method: "function createMascot(uint256)", params: [BigInt(toWei(forgeData.price))] });
+      sendTransaction(tx, {
+        onSuccess: () => {
+          notify("Protocol activated!");
+          setForgeData({ name: "", personality: "", voice: "", visual_desc: "", image_url: "", price: "" });
+          fetchAllMascots();
+          setIsForging(false);
+          setShowForge(false);
+        },
+        onError: (err) => { notify(err.message, "error"); setIsForging(false); },
+      });
+    } catch (e: any) { notify(e.message, "error"); setIsForging(false); }
+  };
+
   return (
     <main className="min-h-screen bg-white">
       <Navbar />
+
+      {notification && (
+        <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-[100] px-8 py-4 rounded-sm shadow-2xl border-l-4 animate-in slide-in-from-top-4 duration-300 flex items-center gap-4 ${notification.type === "success" ? "bg-black text-white border-green-500" : "bg-red-600 text-white border-red-800"}`}>
+          {notification.type === "success" ? <CheckCircle2 size={20} /> : <Zap size={20} />}
+          <div className="flex flex-col">
+            <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Protocol</span>
+            <span className="text-sm font-bold">{notification.message}</span>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-4 md:px-10 py-12">
         <header className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -141,18 +251,40 @@ export default function MascotsPage() {
               Acquire NFT Keys to unlock unique AI voices and visual styles.
             </p>
           </div>
-          <button onClick={fetchAllMascots} className="text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-black flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-sm border border-gray-100">
-            <RefreshCw size={10} className={isLoading ? "animate-spin" : ""} />
-            {isLoading ? "Syncing..." : `${mascots.length} Protocols`}
-          </button>
+          <div className="flex items-center gap-3">
+            {account && (
+              <button onClick={() => setShowForge(!showForge)}
+                className="text-[9px] font-black uppercase tracking-widest text-white bg-black hover:bg-gray-800 flex items-center gap-2 px-4 py-2.5 rounded-sm shadow-lg transition-all">
+                <Plus size={12} /> {showForge ? "Close Forge" : "Create Mascot"}
+              </button>
+            )}
+            <button onClick={fetchAllMascots} className="text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-black flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-sm border border-gray-100">
+              <RefreshCw size={10} className={isLoading ? "animate-spin" : ""} />
+              {isLoading ? "Syncing..." : `${mascots.length} Protocols`}
+            </button>
+          </div>
         </header>
+
+        {showForge && account && (
+          <div className="mb-12 animate-in fade-in slide-in-from-top-4 duration-300">
+            <ProfileForge
+              forgeData={forgeData}
+              isForging={isForging}
+              isAnalyzingDna={isAnalyzingDna}
+              forgeErrors={forgeErrors}
+              onMascotImageUpload={handleMascotImageUpload}
+              onForgeDataChange={setForgeData}
+              onForge={handleForge}
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           {mascots.map(m => (
             <div key={m.id} className="group bg-white border border-gray-100 rounded-sm overflow-hidden flex flex-col transition-all duration-500 hover:shadow-2xl hover:-translate-y-1">
               <div className="aspect-square bg-gray-50 relative overflow-hidden">
                 <img src={m.metadata.image} className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" alt={m.metadata.name} />
-                <div className="absolute top-2 right-2 bg-black text-white text-[8px] font-black px-1.5 py-0.5 rounded-sm shadow-xl z-10">KEY #{m.id}</div>
+                <div className="absolute top-2 right-2 bg-black text-white text-[8px] font-black px-1.5 py-0.5 rounded-sm shadow-xl z-10">Mascot #{m.id}</div>
                 {m.owned && (
                   <div className="absolute inset-0 bg-black/20 backdrop-blur-[1px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                     <div className="bg-black text-white text-[8px] font-black uppercase px-2 py-1 flex items-center gap-1.5 shadow-2xl"><CheckCircle2 size={10} className="text-green-500" /> Active</div>
@@ -204,8 +336,6 @@ export default function MascotsPage() {
           </div>
         )}
       </div>
-
-      <Footer />
     </main>
   );
 }
