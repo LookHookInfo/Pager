@@ -5,7 +5,7 @@ import { getContract, readContract, prepareContractCall, toWei } from "thirdweb"
 import { useActiveAccount, useSendTransaction } from "thirdweb/react";
 import { base } from "thirdweb/chains";
 import { client, MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI, HASH_TOKEN_ADDRESS } from "@/lib/web3";
-import { ShoppingCart, Loader2, Zap, CheckCircle2, RefreshCw, Info, Trash2, Plus } from "lucide-react";
+import { ShoppingCart, Loader2, Zap, CheckCircle2, RefreshCw, Info, Trash2, Plus, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import Navbar from "@/components/Navbar";
 import ProfileForge from "@/components/ProfileForge";
@@ -27,6 +27,20 @@ export default function MascotsPage() {
   const [isForging, setIsForging] = useState(false);
   const [isAnalyzingDna, setIsAnalyzingDna] = useState(false);
   const [forgeErrors, setForgeErrors] = useState<string[]>([]);
+  const [selectedMascot, setSelectedMascot] = useState<any>(null);
+  const [articleCount, setArticleCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!selectedMascot?.creator) { setArticleCount(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { count } = await supabase.from("articles").select("id", { count: "exact", head: true }).eq("author_address", selectedMascot.creator.toLowerCase());
+        if (!cancelled) setArticleCount(count ?? 0);
+      } catch { if (!cancelled) setArticleCount(0); }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedMascot?.creator]);
 
   const notify = (msg: string, type: "success" | "error" = "success") => {
     setNotification({ message: msg, type });
@@ -50,7 +64,7 @@ export default function MascotsPage() {
       const numericIds = activeTokenIds.map(id => Number(id));
 
       const { data: dnas } = await supabase
-        .from("mascots_dna").select("id, name, image_url, voice")
+        .from("mascots_dna").select("id, name, image_url, voice, personality, physical_desc")
         .in("id", numericIds)
         .eq("contract_address", MASCOTS_CONTRACT_ADDRESS.toLowerCase());
 
@@ -76,8 +90,8 @@ export default function MascotsPage() {
           id: numId, creator: detail[0], price: detail[1],
           currentSupply: detail[2], totalSold: detail[3], isActive: detail[4],
           metadata: dna
-            ? { name: dna.name, image: dna.image_url, voice: dna.voice }
-            : { name: `Protocol #${numId}`, image: "/logo-pager.png", voice: "Genome encrypted." },
+            ? { name: dna.name, image: dna.image_url, voice: dna.voice, personality: dna.personality, physical_desc: dna.physical_desc }
+            : { name: `Protocol #${numId}`, image: "/logo-pager.png", voice: "Genome encrypted.", personality: "", physical_desc: "" },
           owned: ownedBalances.get(numId) || false,
         };
       });
@@ -282,7 +296,7 @@ export default function MascotsPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           {mascots.map(m => (
             <div key={m.id} className="group bg-white border border-gray-100 rounded-sm overflow-hidden flex flex-col transition-all duration-500 hover:shadow-2xl hover:-translate-y-1">
-              <div className="aspect-square bg-gray-50 relative overflow-hidden">
+              <div className="aspect-square bg-gray-50 relative overflow-hidden cursor-pointer" onClick={() => setSelectedMascot(m)}>
                 <img src={m.metadata.image} className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" alt={m.metadata.name} />
                 <div className="absolute top-2 right-2 bg-black text-white text-[8px] font-black px-1.5 py-0.5 rounded-sm shadow-xl z-10">Mascot #{m.id}</div>
                 {m.owned && (
@@ -336,6 +350,57 @@ export default function MascotsPage() {
           </div>
         )}
       </div>
+      {selectedMascot && (() => {
+        const priceNum = Math.floor(Number(selectedMascot.price) / 1e18);
+        return (
+          <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-[2px]" onClick={() => setSelectedMascot(null)}>
+            <div className="relative w-full sm:max-w-md max-h-[90vh] bg-white sm:rounded-sm rounded-t-sm shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300 flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="h-20 bg-gradient-to-br from-gray-900 via-gray-800 to-black relative shrink-0">
+                <button onClick={() => setSelectedMascot(null)} className="absolute top-3 right-3 w-7 h-7 bg-black/40 hover:bg-black/60 rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors"><X size={14} /></button>
+              </div>
+              <div className="px-5 -mt-10 pb-5 flex flex-col items-center relative z-10">
+                <img src={selectedMascot.metadata.image} className="w-20 h-20 rounded-full border-4 border-white object-cover shadow-lg" alt={selectedMascot.metadata.name} />
+                <h3 className="text-sm font-black uppercase tracking-tight mt-3 text-center">{selectedMascot.metadata.name}</h3>
+                <p className="text-[8px] font-bold text-gray-300 uppercase tracking-widest mt-0.5">Protocol #{selectedMascot.id}</p>
+                <div className="flex items-center gap-6 mt-4 py-3 border-y border-gray-100 w-full justify-center">
+                  <div className="text-center"><span className="text-sm font-black block">{selectedMascot.totalSold}</span><span className="text-[7px] font-black uppercase text-gray-400 tracking-widest">Holders</span></div>
+                  <div className="text-center"><span className="text-sm font-black block">{priceNum}</span><span className="text-[7px] font-black uppercase text-gray-400 tracking-widest">$HASH</span></div>
+                  <div className="text-center"><span className="text-sm font-black block">{Number(selectedMascot.totalSold)}/{Number(selectedMascot.maxSupply || 10000)}</span><span className="text-[7px] font-black uppercase text-gray-400 tracking-widest">Supply</span></div>
+                  {articleCount !== null && <div className="text-center"><span className="text-sm font-black block">{articleCount}</span><span className="text-[7px] font-black uppercase text-gray-400 tracking-widest">Stories</span></div>}
+                </div>
+                {!selectedMascot.owned ? (
+                  <button onClick={() => { setSelectedMascot(null); handlePurchase(selectedMascot.id, selectedMascot.price); }} disabled={busyId !== null || !selectedMascot.isActive} className="w-full mt-4 bg-black text-white py-2.5 text-[9px] font-black uppercase tracking-widest hover:bg-gray-800 transition-all disabled:opacity-40 flex items-center justify-center gap-2 shadow-md rounded-sm"><ShoppingCart size={12} /> Acquire Key</button>
+                ) : (
+                  <div className="w-full mt-4 bg-gray-50 text-gray-400 py-2.5 text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 rounded-sm border border-gray-100"><CheckCircle2 size={12} className="text-green-500" /> Key Unlocked</div>
+                )}
+              </div>
+              <div className="border-t border-gray-100 overflow-y-auto max-h-[40vh]">
+                {selectedMascot.metadata.personality && (
+                  <div className="px-5 py-4 border-b border-gray-50">
+                    <div className="flex items-center gap-1.5 text-[8px] font-black uppercase text-blue-500 tracking-widest mb-2"><span className="w-1 h-1 bg-blue-500 rounded-full" /> Personality</div>
+                    <p className="text-[11px] text-gray-500 leading-relaxed">{selectedMascot.metadata.personality}</p>
+                  </div>
+                )}
+                {selectedMascot.metadata.voice && (
+                  <div className="px-5 py-4 border-b border-gray-50">
+                    <div className="flex items-center gap-1.5 text-[8px] font-black uppercase text-purple-500 tracking-widest mb-2"><span className="w-1 h-1 bg-purple-500 rounded-full" /> Voice</div>
+                    <p className="text-[11px] text-gray-500 leading-relaxed">{selectedMascot.metadata.voice}</p>
+                  </div>
+                )}
+                {selectedMascot.metadata.physical_desc && (
+                  <div className="px-5 py-4">
+                    <div className="flex items-center gap-1.5 text-[8px] font-black uppercase text-green-500 tracking-widest mb-2"><span className="w-1 h-1 bg-green-500 rounded-full" /> Physical DNA</div>
+                    <p className="text-[11px] text-gray-500 leading-relaxed">{selectedMascot.metadata.physical_desc}</p>
+                  </div>
+                )}
+                {!selectedMascot.metadata.personality && !selectedMascot.metadata.voice && !selectedMascot.metadata.physical_desc && (
+                  <div className="px-5 py-6 text-center"><p className="text-[10px] text-gray-300 italic">No DNA data available for this protocol.</p></div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </main>
   );
 }

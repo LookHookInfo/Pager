@@ -5,7 +5,7 @@ import { getContract, readContract, prepareContractCall, toWei } from "thirdweb"
 import { useActiveAccount, useSendTransaction } from "thirdweb/react";
 import { base } from "thirdweb/chains";
 import { client, MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI, HASH_TOKEN_ADDRESS } from "@/lib/web3";
-import { ShoppingCart, Loader2, Zap, CheckCircle2, RefreshCw, UserCheck, Flame, Trash2 } from "lucide-react";
+import { ShoppingCart, Loader2, Zap, CheckCircle2, RefreshCw, UserCheck, Flame, Trash2, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { getAuthMessage } from "@/lib/auth";
@@ -21,6 +21,20 @@ export default function ProfileMascots({ address }: { address: string }) {
   const [isSettingActive, setIsSettingActive] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [statusText, setStatusText] = useState("");
+  const [selectedMascot, setSelectedMascot] = useState<any>(null);
+  const [articleCount, setArticleCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!selectedMascot?.creator) { setArticleCount(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { count } = await supabase.from("articles").select("id", { count: "exact", head: true }).eq("author_address", address.toLowerCase());
+        if (!cancelled) setArticleCount(count ?? 0);
+      } catch { if (!cancelled) setArticleCount(0); }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedMascot?.creator, address]);
 
   const isOwner = account?.address?.toLowerCase() === address?.toLowerCase();
 
@@ -45,7 +59,7 @@ export default function ProfileMascots({ address }: { address: string }) {
       }
 
       const { data: ownedDnas } = await supabase
-        .from("mascots_dna").select("*").eq("contract_address", MASCOTS_CONTRACT_ADDRESS.toLowerCase());
+        .from("mascots_dna").select("id, name, image_url, voice, personality, physical_desc").eq("contract_address", MASCOTS_CONTRACT_ADDRESS.toLowerCase());
 
       // getUserMascots returns tokenIds + balances + details in ONE RPC call
       let ownedData: {
@@ -135,7 +149,7 @@ export default function ProfileMascots({ address }: { address: string }) {
           id,
           price: k[1],
           currentSupply: k[2], totalSold: k[3], maxSupply: 10000n, isActive, creator: k[0],
-          metadata: { name: dna.name, image: dna.image_url, voice: dna.voice },
+          metadata: { name: dna.name, image: dna.image_url, voice: dna.voice, personality: dna.personality, physical_desc: dna.physical_desc },
           owned: cached.balance > 0n,
           isCreator: dna.creator_address?.toLowerCase() === address.toLowerCase(),
         });
@@ -151,7 +165,7 @@ export default function ProfileMascots({ address }: { address: string }) {
           id,
           price: isActive ? k[1] : BigInt(toWei(dna.price || "101")),
           currentSupply: k[2], totalSold: k[3], maxSupply: 10000n, isActive, creator: k[0],
-          metadata: { name: dna.name, image: dna.image_url, voice: dna.voice },
+          metadata: { name: dna.name, image: dna.image_url, voice: dna.voice, personality: dna.personality, physical_desc: dna.physical_desc },
           owned: false,
           isCreator: dna.creator_address?.toLowerCase() === address.toLowerCase(),
         });
@@ -276,7 +290,7 @@ export default function ProfileMascots({ address }: { address: string }) {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         {mascots.map(m => (
           <div key={m.id} className={`group relative bg-white border rounded-sm overflow-hidden flex flex-col transition-all duration-300 hover:shadow-lg ${String(m.id) === activeMascotId ? "border-yellow-400 border-2 shadow-md" : "border-gray-100"}`}>
-            <div className="aspect-square bg-gray-50 relative overflow-hidden">
+            <div className="aspect-square bg-gray-50 relative overflow-hidden cursor-pointer" onClick={() => setSelectedMascot(m)}>
               <img src={m.metadata.image} className={`w-full h-full object-cover transition-transform duration-700 ${m.isActive ? "group-hover:scale-110" : "grayscale opacity-50"}`} alt={m.metadata.name} />
               <div className="absolute top-2 right-2 bg-black/80 backdrop-blur-md text-white text-[8px] font-black px-1.5 py-0.5 rounded-sm z-10">#{m.id}</div>
               {String(m.id) === activeMascotId && <div className="absolute top-2 left-2 bg-yellow-400 text-black text-[8px] font-black px-1.5 py-0.5 rounded-sm z-10"><UserCheck size={10} /></div>}
@@ -329,6 +343,52 @@ export default function ProfileMascots({ address }: { address: string }) {
           </div>
         ))}
       </div>
+      {selectedMascot && (() => {
+        const priceNum = Math.floor(Number(selectedMascot.price) / 1e18);
+        return (
+          <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-[2px]" onClick={() => setSelectedMascot(null)}>
+            <div className="relative w-full sm:max-w-md max-h-[90vh] bg-white sm:rounded-sm rounded-t-sm shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300 flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="h-20 bg-gradient-to-br from-gray-900 via-gray-800 to-black relative shrink-0">
+                <button onClick={() => setSelectedMascot(null)} className="absolute top-3 right-3 w-7 h-7 bg-black/40 hover:bg-black/60 rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors"><X size={14} /></button>
+              </div>
+              <div className="px-5 -mt-10 pb-5 flex flex-col items-center relative z-10">
+                <img src={selectedMascot.metadata.image} className="w-20 h-20 rounded-full border-4 border-white object-cover shadow-lg" alt={selectedMascot.metadata.name} />
+                <h3 className="text-sm font-black uppercase tracking-tight mt-3 text-center">{selectedMascot.metadata.name}</h3>
+                <p className="text-[8px] font-bold text-gray-300 uppercase tracking-widest mt-0.5">Protocol #{selectedMascot.id}</p>
+                <div className="flex items-center gap-6 mt-4 py-3 border-y border-gray-100 w-full justify-center">
+                  <div className="text-center"><span className="text-sm font-black block">{selectedMascot.totalSold}</span><span className="text-[7px] font-black uppercase text-gray-400 tracking-widest">Holders</span></div>
+                  <div className="text-center"><span className="text-sm font-black block">{priceNum}</span><span className="text-[7px] font-black uppercase text-gray-400 tracking-widest">$HASH</span></div>
+                  <div className="text-center"><span className="text-sm font-black block">{Number(selectedMascot.totalSold)}/{Number(selectedMascot.maxSupply || 10000)}</span><span className="text-[7px] font-black uppercase text-gray-400 tracking-widest">Supply</span></div>
+                  {articleCount !== null && <div className="text-center"><span className="text-sm font-black block">{articleCount}</span><span className="text-[7px] font-black uppercase text-gray-400 tracking-widest">Stories</span></div>}
+                </div>
+              </div>
+              <div className="border-t border-gray-100 overflow-y-auto max-h-[40vh]">
+                {selectedMascot.metadata.personality && (
+                  <div className="px-5 py-4 border-b border-gray-50">
+                    <div className="flex items-center gap-1.5 text-[8px] font-black uppercase text-blue-500 tracking-widest mb-2"><span className="w-1 h-1 bg-blue-500 rounded-full" /> Personality</div>
+                    <p className="text-[11px] text-gray-500 leading-relaxed">{selectedMascot.metadata.personality}</p>
+                  </div>
+                )}
+                {selectedMascot.metadata.voice && (
+                  <div className="px-5 py-4 border-b border-gray-50">
+                    <div className="flex items-center gap-1.5 text-[8px] font-black uppercase text-purple-500 tracking-widest mb-2"><span className="w-1 h-1 bg-purple-500 rounded-full" /> Voice</div>
+                    <p className="text-[11px] text-gray-500 leading-relaxed">{selectedMascot.metadata.voice}</p>
+                  </div>
+                )}
+                {selectedMascot.metadata.physical_desc && (
+                  <div className="px-5 py-4">
+                    <div className="flex items-center gap-1.5 text-[8px] font-black uppercase text-green-500 tracking-widest mb-2"><span className="w-1 h-1 bg-green-500 rounded-full" /> Physical DNA</div>
+                    <p className="text-[11px] text-gray-500 leading-relaxed">{selectedMascot.metadata.physical_desc}</p>
+                  </div>
+                )}
+                {!selectedMascot.metadata.personality && !selectedMascot.metadata.voice && !selectedMascot.metadata.physical_desc && (
+                  <div className="px-5 py-6 text-center"><p className="text-[10px] text-gray-300 italic">No DNA data available for this protocol.</p></div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </section>
   );
 }
