@@ -124,7 +124,11 @@ export default function ProfileHeader({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ address: profile.address.toLowerCase(), ...formData, signature: sig, message: msg }),
       });
-      if (!res.ok) throw new Error((await res.json()).error || "Save failed");
+      if (!res.ok) {
+        let errMsg = "Save failed";
+        try { const errBody = await res.json(); errMsg = errBody.error || errMsg; } catch {}
+        throw new Error(errMsg);
+      }
       notify("Profile updated");
       setIsEditing(false);
       router.refresh();

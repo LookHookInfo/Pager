@@ -105,13 +105,23 @@ export default async function ArticlePage({ params }: { params: { id: string } }
              </div>
           </div>
         </header>
-        {article.image_url && (
-          <div className="w-full mb-16 flex justify-center">
-            <div className="w-full max-w-5xl aspect-video overflow-hidden bg-gray-100 border border-[var(--border-soft)] rounded-sm shadow-xl">
-              <BannerImage src={article.image_url} alt={article.title} className="w-full h-full object-cover object-center grayscale-[0.05] hover:grayscale-0 transition-all duration-1000 ease-in-out" />
+        {article.image_url && (() => {
+          const tokenMatch = (article.content || '').match(/pager\.lookhook\.info\/token\/([a-fA-F0-9x]+)/i);
+          const tokenLink = tokenMatch ? `/token/${tokenMatch[1]}` : null;
+          return (
+            <div className="w-full mb-16 flex justify-center">
+              <div className="w-full max-w-5xl aspect-video overflow-hidden bg-gray-100 border border-[var(--border-soft)] rounded-sm shadow-xl">
+                {tokenLink ? (
+                  <Link href={tokenLink} className="block w-full h-full">
+                    <BannerImage src={article.image_url} alt={article.title} className="w-full h-full object-cover object-center grayscale-[0.05] hover:grayscale-0 transition-all duration-1000 ease-in-out" />
+                  </Link>
+                ) : (
+                  <BannerImage src={article.image_url} alt={article.title} className="w-full h-full object-cover object-center grayscale-[0.05] hover:grayscale-0 transition-all duration-1000 ease-in-out" />
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
         <div className="prose prose-xl prose-stone max-w-none typography-body text-[var(--text-primary)] mb-20" dangerouslySetInnerHTML={{ __html: article.content }} />
         <footer className="pt-12 border-t border-[var(--border-soft)]">
           <div className="flex flex-col gap-12">

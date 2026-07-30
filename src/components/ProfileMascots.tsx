@@ -5,7 +5,7 @@ import { getContract, readContract, prepareContractCall, toWei } from "thirdweb"
 import { useActiveAccount, useSendTransaction } from "thirdweb/react";
 import { base } from "thirdweb/chains";
 import { client, MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI, HASH_TOKEN_ADDRESS } from "@/lib/web3";
-import { ShoppingCart, Loader2, Zap, CheckCircle2, RefreshCw, UserCheck, Flame, Trash2, X } from "lucide-react";
+import { ShoppingCart, Loader2, Zap, CheckCircle2, RefreshCw, UserCheck, Flame, Trash2, X, AlertCircle } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { getAuthMessage } from "@/lib/auth";
@@ -23,6 +23,7 @@ export default function ProfileMascots({ address }: { address: string }) {
   const [statusText, setStatusText] = useState("");
   const [selectedMascot, setSelectedMascot] = useState<any>(null);
   const [articleCount, setArticleCount] = useState<number | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedMascot?.creator) { setArticleCount(null); return; }
@@ -185,16 +186,25 @@ export default function ProfileMascots({ address }: { address: string }) {
   const handleSetActive = async (tokenId: number) => {
     if (!isOwner || !account) return;
     setIsSettingActive(true);
+    setErrorMsg(null);
     try {
       const msg = getAuthMessage("update Pager profile", address.toLowerCase());
       const sig = await account.signMessage({ message: msg });
-      await fetch("/api/profile", {
+      const res = await fetch("/api/profile", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ address, ai_nft_token_id: String(tokenId), signature: sig, message: msg }),
       });
+      if (!res.ok) {
+        let errMsg = "Failed to update mascot";
+        try { const errBody = await res.json(); errMsg = errBody.error || errMsg; } catch {}
+        throw new Error(errMsg);
+      }
       setActiveMascotId(String(tokenId));
       router.refresh();
-    } catch (e) { console.error(e); } finally { setIsSettingActive(false); }
+    } catch (e: any) {
+      console.error(e);
+      setErrorMsg(e.message || "Failed to change mascot");
+    } finally { setIsSettingActive(false); }
   };
 
   const handleDeleteProtocol = async (tokenId: number) => {
@@ -270,6 +280,12 @@ export default function ProfileMascots({ address }: { address: string }) {
     } catch (e: any) { alert(e.message); setBusyId(null); setStatusText(""); }
   };
 
+  useEffect(() => {
+    if (!errorMsg) return;
+    const t = setTimeout(() => setErrorMsg(null), 5000);
+    return () => clearTimeout(t);
+  }, [errorMsg]);
+
   if (isLoading && !mascots.length) {
     return <div className="h-32 flex items-center justify-center"><Loader2 className="animate-spin text-black" size={24} /></div>;
   }
@@ -277,6 +293,12 @@ export default function ProfileMascots({ address }: { address: string }) {
 
   return (
     <section className="mb-12">
+      {errorMsg && (
+        <div className="mb-6 px-4 py-3 bg-red-50 border-l-4 border-red-500 text-red-700 text-[10px] font-bold flex items-center gap-2 animate-in slide-in-from-top-4 duration-300">
+          <AlertCircle size={14} className="shrink-0" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
           <Zap size={12} className="text-yellow-400 fill-yellow-400" />

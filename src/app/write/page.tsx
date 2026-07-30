@@ -8,10 +8,10 @@ import { supabase } from "@/lib/supabase";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Image as ImageIcon, Send, X, AlertCircle,
-  Loader2, Upload, Sparkles, PenLine, Settings2,
+  Loader2, Upload, Sparkles, Settings2,
   ShoppingCart, ChevronDown, Zap,
   Bold, Italic, Underline as UnderlineIcon, Link as LinkIcon,
-  List, ListOrdered, Heading2, Quote
+  List, ListOrdered, Heading2, Quote, BarChart3
 } from "lucide-react";
 import Link from "next/link";
 import { client, MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI } from "@/lib/web3";
@@ -38,7 +38,8 @@ function WritePageInner() {
 
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const aiDropdownRef = useRef<HTMLDivElement>(null);
+  const tokenDropdownRef = useRef<HTMLDivElement>(null);
 
   const [title, setTitle] = useState("");
   const [imageUrl, setImageUrl] = useState("");
@@ -51,13 +52,43 @@ function WritePageInner() {
   const [isUploading, setIsUploading] = useState(false);
   const [status, setStatus] = useState<"idle" | "publishing" | "success" | "error">("idle");
   const [profile, setProfile] = useState<any>(null);
-  const [activeMode, setActiveMode] = useState<"manual" | "ai">("manual");
+  const [activeMode, setActiveMode] = useState<"ai" | "token">("ai");
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [ownedMascots, setOwnedMascots] = useState<any[]>([]);
   const [selectedNftId, setSelectedNftId] = useState<string | null>(null);
   const [isFetchingMascots, setIsFetchingMascots] = useState(false);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isAiDropdownOpen, setIsAiDropdownOpen] = useState(false);
+  const [isTokenDropdownOpen, setIsTokenDropdownOpen] = useState(false);
   const [processingStep, setProcessingStep] = useState<"idle" | "scraping" | "rewriting" | "banner" | "done">("idle");
+  const [tokenAddress, setTokenAddress] = useState("");
+  const [tokenResults, setTokenResults] = useState<any[]>([]);
+  const [isSearchingToken, setIsSearchingToken] = useState(false);
+
+  const isContractAddress = (value: string): boolean => {
+    const trimmed = value.trim();
+    return /^0x[a-fA-F0-9]{40}$/.test(trimmed);
+  };
+
+  const handleMagicInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (isContractAddress(value)) {
+      setTokenAddress(value.trim());
+      setActiveMode("token");
+      addNotification("Contract detected — switched to Token Intel", "info");
+      return;
+    }
+    setExternalUrl(value);
+  };
+
+  const handleTokenAddressInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (isContractAddress(value)) {
+      setTokenAddress(value.trim());
+      addNotification("Contract detected", "info");
+      return;
+    }
+    setTokenAddress(value);
+  };
 
   const addNotification = (message: string, type: "success" | "error" | "info" = "success") => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -130,7 +161,8 @@ function WritePageInner() {
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setIsDropdownOpen(false);
+      if (aiDropdownRef.current && !aiDropdownRef.current.contains(e.target as Node)) setIsAiDropdownOpen(false);
+      if (tokenDropdownRef.current && !tokenDropdownRef.current.contains(e.target as Node)) setIsTokenDropdownOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -198,7 +230,7 @@ function WritePageInner() {
 
       addNotification("Article ready!", "success");
       setProcessingStep("done");
-      setTimeout(() => { setProcessingStep("idle"); setActiveMode("manual"); }, 1500);
+      setTimeout(() => { setProcessingStep("idle"); setActiveMode("ai"); }, 1500);
       fetchProfile();
     } catch (err: any) {
       addNotification(err.message, "error");
@@ -231,6 +263,89 @@ function WritePageInner() {
       if (!res.ok) throw new Error(data.error || "Regeneration failed");
       if (data.image_url) { setImageUrl(data.image_url); addNotification("Banner updated!"); fetchProfile(); }
     } catch (err: any) { addNotification(err.message, "error"); }
+  };
+
+  const handleTokenAnalysis = async (selectedTokenAddress: string) => {
+    if (!selectedTokenAddress) { addNotification("Enter a token address first!", "error"); return; }
+    if (!selectedNftId) { addNotification("Select an NFT Mascot first!", "error"); return; }
+    if (!account) { addNotification("Connect wallet", "error"); return; }
+
+    setIsAiProcessing(true);
+    setProcessingStep("rewriting");
+    setTokenResults([]);
+
+    try {
+      const authMsg = getAuthMessage("authorize session", account.address.toLowerCase());
+      const authSig = await account.signMessage({ message: authMsg });
+
+      const res = await fetch("/api/ai/token-commentary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tokenAddress: selectedTokenAddress,
+          mood,
+          nftTokenId: selectedNftId,
+          atmosphere,
+          userAddress: account.address.toLowerCase(),
+          signature: authSig,
+          message: authMsg,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Token analysis failed");
+
+      setTitle(data.title);
+      if (data.content && editorRef.current) {
+        editorRef.current.innerHTML = data.content;
+      }
+      if (data.banner_description) setBannerDescription(data.banner_description);
+
+      setProcessingStep("banner");
+
+      if ((profile?.ai_credits || 0) < 10) {
+        addNotification("Analysis ready, but not enough $HASH for banner. Top up in Profile.", "info");
+      } else {
+        const articleContent = editorRef.current?.innerHTML || "";
+        const bannerRes = await fetchWithRetry("/api/ai/banner", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: data.title, bannerDescription: data.banner_description, mood,
+            nftTokenId: selectedNftId, atmosphere,
+            userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
+            content: articleContent,
+          }),
+          signal: AbortSignal.timeout(125000),
+        }, 2);
+        if (bannerRes.ok) {
+          const bannerData = await bannerRes.json();
+          if (bannerData.image_url) setImageUrl(bannerData.image_url);
+        }
+      }
+
+      addNotification("Token analysis ready!", "success");
+      setProcessingStep("done");
+      setTimeout(() => { setProcessingStep("idle"); setActiveMode("ai"); }, 1500);
+      fetchProfile();
+    } catch (err: any) {
+      addNotification(err.message, "error");
+      setProcessingStep("idle");
+    } finally {
+      setIsAiProcessing(false);
+    }
+  };
+
+  const handleSearchToken = async () => {
+    if (!tokenAddress.trim()) return;
+    setIsSearchingToken(true);
+    try {
+      const res = await fetch(`/api/token?q=${encodeURIComponent(tokenAddress.trim())}`);
+      const data = await res.json();
+      setTokenResults(data.tokens || []);
+    } catch {
+      addNotification("Token search failed", "error");
+    } finally {
+      setIsSearchingToken(false);
+    }
   };
 
   const fetchProfile = useCallback(async () => {
@@ -267,7 +382,7 @@ function WritePageInner() {
 
       const res = await fetch("/api/article/create", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, content, image_url: imageUrl || null, author_address: account.address.toLowerCase(), signature: authSig, message: authMsg }),
+        body: JSON.stringify({ title, content, image_url: imageUrl || null, source_url: externalUrl || null, author_address: account.address.toLowerCase(), signature: authSig, message: authMsg }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({ error: "Server error" }))).error || "Failed");
 
@@ -337,13 +452,13 @@ function WritePageInner() {
 
       <div className="flex justify-center mt-8">
         <div className="flex items-center bg-gray-50 p-1.5 rounded-full border border-gray-100">
-          <button onClick={() => setActiveMode("manual")}
-            className={`flex items-center gap-2 px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-full transition-all ${activeMode === "manual" ? "bg-white text-black shadow-sm" : "text-gray-400"}`}>
-            <PenLine size={14} /> Standard
-          </button>
           <button onClick={() => setActiveMode("ai")}
             className={`flex items-center gap-2 px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-full transition-all ${activeMode === "ai" ? "bg-white text-black shadow-sm" : "text-gray-400"}`}>
             <Sparkles size={14} /> Magic
+          </button>
+          <button onClick={() => setActiveMode("token")}
+            className={`flex items-center gap-2 px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-full transition-all ${activeMode === "token" ? "bg-white text-black shadow-sm" : "text-gray-400"}`}>
+            <BarChart3 size={14} /> Token Intel
           </button>
         </div>
       </div>
@@ -361,11 +476,11 @@ function WritePageInner() {
             <>
               <div className="flex flex-col gap-4">
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                  <input type="text" placeholder="Paste source link..." value={externalUrl} onChange={e => setExternalUrl(e.target.value)}
+                  <input type="text" placeholder="Paste source link or token contract (0x...)" value={externalUrl} onChange={handleMagicInputChange}
                     className="md:col-span-3 px-4 py-3 text-sm border border-gray-200 focus:border-black outline-none bg-white transition-colors font-medium rounded-sm" />
 
-                  <div className="md:col-span-2 relative" ref={dropdownRef}>
-                    <button onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  <div className="md:col-span-2 relative" ref={aiDropdownRef}>
+                    <button onClick={() => setIsAiDropdownOpen(!isAiDropdownOpen)}
                       className="w-full flex items-center justify-between px-3 py-3 bg-white border border-gray-200 rounded-sm hover:border-black transition-all group">
                       <div className="flex items-center gap-2.5 overflow-hidden">
                         {selectedMascot ? (
@@ -374,12 +489,12 @@ function WritePageInner() {
                           <span className="text-[10px] font-black uppercase text-gray-400">Protocol</span>
                         )}
                       </div>
-                      <ChevronDown size={14} className={`text-gray-400 transition-transform shrink-0 ${isDropdownOpen ? "rotate-180" : ""}`} />
+                      <ChevronDown size={14} className={`text-gray-400 transition-transform shrink-0 ${isAiDropdownOpen ? "rotate-180" : ""}`} />
                     </button>
-                    {isDropdownOpen && (
+                    {isAiDropdownOpen && (
                       <div className="absolute top-full left-0 w-full mt-2 bg-white border border-gray-200 rounded-sm shadow-[0_20px_50px_rgba(0,0,0,0.15)] z-[100] max-h-72 overflow-y-auto">
                         {ownedMascots.map(m => (
-                          <div key={m.id} onClick={() => { setSelectedNftId(m.id); setIsDropdownOpen(false); }}
+                          <div key={m.id} onClick={() => { setSelectedNftId(m.id); setIsAiDropdownOpen(false); }}
                             className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0 ${selectedNftId === m.id ? "bg-blue-50/50" : ""}`}>
                             <img src={m.image} className="w-10 h-10 rounded-full object-cover border border-gray-100 shrink-0" alt="" />
                             <div className="flex flex-col min-w-0">
@@ -463,6 +578,142 @@ function WritePageInner() {
                 ) : selectedMascot && !selectedMascot.hasDna ? (
                   <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-amber-600">
                     <AlertCircle size={12} /> No DNA in database — article generation may fail. Use a mascot with DNA.
+                  </div>
+                ) : <div />}
+                <div className="flex items-center gap-3">
+                  <span className="text-[8px] font-bold uppercase tracking-widest text-gray-300">Banner costs 10 $HASH credits</span>
+                  <Link href="/mascots" className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-black">
+                    <Settings2 size={12} /> Registry
+                  </Link>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Token Intel Panel */}
+      <div className={`transition-all duration-500 bg-gray-50 border-y border-gray-100 relative z-40 ${activeMode === "token" ? "min-h-[160px] opacity-100 py-10 overflow-visible" : "max-h-0 opacity-0 invisible overflow-hidden"}`}>
+        <div className="max-w-5xl mx-auto px-6 space-y-6">
+          {ownedMascots.length === 0 && !isFetchingMascots ? (
+            <div className="text-center py-8 bg-white border border-gray-100 p-8 rounded-sm">
+              <AlertCircle className="mx-auto text-red-500 mb-4" size={32} />
+              <h3 className="text-sm font-black uppercase tracking-widest mb-2">NFT Mascot Required</h3>
+              <p className="text-xs text-gray-400 mb-6 uppercase font-bold">Token Intel requires a Mascot Protocol in your wallet.</p>
+              <Link href="/mascots" className="btn-primary inline-flex items-center gap-2 px-8 py-3 text-[10px] font-black uppercase tracking-widest"><ShoppingCart size={14} /> Visit Registry</Link>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-col gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                  <div className="md:col-span-4 flex items-center gap-2">
+                    <BarChart3 size={16} className="text-gray-400 shrink-0" />
+                    <input type="text" placeholder="Token name or contract address (0x...)" value={tokenAddress} onChange={handleTokenAddressInput}
+                      onKeyDown={e => e.key === "Enter" && handleSearchToken()}
+                      className="w-full px-4 py-3 text-sm border border-gray-200 focus:border-black outline-none bg-white transition-colors font-medium rounded-sm" />
+                  </div>
+
+                  <div className="md:col-span-2 relative" ref={tokenDropdownRef}>
+                    <button onClick={() => setIsTokenDropdownOpen(!isTokenDropdownOpen)}
+                      className="w-full flex items-center justify-between px-3 py-3 bg-white border border-gray-200 rounded-sm hover:border-black transition-all group">
+                      <div className="flex items-center gap-2.5 overflow-hidden">
+                        {selectedMascot ? (
+                          <><img src={selectedMascot.image} className="w-6 h-6 rounded-full object-cover border border-gray-100 shrink-0" alt="" /><span className="text-[10px] font-black uppercase truncate">{selectedMascot.name}</span></>
+                        ) : (
+                          <span className="text-[10px] font-black uppercase text-gray-400">Protocol</span>
+                        )}
+                      </div>
+                      <ChevronDown size={14} className={`text-gray-400 transition-transform shrink-0 ${isTokenDropdownOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {isTokenDropdownOpen && (
+                      <div className="absolute top-full left-0 w-full mt-2 bg-white border border-gray-200 rounded-sm shadow-[0_20px_50px_rgba(0,0,0,0.15)] z-[100] max-h-72 overflow-y-auto">
+                        {ownedMascots.map(m => (
+                          <div key={m.id} onClick={() => { setSelectedNftId(m.id); setIsTokenDropdownOpen(false); }}
+                            className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0 ${selectedNftId === m.id ? "bg-blue-50/50" : ""}`}>
+                            <img src={m.image} className="w-10 h-10 rounded-full object-cover border border-gray-100 shrink-0" alt="" />
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-[10px] font-black uppercase truncate">{m.name}</span>
+                              <span className="text-[8px] font-bold text-gray-400 uppercase">Mascot #{m.id}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                              {m.hasDna ? (
+                                <span className="text-[7px] font-bold uppercase text-green-500 bg-green-50 px-1.5 py-0.5 rounded">DNA</span>
+                              ) : (
+                                <span className="text-[7px] font-bold uppercase text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded">No DNA</span>
+                              )}
+                              {selectedNftId === m.id && <Zap size={10} className="text-yellow-400 fill-yellow-400" />}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="md:col-span-2 relative">
+                    <select value={mood} onChange={e => setMood(e.target.value)}
+                      className="w-full px-3 py-3 text-[10px] font-black uppercase tracking-widest border border-gray-200 outline-none bg-white cursor-pointer appearance-none pr-8 rounded-sm hover:border-black transition-all">
+                      {MOODS.map(m => <option key={m.id} value={m.id}>{m.icon} {m.label}</option>)}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
+
+                  <div className="md:col-span-2 relative">
+                    {isCustomAtmosphere ? (
+                      <div className="flex items-center gap-1">
+                        <input type="text" value={atmosphere} onChange={e => setAtmosphere(e.target.value)} placeholder="Custom..." maxLength={100}
+                          className="w-full px-3 py-3 text-[10px] font-black uppercase tracking-widest border border-gray-200 outline-none bg-white rounded-sm" />
+                        <button onClick={() => { setIsCustomAtmosphere(false); setAtmosphere(ATMOSPHERE_PRESETS[0]); }} className="shrink-0 p-2 text-gray-400 hover:text-black"><X size={14} /></button>
+                      </div>
+                    ) : (
+                      <>
+                        <select value={ATMOSPHERE_PRESETS.includes(atmosphere) ? atmosphere : ""}
+                          onChange={e => { if (e.target.value === "__custom__") { setIsCustomAtmosphere(true); setAtmosphere(""); } else { setAtmosphere(e.target.value); } }}
+                          className="w-full px-3 py-3 text-[10px] font-black uppercase tracking-widest border border-gray-200 outline-none bg-white cursor-pointer appearance-none pr-8 rounded-sm hover:border-black transition-all">
+                          {ATMOSPHERE_PRESETS.map(a => <option key={a} value={a}>{a}</option>)}
+                          <option value="__custom__">Custom...</option>
+                        </select>
+                        <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      </>
+                    )}
+                  </div>
+
+                  <button onClick={() => handleTokenAnalysis(tokenAddress)} disabled={isAiProcessing || !tokenAddress || !selectedNftId}
+                    className="md:col-span-2 bg-black text-white text-[10px] font-black uppercase tracking-widest py-3 px-6 hover:bg-gray-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl rounded-sm">
+                    {isAiProcessing ? <Loader2 size={14} className="animate-spin" /> : <><BarChart3 size={14} /> Analyze</>}
+                  </button>
+                </div>
+              </div>
+
+              {/* Token search results */}
+              {tokenResults.length > 0 && (
+                <div className="bg-white border border-gray-100 rounded-sm p-4 space-y-2">
+                  <span className="text-[8px] font-black uppercase tracking-widest text-gray-400">Search Results</span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {tokenResults.map((t: any) => (
+                      <button key={t.address} onClick={() => { setTokenAddress(t.address); setTokenResults([]); handleTokenAnalysis(t.address); }}
+                        className="flex items-center gap-3 p-3 border border-gray-100 rounded-sm hover:border-black transition-all text-left">
+                        {t.imageUrl && <img src={t.imageUrl} className="w-8 h-8 rounded-full object-cover" alt="" />}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[10px] font-black uppercase truncate">{t.symbol} <span className="text-gray-400 font-normal">{t.name}</span></div>
+                          <div className="flex items-center gap-3 text-[8px] font-bold text-gray-400">
+                            <span>${t.priceUsd < 0.01 ? t.priceUsd.toExponential(2) : t.priceUsd.toFixed(6)}</span>
+                            <span className={t.priceChange24h >= 0 ? "text-green-500" : "text-red-500"}>{t.priceChange24h >= 0 ? "+" : ""}{t.priceChange24h.toFixed(1)}%</span>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between px-1">
+                {processingStep !== "idle" ? (
+                  <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-black">
+                    <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" /> Forge: {processingStep}...
+                  </div>
+                ) : selectedMascot && !selectedMascot.hasDna ? (
+                  <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.2em] text-amber-600">
+                    <AlertCircle size={12} /> No DNA — analysis may fail. Use a mascot with DNA.
                   </div>
                 ) : <div />}
                 <div className="flex items-center gap-3">

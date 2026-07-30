@@ -5,7 +5,7 @@ import { verifySession } from '@/lib/auth';
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { title, content, image_url, author_address, signature, message } = body;
+    const { title, content, image_url, source_url, author_address, signature, message } = body;
 
     if (!title || !content || !author_address) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -32,6 +32,7 @@ export async function POST(req: Request) {
         title,
         content,
         image_url: image_url || null,
+        source_url: source_url || null,
         author_address: author_address.toLowerCase(),
         likes: 0
       }])

@@ -49,8 +49,12 @@ export default function PostActions({ title, id, content = "", cmcUsername, auth
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, content, userAddress: authorAddress, articleUrl: getShareUrl() }),
       });
+      if (!res.ok) {
+        let errMsg = "Tweet generation failed";
+        try { const err = await res.json(); errMsg = err.error || errMsg; } catch {}
+        throw new Error(errMsg);
+      }
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
       setGeneratedTweet(data.tweet);
       return data.tweet;
     } catch {

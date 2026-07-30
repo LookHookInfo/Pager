@@ -45,8 +45,9 @@ export default function DeleteButton({
       if (res.ok) {
         router.refresh();
       } else {
-        const err = await res.json();
-        alert(`Failed to delete article: ${err.error || "Unknown error"}`);
+        let errMsg = "Unknown error";
+        try { const err = await res.json(); errMsg = err.error || errMsg; } catch {}
+        alert(`Failed to delete article: ${errMsg}`);
       }
     } catch (e: any) {
       console.error(e);
