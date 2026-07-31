@@ -54,3 +54,24 @@ export async function verifySession(
   }
   return null;
 }
+
+/**
+ * Verifies a session signed for EITHER "authorize session" OR "publish article".
+ * This lets the client sign once per publish flow and reuse it across all AI routes.
+ */
+export async function verifySessionAnyAction(
+  address: string,
+  signature: string,
+  message: string,
+): Promise<NextResponse | null> {
+  const normalized = address.toLowerCase();
+  const sessionMessage = getAuthMessage("authorize session", normalized);
+  const publishMessage = getAuthMessage("publish article", normalized);
+  if (message !== sessionMessage && message !== publishMessage) {
+    return NextResponse.json({ error: "Invalid auth message" }, { status: 401 });
+  }
+  if (!(await verifySignature(message, signature, normalized))) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+  return null;
+}

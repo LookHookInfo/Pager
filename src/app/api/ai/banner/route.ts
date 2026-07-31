@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { getCharacterVisualPrompt } from "@/lib/character";
 import { resolveDna } from "@/lib/character/resolve";
 import { getSupabaseServer } from "@/lib/supabase";
-import { generateBflImage } from "@/lib/image";
-import { verifySession } from "@/lib/auth";
+import { generateBflImage, generateGeminiImage, generateSvgBanner } from "@/lib/image";
+import { verifySessionAnyAction } from "@/lib/auth";
 
 export const maxDuration = 180;
 export const dynamic = "force-dynamic";
@@ -75,7 +75,7 @@ export async function POST(req: Request) {
 
     const normalizedAddress = userAddress.toLowerCase();
 
-    const authError = await verifySession(normalizedAddress, signature, message);
+    const authError = await verifySessionAnyAction(normalizedAddress, signature, message);
     if (authError) return authError;
 
     const supabase = getSupabaseServer();
@@ -108,10 +108,33 @@ export async function POST(req: Request) {
 
     const prompt = getCharacterVisualPrompt(bannerDescription || title, mood, title, atmosphere, activeDna, articleContext);
 
-    const imageUrl = await generateBflImage(prompt);
+    // Primary engine: FLUX-2 Pro (BFL). Fallback: Gemini 2.5 Flash Image.
+    let imageUrl: string | null = null;
+    let lastError: any = null;
+    try {
+      imageUrl = await generateBflImage(prompt);
+    } catch (e: any) {
+      lastError = e;
+      console.warn("⚠️ [Banner] BFL failed, trying Gemini fallback:", e.message);
+    }
+
+    if (!imageUrl) {
+      try {
+        imageUrl = await generateGeminiImage(prompt);
+      } catch (e: any) {
+        lastError = e;
+        console.warn("⚠️ [Banner] Gemini fallback failed:", e.message);
+      }
+    }
+
+    if (!imageUrl) {
+      console.warn("⚠️ [Banner] All AI engines failed — falling back to deterministic SVG banner");
+      imageUrl = await generateSvgBanner(title, atmosphere);
+    }
 
     if (!imageUrl) {
       await atomicRefundCredits(normalizedAddress, 10);
+      console.error("❌ [Banner] All engines + SVG fallback failed:", lastError?.message || "unknown");
       return NextResponse.json({ error: "Banner generation failed. Credits refunded." }, { status: 500 });
     }
 

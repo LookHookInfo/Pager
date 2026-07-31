@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase";
+import { decryptData } from "@/lib/security";
 import { extractJson } from "@/lib/utils";
 
 export const maxDuration = 30;
@@ -102,7 +103,11 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     const googleKey = process.env.GEMINI_API_KEY;
-    const openRouterKey = process.env.OPENROUTER_API_KEY || profile?.ai_api_key;
+    let userApiKey: string | undefined;
+    if (profile?.ai_api_key) {
+      try { userApiKey = decryptData(profile.ai_api_key); } catch {}
+    }
+    const openRouterKey = process.env.OPENROUTER_API_KEY || userApiKey;
 
     let result: any;
 

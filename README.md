@@ -22,7 +22,7 @@ DNAs (Digital Neural Assets) are JSON configurations stored in `src/lib/characte
 The process of automatically creating an article via `/write`:
 1.  **Scraping:** The system uses **Jina Reader (r.jina.ai)** to fetch and clean content from external links into structured Markdown.
 2.  **Rewriting:** The text is adaptively rewritten using **Gemini 2.5 Flash**, applying the selected **Mood** (Sarcastic, Bullish, etc.) and **DNA**.
-3.  **Visual Generation:** A unique banner is generated using specialized image models (**Gemini 3.1 Flash Image** or **FLUX.2**), integrating the character into the scene via complex visual prompts.
+3.  **Visual Generation:** A unique banner is generated with **FLUX-2 Pro** (BFL) as the primary image engine, with an automatic **Gemini 2.5 Flash Image** fallback if BFL is unavailable. The character is integrated into the scene via complex visual prompts, then compressed to WebP and pinned to IPFS (Pinata).
 4.  **Distribution:** The engine automatically adapts and posts content to the user's connected **Telegram** channels and **Binance Square** accounts.
 
 ### 4. Publishing Gate (Economic Barrier)
@@ -40,7 +40,7 @@ User profiles hide several mechanisms for customizing the protocol's operation:
 | Setting | Impact on the System |
 | :--- | :--- |
 | **User AI API Key** | If provided, AI requests are routed through the user's key. This bypasses platform limits and allows the use of personal distribution protocols. |
-| **Image Engine** | **The visual choice.** Users can select between **Gemini 3.1** (High fidelity), **FLUX.2** (Fast/Native 16:9), and **Gemini 2.5 Flash**. |
+| **Image Engine** | **Banner rendering.** Banners are generated with **FLUX-2 Pro** (primary) and **Gemini 2.5 Flash Image** (automatic fallback). Every banner costs **10 AI credits** and is pinned to IPFS via Pinata. |
 | **Thirdweb Client ID** | **The key storage switch.** If a Client ID is provided, the system switches from Supabase Storage to **IPFS**. Your images become decentralized and permanent. |
 | **Monetization** | Custom CTA links for Telegram channels, Forums, and Referral networks integrated into every article. |
 
@@ -52,7 +52,7 @@ User profiles hide several mechanisms for customizing the protocol's operation:
 *   **Styling:** Tailwind CSS 4 (Native CSS variable configuration).
 *   **Blockchain:** Thirdweb SDK + Base Network.
 *   **Database/Auth:** Supabase.
-*   **AI Engine:** OpenRouter (Gemini, FLUX), Jina Reader.
+*   **AI Engine:** OpenRouter (Gemini), Jina Reader, BFL (FLUX-2 Pro).
 
 ---
 

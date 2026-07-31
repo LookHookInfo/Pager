@@ -35,6 +35,7 @@ function WritePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { mutate: sendTransaction } = useSendTransaction();
+  const authRef = useRef<{ sig: string; msg: string } | null>(null);
 
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -95,6 +96,17 @@ function WritePageInner() {
     setNotifications(prev => [...prev, { id, message, type }]);
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 5000);
   };
+
+  // Sign ONCE per session with "publish article" and reuse it across forge + publish.
+  const ensureAuth = useCallback(async () => {
+    if (!account) throw new Error("Connect wallet");
+    const msg = getAuthMessage("publish article", account.address.toLowerCase());
+    if (authRef.current?.msg === msg) return authRef.current;
+    const sig = await account.signMessage({ message: msg });
+    const auth = { sig, msg };
+    authRef.current = auth;
+    return auth;
+  }, [account]);
 
   const uploadToStorage = async (file: File) => {
     const fd = new FormData();
@@ -177,8 +189,7 @@ function WritePageInner() {
     setProcessingStep("scraping");
 
     try {
-      const authMsg = getAuthMessage("authorize session", account.address.toLowerCase());
-      const authSig = await account.signMessage({ message: authMsg });
+      const { sig: authSig, msg: authMsg } = await ensureAuth();
 
       const scrapeRes = await fetch("/api/ai/scrape", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -246,8 +257,7 @@ function WritePageInner() {
     if ((profile?.ai_credits || 0) < 10) { addNotification("Not enough $HASH credits for banner. Top up in Profile settings.", "error"); return; }
     try {
       addNotification("Regenerating banner...", "info");
-      const authMsg = getAuthMessage("authorize session", account.address.toLowerCase());
-      const authSig = await account.signMessage({ message: authMsg });
+      const { sig: authSig, msg: authMsg } = await ensureAuth();
 
       const articleContent = editorRef.current?.innerHTML || "";
       const res = await fetchWithRetry("/api/ai/banner", {
@@ -276,8 +286,7 @@ function WritePageInner() {
     setTokenResults([]);
 
     try {
-      const authMsg = getAuthMessage("authorize session", account.address.toLowerCase());
-      const authSig = await account.signMessage({ message: authMsg });
+      const { sig: authSig, msg: authMsg } = await ensureAuth();
 
       const res = await fetch("/api/ai/token-commentary", {
         method: "POST",
@@ -378,8 +387,7 @@ function WritePageInner() {
 
     setStatus("publishing");
     try {
-      const authMsg = getAuthMessage("publish article", account.address.toLowerCase());
-      const authSig = await account.signMessage({ message: authMsg });
+      const { sig: authSig, msg: authMsg } = await ensureAuth();
 
       const res = await fetch("/api/article/create", {
         method: "POST", headers: { "Content-Type": "application/json" },

@@ -37,6 +37,7 @@ export async function GET(req: Request) {
     const safeProfile = {
       ...data,
       ai_credits: data.ai_credits || 0,
+      ai_api_key: data.ai_api_key ? maskKey(data.ai_api_key) : "",
       binance_accounts: (data.binance_accounts || []).map((acc: any) => ({
         ...acc,
         apiKey: acc.apiKey ? maskKey(acc.apiKey) : ""
@@ -62,9 +63,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { 
-      address, name, bio, website, 
+    const { address, name, bio, website,
       avatar_url, ai_image_model,
+      ai_api_key,
       ai_nft_token_id,
       binance_accounts, telegram_channels, telegram_chat_id,
       cta_links, ref_links, cmc_username,
@@ -94,10 +95,10 @@ export async function POST(req: Request) {
 
     const supabaseServer = getSupabaseServer();
 
-    // 2. ОБРАБОТКА И ШИФРОВАНИЕ КЛЮЧЕЙ BINANCE
+    // 2. ОБРАБОТКА И ШИФРОВАНИЕ КЛЮЧЕЙ BINANCE И AI
     const { data: currentProfile } = await supabaseServer
       .from('profiles')
-      .select('binance_accounts')
+      .select('binance_accounts, ai_api_key')
       .eq('address', normalizedAddress)
       .maybeSingle();
 
@@ -114,6 +115,22 @@ export async function POST(req: Request) {
       return { ...acc, apiKey: finalKey };
     });
 
+    // AI API key: keep existing if masked/empty, otherwise encrypt the new value
+    const isMaskedKey = (v: string) => !!v && (v.includes('...') || v.includes('•'));
+    let finalAiApiKey: string | null | undefined;
+    if (!ai_api_key || isMaskedKey(ai_api_key) || ai_api_key === currentProfile?.ai_api_key) {
+      finalAiApiKey = currentProfile?.ai_api_key || null;
+    } else if (isEncrypted(ai_api_key)) {
+      finalAiApiKey = ai_api_key;
+    } else {
+      try {
+        finalAiApiKey = encryptData(ai_api_key);
+      } catch (e: any) {
+        console.warn("⚠️ [Profile] Failed to encrypt AI key, storing raw:", e.message);
+        finalAiApiKey = ai_api_key;
+      }
+    }
+
     const { data, error } = await supabaseServer
       .from('profiles')
       .upsert({ 
@@ -123,6 +140,7 @@ export async function POST(req: Request) {
         website,
         avatar_url,
         ai_image_model,
+        ai_api_key: finalAiApiKey,
         ai_nft_token_id,
         binance_accounts: finalBinanceAccounts,
         telegram_channels,
@@ -147,6 +165,7 @@ export async function POST(req: Request) {
 
     const safeProfile = {
       ...data,
+      ai_api_key: data.ai_api_key ? maskKey(data.ai_api_key) : "",
       binance_accounts: (data.binance_accounts || []).map((acc: any) => ({
         ...acc,
         apiKey: acc.apiKey ? maskKey(acc.apiKey) : ""
