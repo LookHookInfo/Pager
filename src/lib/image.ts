@@ -1,8 +1,8 @@
 import sharp from "sharp";
 
-const PINATA_TIMEOUT = 15000;
-const BFL_POLL_TIMEOUT = 10000;
-const BFL_CREATE_TIMEOUT = 15000;
+const PINATA_TIMEOUT = 12000;
+const BFL_POLL_TIMEOUT = 12000;
+const BFL_CREATE_TIMEOUT = 20000;
 
 async function tryPinataWithBuffer(
   compressed: Buffer,
@@ -61,23 +61,18 @@ export async function uploadToPinata(imageUrl: string): Promise<string> {
     const buffer = Buffer.from(await imgRes.arrayBuffer());
     const compressed = await sharp(buffer).webp({ quality: 85, effort: 4 }).toBuffer();
 
+    // Try JWT first (1 attempt), then API key (1 attempt)
     if (pinataJwt) {
-      for (let i = 1; i <= 2; i++) {
-        const url = await tryPinataWithBuffer(compressed, "jwt", pinataJwt);
-        if (url) return url;
-        if (i < 2) await new Promise(r => setTimeout(r, 1000 * i));
-      }
+      const url = await tryPinataWithBuffer(compressed, "jwt", pinataJwt);
+      if (url) return url;
     }
 
     if (pinataApiKey && pinataApiSecret) {
-      for (let i = 1; i <= 2; i++) {
-        const url = await tryPinataWithBuffer(compressed, "apikey", undefined, pinataApiKey, pinataApiSecret);
-        if (url) return url;
-        if (i < 2) await new Promise(r => setTimeout(r, 1000 * i));
-      }
+      const url = await tryPinataWithBuffer(compressed, "apikey", undefined, pinataApiKey, pinataApiSecret);
+      if (url) return url;
     }
 
-    console.error("All Pinata methods failed — returning BFL URL as fallback");
+    console.warn("All Pinata methods failed — returning BFL URL as fallback");
   } catch (e: any) {
     console.error("uploadToPinata error:", e.message);
   }
@@ -103,7 +98,7 @@ export async function generateBflImage(prompt: string): Promise<string> {
   const { id } = await res.json();
   const pollUrl = `https://api.bfl.ai/v1/get_result?id=${id}`;
 
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 40; i++) {
     await new Promise(r => setTimeout(r, 1500));
     try {
       const statusRes = await fetch(pollUrl, {
@@ -128,5 +123,5 @@ export async function generateBflImage(prompt: string): Promise<string> {
     }
   }
 
-  throw new Error("BFL timed out (75s)");
+  throw new Error("BFL timed out (60s)");
 }

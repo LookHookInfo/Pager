@@ -235,6 +235,7 @@ function WritePageInner() {
     } catch (err: any) {
       addNotification(err.message, "error");
       setProcessingStep("idle");
+      fetchProfile();
     } finally {
       setIsAiProcessing(false);
     }

@@ -72,14 +72,14 @@ export async function POST(req: Request) {
     const supabaseServer = getSupabaseServer();
 
     // 3. АТОМАРНОЕ ОБНОВЛЕНИЕ БАЛАНСА
-    const { data, error } = await supabaseServer.rpc('increment_ai_credits', { 
+    const { data: rpcResult, error: rpcError } = await supabaseServer.rpc('increment_ai_credits', { 
       user_address: normalizedAddress, 
       inc_amount: parsedAmount 
     });
 
-    // Если RPC не настроен, используем обычный подход (менее надежный, но рабочий для старта)
-    if (error) {
-      console.warn("⚠️ RPC increment_ai_credits failed, falling back to manual update");
+    // Если RPC не настроен, используем CAS (compare-and-swap) подход
+    if (rpcError) {
+      console.warn("⚠️ RPC increment_ai_credits failed, falling back to CAS update");
       
       const { data: profile } = await supabaseServer
         .from('profiles')
@@ -87,12 +87,13 @@ export async function POST(req: Request) {
         .eq('address', normalizedAddress)
         .single();
 
-      const newBalance = (profile?.ai_credits || 0) + parsedAmount;
+      if (!profile) throw new Error("Profile not found");
 
       const { error: updateError } = await supabaseServer
         .from('profiles')
-        .update({ ai_credits: newBalance })
-        .eq('address', normalizedAddress);
+        .update({ ai_credits: profile.ai_credits + parsedAmount })
+        .eq('address', normalizedAddress)
+        .eq('ai_credits', profile.ai_credits); // CAS: prevents race
 
       if (updateError) throw updateError;
     }

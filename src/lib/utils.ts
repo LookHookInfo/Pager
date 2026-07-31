@@ -28,16 +28,46 @@ export function finalFormat(text: string): string {
     .trim();
 }
 
+/** Sanitize a string for safe JSON embedding (strip control characters) */
+function sanitizeJsonString(raw: string): string {
+  return raw.replace(/[\u0000-\u001F\u007F-\u009F]/g, "")
+    .replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
+}
+
+/** Retry JSON.parse with progressive cleaning strategies */
+function tryParse(raw: string): any {
+  const strategies = [
+    (s: string) => JSON.parse(s),
+    (s: string) => { const m = s.match(/\{[\s\S]*\}/); if (m) return JSON.parse(m[0]); throw new Error("no json object"); },
+    (s: string) => JSON.parse(sanitizeJsonString(s)),
+    (s: string) => { const m = s.match(/\{[\s\S]*\}/); if (m) return JSON.parse(sanitizeJsonString(m[0])); throw new Error("no json object"); },
+  ];
+  for (const fn of strategies) {
+    try { return fn(raw); } catch { continue; }
+  }
+  throw new Error("parse failed");
+}
+
 /** Extract the first JSON object from an AI response string */
 export function extractJson(text: string): any {
   if (!text) throw new Error("Empty AI response");
   try {
-    const cleaned = text.replace(/```json\s*/g, "").replace(/```/g, "").trim();
-    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-    if (jsonMatch) return JSON.parse(jsonMatch[0]);
-    return JSON.parse(cleaned);
+    const cleaned = text
+      .replace(/```json\s*/gi, "")
+      .replace(/```\s*/g, "")
+      .replace(/^[\s\S]*?(\{)/, "$1")        // strip everything before first {
+      .replace(/(\})[\s\S]*$/, "$1")          // strip everything after last }
+      .trim();
+
+    if (!cleaned.startsWith("{")) {
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error("No JSON object found");
+      return tryParse(match[0]);
+    }
+    return tryParse(cleaned);
   } catch (e) {
-    console.error("❌ [Utils] JSON Parse Error. Content:", text.slice(0, 200));
+    const preview = text.replace(/[\r\n]/g, " ").slice(0, 150);
+    console.error("❌ [Utils] JSON Parse Error:", (e as Error).message, "| Preview:", preview);
     throw new Error("AI returned invalid JSON format. Please try again.");
   }
 }
