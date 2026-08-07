@@ -32,8 +32,8 @@ export async function POST(req: Request) {
     const { data: article } = await supabase.from("articles").select("*").eq("id", articleId).single();
     if (!article) return NextResponse.json({ error: "Article not found" }, { status: 404 });
 
-    const { data: profile } = await supabase.from("profiles").select("name, ai_api_key").eq("address", normalizedAddress).single();
-    const aiKey = profile?.ai_api_key ? decryptData(profile.ai_api_key) : "";
+    const { data: profile } = await supabase.from("profiles").select("name").eq("address", normalizedAddress).single();
+    const aiKey = process.env.OPENROUTER_API_KEY || "";
     const authorName = profile?.name || `${profileAddress.slice(0, 6)}...`;
     const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://pager.lookhook.info").replace(/\/$/, "");
 

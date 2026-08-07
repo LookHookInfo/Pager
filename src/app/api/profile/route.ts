@@ -104,14 +104,16 @@ export async function POST(req: Request) {
 
     const finalBinanceAccounts = (binance_accounts || []).map((acc: any, idx: number) => {
       const currentAcc = currentProfile?.binance_accounts?.[idx];
+      // Маска (••• или xxx...yyy) означает «ключ не менялся» — берём текущий.
+      const isMaskedKey = (v: string) => !!v && (v.includes('•') || v.includes('...'));
       let finalKey = acc.apiKey;
-      
-      if ((!acc.apiKey || acc.apiKey.includes('...')) && currentAcc?.apiKey) {
-        finalKey = currentAcc.apiKey;
-      } else if (acc.apiKey && !acc.apiKey.includes('...') && !isEncrypted(acc.apiKey)) {
+
+      if (isMaskedKey(acc.apiKey)) {
+        finalKey = currentAcc?.apiKey || "";
+      } else if (acc.apiKey && !isEncrypted(acc.apiKey)) {
         finalKey = encryptData(acc.apiKey);
       }
-      
+
       return { ...acc, apiKey: finalKey };
     });
 

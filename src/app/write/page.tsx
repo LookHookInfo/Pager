@@ -17,9 +17,9 @@ import Link from "next/link";
 import { client, MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI } from "@/lib/web3";
 import { getAuthMessage } from "@/lib/auth";
 import { MOODS, ATMOSPHERE_PRESETS } from "@/lib/moods";
-import { fetchWithRetry } from "@/lib/fetch";
 import imageCompression from "browser-image-compression";
 import ForgeOverlay from "@/components/ForgeOverlay";
+import { requestBannerJob } from "@/lib/banner-client";
 
 const COMPRESSION_OPTIONS = {
   maxSizeMB: 0.7, maxWidthOrHeight: 1920, useWebWorker: true,
@@ -224,19 +224,13 @@ function WritePageInner() {
       }
 
       const articleContent = editorRef.current?.innerHTML || textData.content || "";
-      const bannerRes = await fetchWithRetry("/api/ai/banner", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: textData.title, bannerDescription: textData.banner_description, mood,
-          nftTokenId: selectedNftId, atmosphere,
-          userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
-          content: articleContent,
-        }),
-        signal: AbortSignal.timeout(125000),
-      }, 2);
-      // Banner generation requires 10 $HASH credits. Top up in Profile settings.
-      if (!bannerRes.ok) throw new Error((await bannerRes.json()).error || "Banner generation failed");
-      const bannerData = await bannerRes.json();
+      // Paid, non-idempotent endpoint — must NOT auto-retry (would double-charge credits).
+      const bannerData = await requestBannerJob({
+        title: textData.title, bannerDescription: textData.banner_description, mood,
+        nftTokenId: selectedNftId, atmosphere,
+        userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
+        content: articleContent,
+      });
       if (bannerData.image_url) setImageUrl(bannerData.image_url);
 
       addNotification("Article ready!", "success");
@@ -260,18 +254,13 @@ function WritePageInner() {
       const { sig: authSig, msg: authMsg } = await ensureAuth();
 
       const articleContent = editorRef.current?.innerHTML || "";
-      const res = await fetchWithRetry("/api/ai/banner", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title, bannerDescription, mood, nftTokenId: selectedNftId,
-          atmosphere,
-          userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
-          content: articleContent,
-        }),
-        signal: AbortSignal.timeout(125000),
-      }, 2);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Regeneration failed");
+      // Paid, non-idempotent endpoint — must NOT auto-retry (would double-charge credits).
+      const data = await requestBannerJob({
+        title, bannerDescription, mood, nftTokenId: selectedNftId,
+        atmosphere,
+        userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
+        content: articleContent,
+      });
       if (data.image_url) { setImageUrl(data.image_url); addNotification("Banner updated!"); fetchProfile(); }
     } catch (err: any) { addNotification(err.message, "error"); }
   };
@@ -316,19 +305,17 @@ function WritePageInner() {
         addNotification("Analysis ready, but not enough $HASH for banner. Top up in Profile.", "info");
       } else {
         const articleContent = editorRef.current?.innerHTML || "";
-        const bannerRes = await fetchWithRetry("/api/ai/banner", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+        // Paid, non-idempotent endpoint — must NOT auto-retry (would double-charge credits).
+        try {
+          const bannerData = await requestBannerJob({
             title: data.title, bannerDescription: data.banner_description, mood,
             nftTokenId: selectedNftId, atmosphere,
             userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
             content: articleContent,
-          }),
-          signal: AbortSignal.timeout(125000),
-        }, 2);
-        if (bannerRes.ok) {
-          const bannerData = await bannerRes.json();
+          });
           if (bannerData.image_url) setImageUrl(bannerData.image_url);
+        } catch (bannerErr: any) {
+          addNotification(bannerErr.message, "error");
         }
       }
 
@@ -420,7 +407,9 @@ function WritePageInner() {
             if (distData.results) {
               const ok = distData.results.filter((r: any) => r.success).length;
               const fail = distData.results.filter((r: any) => !r.success).length;
-              if (fail > 0) addNotification(`${ok}/${ok + fail} channels published`, fail > 0 ? "error" : "success");
+              const failDetails = distData.results.filter((r: any) => !r.success).map((r: any) => `${r.channel}: ${r.error || 'failed'}`).join(" | ");
+              if (fail > 0) addNotification(failDetails || `${ok}/${ok + fail} channels published`, "error");
+              else addNotification(`${ok}/${ok + fail} channels published`, "success");
             }
           }
         }

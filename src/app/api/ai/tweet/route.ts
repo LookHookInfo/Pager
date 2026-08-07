@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase";
-import { decryptData } from "@/lib/security";
 
 export const maxDuration = 15;
 export const dynamic = "force-dynamic";
@@ -11,20 +9,7 @@ export async function POST(req: Request) {
 
     if (!title) return NextResponse.json({ error: "Title required" }, { status: 400 });
 
-    let apiKey = process.env.OPENROUTER_API_KEY;
-
-    if (userAddress) {
-      const supabase = getSupabaseServer();
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("ai_api_key")
-        .eq("address", userAddress.toLowerCase())
-        .maybeSingle();
-      if (profile?.ai_api_key) {
-        try { apiKey = decryptData(profile.ai_api_key); } catch {}
-      }
-    }
-
+    const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) return NextResponse.json({ error: "AI key missing" }, { status: 403 });
 
     const cleanContent = (content || "")

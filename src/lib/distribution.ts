@@ -127,7 +127,7 @@ export async function postToBinance(account: BinanceAccount, title: string, cont
       body: JSON.stringify({ bodyTextOnly: plainText })
     });
     const data = await res.json();
-    return data.code === '000000' ? { success: true, id: data.data?.id } : { success: false, error: `${account.label}: ${data.message}` };
+    return data.code === '000000' ? { success: true, id: data.data?.id } : { success: false, error: `${account.label} (${data.code}): ${data.message || data.messageDetail || 'Binance rejected the post'}` };
   } catch (e: any) { return { success: false, error: `${account.label}: ${e.message}` }; }
 }
 

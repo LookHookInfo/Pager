@@ -39,7 +39,6 @@ export default function ProfileHeader({
 
   const [formData, setFormData] = useState({
     name: "", bio: "", website: "", avatar_url: "", cmc_username: "",
-    ai_api_key: "",
     binance_accounts: [], telegram_channels: [], telegram_chat_id: "",
     cta_links: [{ label: "", url: "" }, { label: "", url: "" }, { label: "", url: "" }],
     ref_links: [{ label: "", url: "" }, { label: "", url: "" }, { label: "", url: "" }],
@@ -52,7 +51,6 @@ export default function ProfileHeader({
       name: profile.name || "", bio: profile.bio || "", website: profile.website || "",
       avatar_url: profile.avatar_url || "",
       cmc_username: profile.cmc_username || "",
-      ai_api_key: profile.ai_api_key || "",
       binance_accounts: profile.binance_accounts || [],
       telegram_channels: profile.telegram_channels || [],
       telegram_chat_id: profile.telegram_chat_id || "",
@@ -250,24 +248,6 @@ export default function ProfileHeader({
                   </div>
                 </div>
                 <p className="text-[10px] text-gray-400 font-medium">Mascot creation is on the <a href="/mascots" className="underline hover:text-black">Mascots page</a>.</p>
-              </div>
-
-              <div className="p-6 border border-gray-100 rounded-sm space-y-4 bg-gray-50/30 shadow-sm">
-                <div className="flex items-center gap-2">
-                  <Sparkles size={14} className="text-purple-500" />
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400">AI Access Key (optional)</h4>
-                </div>
-                <p className="text-[10px] text-gray-400 font-medium leading-relaxed">
-                  If provided, AI requests are routed through your own OpenRouter key, bypassing platform limits. Leave empty to use the platform key.
-                </p>
-                <input
-                  type="password"
-                  value={formData.ai_api_key || ""}
-                  onChange={e => setFormData({ ...formData, ai_api_key: e.target.value })}
-                  placeholder="sk-or-..."
-                  autoComplete="off"
-                  className="w-full text-xs font-mono p-3 border border-gray-200 outline-none bg-white focus:border-black transition-colors"
-                />
               </div>
             </div>
           </div>

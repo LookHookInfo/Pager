@@ -51,15 +51,15 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Article not found' }, { status: 404 });
     }
 
-    // 2. Fetch profile for AI key
+    // 2. Fetch profile for author info
     const { data: profile } = await supabaseServer
       .from('profiles')
-      .select('name, ai_api_key')
+      .select('name')
       .eq('address', profileAddress.toLowerCase())
       .single();
 
-    // Расшифровываем OpenRouter ключ если он есть
-    const aiKey = profile?.ai_api_key ? decryptData(profile.ai_api_key) : "";
+    // Always use the platform OpenRouter key for content adaptation
+    const aiKey = process.env.OPENROUTER_API_KEY || "";
     
     const authorDisplayName = profile?.name || (profileAddress ? `${profileAddress.slice(0, 6)}...` : "Anonymous");
     const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info').replace(/\/$/, '');

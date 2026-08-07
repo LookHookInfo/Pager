@@ -2,8 +2,18 @@ import sharp from "sharp";
 import { DEFAULT_BFL_MODEL } from "@/lib/bfl-models";
 
 const PINATA_TIMEOUT = 12000;
-const BFL_POLL_TIMEOUT = 12000;
-const BFL_CREATE_TIMEOUT = 20000;
+const BFL_POLL_TIMEOUT = 20000;
+const BFL_CREATE_TIMEOUT = 30000;
+const BFL_POLL_INTERVAL_MS = 2000;
+const BFL_MAX_POLLS = 30;
+
+const BFL_TERMINAL_STATUSES = new Set([
+  "Failed",
+  "Error",
+  "Moderated",
+  "Request Moderated",
+  "Content Moderated",
+]);
 
 async function tryPinataWithBuffer(
   compressed: Buffer,
@@ -69,7 +79,7 @@ async function pinBufferToPinata(compressed: Buffer): Promise<string | null> {
   return null;
 }
 
-export async function uploadToPinata(imageUrl: string): Promise<string> {
+export async function uploadToPinata(imageUrl: string): Promise<string | null> {
   try {
     const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(10000) });
     if (!imgRes.ok) throw new Error(`fetch failed: ${imgRes.status}`);
@@ -80,27 +90,51 @@ export async function uploadToPinata(imageUrl: string): Promise<string> {
     const url = await pinBufferToPinata(compressed);
     if (url) return url;
 
-    console.warn("All Pinata methods failed — returning original URL as fallback");
+    console.warn("All Pinata methods failed");
   } catch (e: any) {
     console.error("uploadToPinata error:", e.message);
   }
-  return imageUrl;
+  return null;
 }
 
-export async function generateBflImage(prompt: string, model: string = DEFAULT_BFL_MODEL): Promise<string> {
+export interface BflTask {
+  id: string;
+  pollingUrl: string;
+}
+
+/**
+ * Submit a FLUX task to BFL WITHOUT waiting for it to finish.
+ * Used by the async polling flow. Returns the BFL task id and the
+ * cluster-specific polling_url (MUST be used — reconstructing the global
+ * get_result URL returns "Task not found" for cluster-routed jobs).
+ *
+ * NOTE: pass webhookUrl/webhookSecret only if you must use webhooks — in
+ * webhook mode BFL omits polling_url, leaving no way to poll the task.
+ */
+export async function submitBflTask(
+  prompt: string,
+  model: string = DEFAULT_BFL_MODEL,
+  webhookUrl?: string,
+  webhookSecret?: string,
+): Promise<BflTask> {
   const apiKey = process.env.BFL_API_KEY;
   if (!apiKey) throw new Error("BFL_API_KEY missing");
 
+  const body: Record<string, unknown> = { prompt, width: 1344, height: 768, safety_tolerance: 5 };
+  if (webhookUrl) body.webhook_url = webhookUrl;
+  if (webhookSecret) body.webhook_secret = webhookSecret;
+
   // Retry create on 429/5xx/network errors — BFL is flaky under load
-  let createRes: Response | null = null;
   let lastCreateError: Error | null = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt > 0) await new Promise(r => setTimeout(r, 2000 * attempt));
     try {
+      // FLUX.2 applies prompt upsampling (PUP) by default — do not send the
+      // FLUX.1-era "prompt_upsampling" param (invalid for flux-2-pro).
       const res = await fetch(`https://api.bfl.ai/v1/${model}`, {
         method: "POST",
         headers: { "x-key": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, width: 1344, height: 768, prompt_upsampling: true }),
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(BFL_CREATE_TIMEOUT),
       });
 
@@ -112,8 +146,12 @@ export async function generateBflImage(prompt: string, model: string = DEFAULT_B
         const err = await res.json().catch(() => ({}));
         throw new Error(`BFL creation failed: ${res.status} — ${JSON.stringify(err)}`);
       }
-      createRes = res;
-      break;
+
+      const created = await res.json();
+      if (!created?.id) throw new Error("BFL returned no task id");
+      if (!created?.polling_url) throw new Error("BFL returned no polling_url");
+
+      return { id: created.id, pollingUrl: created.polling_url };
     } catch (e: any) {
       lastCreateError = e;
       if (e.name === "TimeoutError") continue;
@@ -122,81 +160,101 @@ export async function generateBflImage(prompt: string, model: string = DEFAULT_B
     }
   }
 
-  if (!createRes) {
-    throw lastCreateError || new Error("BFL creation failed");
+  throw lastCreateError || new Error("BFL creation failed");
+}
+
+export interface BflStatus {
+  status: string;
+  result?: { sample?: string; prompt?: string; seed?: number };
+  error?: string;
+  message?: string;
+}
+
+/** Single BFL status check. Returns null on any transport/HTTP failure. */
+export async function pollBflTask(pollingUrl: string): Promise<BflStatus | null> {
+  const apiKey = process.env.BFL_API_KEY;
+  if (!apiKey || !pollingUrl) return null;
+  try {
+    const res = await fetch(pollingUrl, {
+      headers: { "x-key": apiKey },
+      signal: AbortSignal.timeout(BFL_POLL_TIMEOUT),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e: any) {
+    console.warn("BFL poll error:", e.message);
+    return null;
   }
+}
 
-  const { id } = await createRes.json();
-  const pollUrl = `https://api.bfl.ai/v1/get_result?id=${id}`;
+/** Synchronous generation (webhook-less local dev / manual fallback). */
+export async function generateBflImage(prompt: string, model: string = DEFAULT_BFL_MODEL): Promise<string> {
+  const { pollingUrl } = await submitBflTask(prompt, model);
 
-  for (let i = 0; i < 40; i++) {
-    await new Promise(r => setTimeout(r, 1500));
-    try {
-      const statusRes = await fetch(pollUrl, {
-        headers: { "x-key": apiKey },
-        signal: AbortSignal.timeout(BFL_POLL_TIMEOUT),
-      });
-      if (!statusRes.ok) continue;
+  for (let i = 0; i < BFL_MAX_POLLS; i++) {
+    await new Promise(r => setTimeout(r, BFL_POLL_INTERVAL_MS));
+    const data = await pollBflTask(pollingUrl);
+    if (!data) continue;
 
-      const { status, result, error } = await statusRes.json();
-      if (status === "Ready" && result?.sample) {
-        return await uploadToPinata(result.sample);
-      }
-      if (status === "Failed" || status === "Error") {
-        throw new Error(`BFL failed: ${error || "unknown"}`);
-      }
-    } catch (e: any) {
-      if (e.name === "TimeoutError") {
-        console.warn(`BFL poll #${i + 1} timed out, retrying...`);
-        continue;
-      }
-      throw e;
+    if (data.status === "Ready") {
+      if (!data.result?.sample) throw new Error("BFL returned Ready without a sample");
+      const pinned = await uploadToPinata(data.result.sample);
+      if (pinned) return pinned;
+      throw new Error("Pinata upload failed for BFL sample");
+    }
+    if (BFL_TERMINAL_STATUSES.has(data.status)) {
+      throw new Error(`BFL failed: ${data.status}${data.error ? ` — ${data.error}` : ""}`);
     }
   }
 
-  throw new Error("BFL timed out (60s)");
+  throw new Error(`BFL timed out (${(BFL_MAX_POLLS * BFL_POLL_INTERVAL_MS) / 1000}s)`);
 }
 
 /**
- * Fallback image engine: Google Gemini 2.5 Flash Image.
+ * Fallback image engine: Gemini 2.5 Flash Image via OpenRouter
+ * (POST /api/v1/images, model google/gemini-2.5-flash-image).
+ * Uses OPENROUTER_API_KEY — the direct Google GEMINI_API_KEY was dead
+ * (429, free-tier quota exhausted).
  * Returns the Pinata IPFS URL on success, or null on any failure.
  */
-export async function generateGeminiImage(prompt: string): Promise<string | null> {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
+export async function generateOpenRouterImage(prompt: string): Promise<string | null> {
+  const apiKey = process.env.OPENROUTER_API_KEY?.trim();
   if (!apiKey) return null;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${encodeURIComponent(apiKey)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
-        }),
-        signal: AbortSignal.timeout(90000),
+    const res = await fetch("https://openrouter.ai/api/v1/images", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://pager.lookhook.info/",
+        "X-Title": "Pager Protocol",
       },
-    );
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-image",
+        prompt,
+      }),
+      signal: AbortSignal.timeout(60000),
+    });
 
     if (!res.ok) {
       const err = await res.text().catch(() => "unknown");
-      console.error(`Gemini image failed: ${res.status} — ${err.slice(0, 200)}`);
+      console.error(`OpenRouter image failed: ${res.status} — ${err.slice(0, 300)}`);
       return null;
     }
 
     const data = await res.json();
-    const parts: any[] = data?.candidates?.[0]?.content?.parts || [];
-    const imagePart = parts.find((p) => p.inlineData?.data);
-    if (!imagePart) return null;
+    const imageData = data?.data?.[0];
+    const b64 = imageData?.b64_json || imageData?.image || null;
+    if (!b64) return null;
 
-    const buffer = Buffer.from(imagePart.inlineData.data, "base64");
+    const buffer = Buffer.from(b64, "base64");
     const compressed = await sharp(buffer).webp({ quality: 85, effort: 4 }).toBuffer();
 
     const pinned = await pinBufferToPinata(compressed);
     return pinned || null;
   } catch (e: any) {
-    console.error("generateGeminiImage error:", e.message);
+    console.error("generateOpenRouterImage error:", e.message);
     return null;
   }
 }

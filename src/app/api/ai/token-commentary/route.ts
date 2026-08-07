@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCharacterSystemPrompt } from "@/lib/character";
 import { resolveDna } from "@/lib/character/resolve";
-import { getSupabaseServer } from "@/lib/supabase";
 import { verifySessionAnyAction } from "@/lib/auth";
-import { decryptData } from "@/lib/security";
 import { extractJson, finalFormat } from "@/lib/utils";
 import { getTokenByAddress, getTokenCandles, calculateSMA, calculateRSI } from "@/lib/dexscreener";
 
@@ -24,13 +22,7 @@ export async function POST(req: Request) {
     const authError = await verifySessionAnyAction(normalizedAddress, signature, message);
     if (authError) return authError;
 
-    const supabase = getSupabaseServer();
-    const { data: profile } = await supabase.from("profiles").select("*").eq("address", normalizedAddress).maybeSingle();
-
-    let apiKey = process.env.OPENROUTER_API_KEY;
-    if (profile?.ai_api_key) {
-      try { apiKey = decryptData(profile.ai_api_key); } catch {}
-    }
+    const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) return NextResponse.json({ error: "AI key missing" }, { status: 403 });
 
     const activeDna = await resolveDna(nftTokenId);

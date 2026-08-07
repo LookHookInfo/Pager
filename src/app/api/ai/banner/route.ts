@@ -2,67 +2,55 @@ import { NextResponse } from "next/server";
 import { getCharacterVisualPrompt } from "@/lib/character";
 import { resolveDna } from "@/lib/character/resolve";
 import { getSupabaseServer } from "@/lib/supabase";
-import { generateBflImage, generateGeminiImage, generateSvgBanner } from "@/lib/image";
+import { submitBflTask, generateBflImage, generateOpenRouterImage, generateSvgBanner } from "@/lib/image";
+import { DEFAULT_BFL_MODEL } from "@/lib/bfl-models";
 import { verifySessionAnyAction } from "@/lib/auth";
+import { atomicDebitCredits, atomicRefundCredits } from "@/lib/credits";
+import { createBannerJob, updateBannerJob } from "@/lib/banner-jobs";
 
-export const maxDuration = 180;
+// Vercel Hobby caps serverless functions at 60s — the async BFL-polling flow
+// must be the primary path. The inline fallback below is budgeted to fit.
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-async function atomicDebitCredits(
-  address: string,
-  amount: number,
-): Promise<boolean> {
-  const supabase = getSupabaseServer();
-  // Try RPC first (PostgreSQL function — atomic, needs SQL migration)
-  const { data: rpcResult, error: rpcErr } = await supabase
-    .rpc("decrement_ai_credits", { user_address: address, dec_amount: amount });
+const BFL_SUBMIT_BUDGET_MS = 25000;
+const BFL_SYNC_BUDGET_MS = 20000;
+const OPENROUTER_SYNC_BUDGET_MS = 30000;
 
-  if (!rpcErr && rpcResult !== null && rpcResult !== undefined) {
-    return true;
+async function withBudget<T>(task: () => Promise<T | null>, budgetMs: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timerP = new Promise<T | null>((resolve) => { timer = setTimeout(() => resolve(null), budgetMs); });
+  try {
+    return await Promise.race([task(), timerP]);
+  } finally {
+    clearTimeout(timer);
   }
-
-  // RPC not available — use read-CAS-write (service_role bypasses RLS)
-  const { data, error: readErr } = await supabase
-    .from("profiles")
-    .select("ai_credits")
-    .eq("address", address)
-    .single();
-
-  if (readErr || !data) return false;
-  if (data.ai_credits < amount) return false;
-
-  const newBalance = data.ai_credits - amount;
-  const { error: updateErr } = await supabase
-    .from("profiles")
-    .update({ ai_credits: newBalance })
-    .eq("address", address)
-    .eq("ai_credits", data.ai_credits);
-
-  return !updateErr;
 }
 
-async function atomicRefundCredits(
+/** Synchronous generation used when the BFL submit fails. Bounded to stay
+ *  inside the 60s function cap. */
+async function generateBannerSync(
+  prompt: string,
+  title: string,
+  atmosphere: string,
   address: string,
-  amount: number,
-): Promise<void> {
-  const supabase = getSupabaseServer();
-  const { error } = await supabase
-    .rpc("increment_ai_credits", { user_address: address, inc_amount: amount });
+): Promise<{ image_url: string; image_engine: "bfl" | "openrouter" | "svg" }> {
+  let imageUrl: string | null = null;
 
-  if (!error) return;
+  try {
+    imageUrl = await withBudget(() => generateBflImage(prompt).catch(() => null), BFL_SYNC_BUDGET_MS);
+    if (imageUrl) return { image_url: imageUrl, image_engine: "bfl" };
+  } catch (e: any) {
+    console.warn("⚠️ [Banner] BFL sync failed:", e.message);
+  }
 
-  const { data } = await supabase
-    .from("profiles")
-    .select("ai_credits")
-    .eq("address", address)
-    .single();
+  imageUrl = await withBudget(() => generateOpenRouterImage(prompt), OPENROUTER_SYNC_BUDGET_MS);
+  if (imageUrl) return { image_url: imageUrl, image_engine: "openrouter" };
 
-  if (!data) return;
-  await supabase
-    .from("profiles")
-    .update({ ai_credits: data.ai_credits + amount })
-    .eq("address", address)
-    .eq("ai_credits", data.ai_credits);
+  const svgUrl = await generateSvgBanner(title, atmosphere);
+  await atomicRefundCredits(address, 10);
+  console.warn("⚠️ [Banner] Only SVG placeholder produced (sync path) — 10 credits refunded");
+  return { image_url: svgUrl, image_engine: "svg" };
 }
 
 export async function POST(req: Request) {
@@ -103,42 +91,42 @@ export async function POST(req: Request) {
     if (!atmosphere) atmosphere = "Surrealism";
 
     const articleContext = content
-      ? content.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim().slice(0, 800)
+      ? content.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim().slice(0, 600)
       : "";
 
     const prompt = getCharacterVisualPrompt(bannerDescription || title, mood, title, atmosphere, activeDna, articleContext);
 
-    // Primary engine: FLUX-2 Pro (BFL). Fallback: Gemini 2.5 Flash Image.
-    let imageUrl: string | null = null;
-    let lastError: any = null;
+    const jobId = await createBannerJob({
+      address: normalizedAddress,
+      prompt,
+      title: title || "",
+      atmosphere,
+      jobId: null,
+      pollingUrl: null,
+    });
+
+    // Async path: submit to BFL WITHOUT a webhook_url so BFL returns the
+    // cluster-specific polling_url (in webhook mode BFL omits polling_url and
+    // the reconstructed global URL 404s for cluster-routed tasks, which broke
+    // self-heal). The client polls /api/ai/banner/status, which polls BFL.
+    // Return job_id immediately.
     try {
-      imageUrl = await generateBflImage(prompt);
+      const task = await withBudget(() => submitBflTask(prompt, DEFAULT_BFL_MODEL), BFL_SUBMIT_BUDGET_MS);
+      if (!task) throw new Error("BFL submit timed out");
+
+      await updateBannerJob(jobId, { job_id: task.id, polling_url: task.pollingUrl, status: "processing" });
+      return NextResponse.json({ job_id: jobId, status: "processing" });
     } catch (e: any) {
-      lastError = e;
-      console.warn("⚠️ [Banner] BFL failed, trying Gemini fallback:", e.message);
+      console.warn("⚠️ [Banner] BFL submit failed, using inline fallback:", e.message);
+      const result = await generateBannerSync(prompt, title, atmosphere, normalizedAddress);
+      await updateBannerJob(jobId, {
+        status: result.image_engine === "svg" ? "svg_placeholder" : "ready",
+        image_url: result.image_url,
+        image_engine: result.image_engine,
+        error: result.image_engine === "svg" ? `BFL submit failed: ${e.message}` : null,
+      });
+      return NextResponse.json(result);
     }
-
-    if (!imageUrl) {
-      try {
-        imageUrl = await generateGeminiImage(prompt);
-      } catch (e: any) {
-        lastError = e;
-        console.warn("⚠️ [Banner] Gemini fallback failed:", e.message);
-      }
-    }
-
-    if (!imageUrl) {
-      console.warn("⚠️ [Banner] All AI engines failed — falling back to deterministic SVG banner");
-      imageUrl = await generateSvgBanner(title, atmosphere);
-    }
-
-    if (!imageUrl) {
-      await atomicRefundCredits(normalizedAddress, 10);
-      console.error("❌ [Banner] All engines + SVG fallback failed:", lastError?.message || "unknown");
-      return NextResponse.json({ error: "Banner generation failed. Credits refunded." }, { status: 500 });
-    }
-
-    return NextResponse.json({ image_url: imageUrl });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

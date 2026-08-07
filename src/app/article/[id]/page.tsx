@@ -128,7 +128,7 @@ export default async function ArticlePage({ params }: { params: { id: string } }
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div className="flex items-center gap-8">
                  <LikeButton articleId={article.id} initialLikes={article.likes || 0} authorAddress={article.author_address} />
-                 <PostActions title={article.title} id={article.id} content={article.content} cmcUsername={authorProfile?.cmc_username} authorAddress={article.author_address} />
+                 <PostActions title={article.title} id={article.id} content={article.content} imageUrl={article.image_url} cmcUsername={authorProfile?.cmc_username} authorAddress={article.author_address} />
               </div>
               {article.source_url && (
                 <a href={article.source_url} target="_blank" rel="noopener noreferrer" className="text-xs font-bold uppercase tracking-widest text-[var(--text-secondary)] hover:text-black transition-colors flex items-center gap-2">Source <ExternalLink size={14} /></a>

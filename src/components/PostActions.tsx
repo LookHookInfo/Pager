@@ -1,20 +1,29 @@
 "use client";
 
-import { Share2, Twitter, Send, Copy, Check, AlertCircle, Loader2, RefreshCw } from "lucide-react";
+import { Share2, Twitter, Send, Copy, Check, AlertCircle, Loader2, RefreshCw, Facebook, Instagram } from "lucide-react";
 import { useState } from "react";
 
 interface PostActionsProps {
   title: string;
   id: string;
   content?: string;
+  imageUrl?: string;
   cmcUsername?: string;
   authorAddress?: string;
+}
+
+interface ShareLink {
+  name: string;
+  icon: React.ReactNode;
+  getUrl: () => Promise<string> | string;
+  color: string;
+  needsAsync?: boolean;
 }
 
 const fallbackHashtags = "Web3,Base,Hash";
 const fallbackFormatted = `#${fallbackHashtags.split(',').join(' #')}`;
 
-export default function PostActions({ title, id, content = "", cmcUsername, authorAddress }: PostActionsProps) {
+export default function PostActions({ title, id, content = "", imageUrl, cmcUsername, authorAddress }: PostActionsProps) {
   const [showShareModal, setShowShareModal] = useState(false);
   const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -69,7 +78,116 @@ export default function PostActions({ title, id, content = "", cmcUsername, auth
     return `${title}\n\n${shortDescription}\n\nContinue reading: ${getShareUrl()}\n\n${fallbackFormatted}`;
   };
 
-  const shareLinks = [
+  const copyTextToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+  };
+
+  const toJpegBlob = async (url: string): Promise<Blob> => {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    if (blob.type === "image/jpeg" || blob.type === "image/png") return blob;
+    if (typeof createImageBitmap !== "function") return blob;
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    const jpeg = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+    return jpeg || blob;
+  };
+
+  const downloadBlob = (blob: Blob) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "pager-banner.jpg";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const handleInstagramShare = async () => {
+    const url = getShareUrl();
+
+    // On real mobile the native share sheet hands the banner straight to the
+    // Instagram app. On desktop (where navigator.share is also available in Chrome)
+    // we open instagram.com synchronously at click-time so popup blockers can't
+    // kill the tab after the async AI/upload work below.
+    const isNativeShare =
+      typeof navigator.canShare === "function" &&
+      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+
+    const instaWindow = isNativeShare ? null : window.open("https://www.instagram.com/", "_blank");
+
+    const tweet = generatedTweet || (await generateTweet());
+    const body = (tweet || `${shortDescription}\n\n${fallbackFormatted}`)
+      .replace(/\n\nContinue reading:[^\n]*/g, "")
+      .trim();
+    const caption = `${title}\n\n${body}\n\nRead full article on Pager:\n${url}`;
+    await copyTextToClipboard(caption);
+
+    let file: File | null = null;
+    if (imageUrl) {
+      try {
+        const jpeg = await toJpegBlob(imageUrl);
+        file = new File([jpeg], "pager-banner.jpg", { type: "image/jpeg" });
+      } catch {}
+    }
+
+    // 1) Mobile: native share sheet with the banner file (Instagram app picks it up)
+    if (isNativeShare && file) {
+      try {
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], text: caption, title });
+          setShowShareModal(false);
+          return;
+        }
+      } catch {}
+    }
+
+    // 2) Desktop/fallback: Instagram tab is already open, just download the banner
+    if (file) {
+      try { downloadBlob(file); } catch {}
+    }
+    setToast(
+      instaWindow
+        ? file
+          ? "Caption copied with hashtags, banner downloaded. Post it on Instagram."
+          : "Caption copied with hashtags. Add your banner image and post it on Instagram."
+        : "Popup blocked — allow popups for this site, or open instagram.com manually. Caption copied with hashtags.",
+    );
+    setTimeout(() => setToast(null), 7000);
+    setShowShareModal(false);
+  };
+
+  const handleFacebookShare = async () => {
+    const url = getShareUrl();
+    const tweet = generatedTweet || (await generateTweet());
+    const text = (tweet || `${title}\n\n${shortDescription}\n\n${fallbackFormatted}`)
+      .replace(/\n\nContinue reading:[^\n]*/g, "")
+      .trim();
+
+    await copyTextToClipboard(text);
+
+    window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, "_blank", "noopener,noreferrer");
+    setToast("Post text copied with mentions & hashtags. Paste it (Ctrl+V) into the post field, then set the audience to Public.");
+    setTimeout(() => setToast(null), 7000);
+    setShowShareModal(false);
+  };
+
+  const shareLinks: ShareLink[] = [
     {
       name: "Twitter",
       icon: isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Twitter size={18} />,
@@ -91,7 +209,23 @@ export default function PostActions({ title, id, content = "", cmcUsername, auth
       },
       color: "hover:bg-blue-500",
       needsAsync: false,
-    }
+    },
+    {
+      name: "Facebook",
+      icon: isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Facebook size={18} />,
+      getUrl: () => {
+        return `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(getShareUrl())}`;
+      },
+      color: "hover:bg-blue-600",
+      needsAsync: true,
+    },
+    {
+      name: "Instagram",
+      icon: isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Instagram size={18} />,
+      getUrl: () => "https://www.instagram.com/",
+      color: "hover:bg-pink-500",
+      needsAsync: true,
+    },
   ];
 
   const buildCmcPostText = () => {
@@ -102,18 +236,7 @@ export default function PostActions({ title, id, content = "", cmcUsername, auth
 
   const handleCmcShare = async () => {
     const text = buildCmcPostText();
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-    }
+    await copyTextToClipboard(text);
     setCopied(true);
     setToast("Text copied! Paste it (Ctrl+V) in your CMC post");
     setTimeout(() => setCopied(false), 3000);
@@ -126,7 +249,15 @@ export default function PostActions({ title, id, content = "", cmcUsername, auth
     setShowShareModal(false);
   };
 
-  const handleShareClick = async (link: typeof shareLinks[0]) => {
+  const handleShareClick = async (link: ShareLink) => {
+    if (link.name === "Instagram") {
+      await handleInstagramShare();
+      return;
+    }
+    if (link.name === "Facebook") {
+      await handleFacebookShare();
+      return;
+    }
     const url = await link.getUrl();
     if (url) window.open(url, "_blank", "noopener,noreferrer");
     setShowShareModal(false);
