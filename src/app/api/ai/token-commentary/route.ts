@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getCharacterSystemPrompt } from "@/lib/character";
 import { resolveDna } from "@/lib/character/resolve";
 import { verifySessionAnyAction } from "@/lib/auth";
-import { extractJson, finalFormat } from "@/lib/utils";
+import { finalFormat } from "@/lib/utils";
 import { getTokenByAddress, getTokenCandles, calculateSMA, calculateRSI } from "@/lib/dexscreener";
+import { chatAnyModelJson } from "@/lib/anymodel";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
@@ -21,9 +22,6 @@ export async function POST(req: Request) {
 
     const authError = await verifySessionAnyAction(normalizedAddress, signature, message);
     if (authError) return authError;
-
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) return NextResponse.json({ error: "AI key missing" }, { status: 403 });
 
     const activeDna = await resolveDna(nftTokenId);
     if (!activeDna) return NextResponse.json({ error: `Mascot DNA not found for token #${nftTokenId}` }, { status: 404 });
@@ -119,29 +117,12 @@ OUTPUT FORMAT: STRICT JSON
 }
 `;
 
-    const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://pager.sh",
-        "X-Title": "Pager Protocol",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
-        response_format: { type: "json_object" },
-        temperature: 0.8,
-      }),
+    const result = await chatAnyModelJson({
+      messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
+      temperature: 0.8,
+      maxTokens: 4000,
+      timeoutMs: 45000,
     });
-
-    if (!aiRes.ok) {
-      const err = await aiRes.json().catch(() => ({ error: { message: "AI error" } }));
-      return NextResponse.json({ error: err.error?.message || "AI failed" }, { status: 500 });
-    }
-
-    const aiData = await aiRes.json();
-    const result = extractJson(aiData.choices[0]?.message?.content || "{}");
 
     const finalTitle = (result.title || `${tokenData.symbol} Analysis`).replace(/["']/g, "").trim();
     let finalBody = finalFormat(result.body || "");

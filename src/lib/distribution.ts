@@ -1,3 +1,5 @@
+import { chatAnyModelJson } from "@/lib/anymodel";
+
 export interface BinanceAccount {
   label: string;
   apiKey: string;
@@ -65,11 +67,7 @@ function formatForTelegram(title: string, content: string, articleId: string, au
   return fullMessage;
 }
 
-export async function adaptContent(title: string, html: string, language: string, style: string, userApiKey: string, platform: 'telegram' | 'binance') {
-  // Use system key primarily for autoposting to ensure top quality
-  const activeKey = process.env.OPENROUTER_API_KEY || userApiKey;
-  if (!activeKey) return { title, teaser: html, og_title: title };
-
+export async function adaptContent(title: string, html: string, language: string, style: string, platform: 'telegram' | 'binance') {
   const targetLanguage = language || 'English';
   try {
     const prompt = `
@@ -97,24 +95,13 @@ export async function adaptContent(title: string, html: string, language: string
       }
     `;
 
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: { 
-        "Authorization": `Bearer ${activeKey}`, 
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://pager.sh",
-        "X-Title": "Pager Protocol"
-      },
-      body: JSON.stringify({ 
-        model: "google/gemini-2.5-flash", 
-        messages: [{ role: "user", content: prompt }], 
-        response_format: { type: "json_object" }, 
-        temperature: 0.8 
-      })
+    const { title: newTitle, teaser, og_title } = await chatAnyModelJson({
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.8,
+      maxTokens: 1000,
+      timeoutMs: 25000,
     });
-    const data = await res.json();
-    const result = JSON.parse(data.choices[0]?.message?.content || "{}");
-    return { title: result.title || title, teaser: result.teaser || html, og_title: result.og_title || result.title || title };
+    return { title: newTitle || title, teaser: teaser || html, og_title: og_title || newTitle || title };
   } catch (e: any) { return { title, teaser: html, og_title: title }; }
 }
 

@@ -4,7 +4,8 @@ import { getBtcAnalysisBlock, getMiningSponsorBlock } from "@/lib/character/bloc
 import { resolveDna } from "@/lib/character/resolve";
 import { getSupabaseServer } from "@/lib/supabase";
 import { verifySessionAnyAction } from "@/lib/auth";
-import { finalFormat, extractJson } from "@/lib/utils";
+import { finalFormat } from "@/lib/utils";
+import { chatAnyModelJson } from "@/lib/anymodel";
 
 export const maxDuration = 30;
 export const dynamic = "force-dynamic";
@@ -25,9 +26,6 @@ export async function POST(req: Request) {
 
     const supabase = getSupabaseServer();
     const { data: profile } = await supabase.from("profiles").select("*").eq("address", normalizedAddress).maybeSingle();
-
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) return NextResponse.json({ error: "AI key missing" }, { status: 403 });
 
     const activeDna = await resolveDna(nftTokenId);
     if (!activeDna) return NextResponse.json({ error: `Mascot DNA not found for token #${nftTokenId}. This mascot may not have DNA uploaded. Try a different mascot.` }, { status: 404 });
@@ -55,36 +53,18 @@ export async function POST(req: Request) {
         "title": "Short catchy title in character voice",
         "body": "Rewritten article with HTML tags (<strong>, <em>)",
         "analysis": "Short 2-sentence BTC/Web3 market insight",
-        "banner": "SCENE DESCRIPTION FOR IMAGE GENERATION. Describe a concrete, logical scene that visually tells this article's story:\\n\\n1. WHAT: The article's core subject — name the specific coin, protocol, technology, event, or person.\\n2. WHERE: The physical setting — trading floor, server room, courtroom, mining farm, DeFi vault, government building.\\n3. OBJECTS: 3-5 specific real objects visible in the scene (Bitcoin coins, smart contract code on screen, ASIC rigs, vault door, trading charts with candlesticks, token logos, documents, servers).\\n4. ACTION: What is happening right now — coins flowing, charts spiking, code compiling, documents signing, vaults opening/closing.\\n5. FEELING: The emotional atmosphere — triumphant (green/gold), ominous (red/shadows), urgent (flashing alerts), calm (cool blue).\\n6. MASCOT: How ${activeDna.name} participates in this scene — analyzing a chart, inspecting code, pointing at data, guarding a vault. Not just standing there.\\n\\nWrite 4-5 flowing sentences. The scene must make logical physical sense and immediately communicate WHAT this article is about."
+        "banner": "SHORT VISUAL SCENARIO FOR THE BANNER IMAGE. Read the article and write 4-5 flowing sentences that turn it into a concrete, logical, visually actionable scene. Cover ALL of these:\\n1. SUBJECT: The article's core story — name the specific coin, protocol, technology, event, or person.\\n2. BACKGROUND: The physical setting — trading floor, server room, courtroom, mining farm, DeFi vault, government building, city street.\\n3. MASCOT ACTION & GESTURE: Exactly what ${activeDna.name} does and how — pointing at a spiking chart, inspecting smart contract code on a screen, guarding a vault door, raising hands in triumph, tapping a hologram, reading a contract. Name ONE clear pose.\\n4. EFFECTS: 2-3 visual effects that sell the mood — green/gold sparks for a rally, red alert flashes for a hack, holograms and glowing charts, rain of binary code, confetti, lightning.\\n5. OBJECTS: 3-5 specific real objects visible — Bitcoin coins, trading candlesticks, ASIC rigs, vault door, token logos, documents, servers.\\n\\nRules: the scene must make logical physical sense, have ONE focal point, and immediately communicate what the article is about. ${activeDna.name} is the ONLY character in the scene — no other people, animals, or mascots. Do NOT describe the mascot's clothes or appearance — only what it does and its gesture."
       }
 
       ARTICLE:
       ${content.slice(0, 10000)}
     `;
 
-    const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://pager.sh",
-        "X-Title": "Pager Protocol",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
-        response_format: { type: "json_object" },
-        temperature: 0.8,
-      }),
+    const result = await chatAnyModelJson({
+      messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
+      temperature: 0.8,
+      timeoutMs: 30000,
     });
-
-    if (!aiRes.ok) {
-      const err = await aiRes.json().catch(() => ({ error: { message: "AI error" } }));
-      return NextResponse.json({ error: err.error?.message || "AI failed" }, { status: 500 });
-    }
-
-    const aiData = await aiRes.json();
-    const result = extractJson(aiData.choices[0]?.message?.content || "{}");
 
     const finalTitle = (result.title || providedTitle || "New Intel").replace(/["']/g, "").trim();
     let finalBody = finalFormat(result.body || "");

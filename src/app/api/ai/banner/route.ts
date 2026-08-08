@@ -2,61 +2,28 @@ import { NextResponse } from "next/server";
 import { getCharacterVisualPrompt } from "@/lib/character";
 import { resolveDna } from "@/lib/character/resolve";
 import { getSupabaseServer } from "@/lib/supabase";
-import { submitBflTask, generateBflImage, generateOpenRouterImage, generateSvgBanner } from "@/lib/image";
-import { DEFAULT_BFL_MODEL } from "@/lib/bfl-models";
+import { sanitizeBannerPrompt, generateAnyModelImage, generateSvgBanner } from "@/lib/image";
+import { ATMOSPHERE_PRESETS, MOODS } from "@/lib/moods";
 import { verifySessionAnyAction } from "@/lib/auth";
 import { atomicDebitCredits, atomicRefundCredits } from "@/lib/credits";
-import { createBannerJob, updateBannerJob } from "@/lib/banner-jobs";
+import { withBudget } from "@/lib/with-budget";
 
-// Vercel Hobby caps serverless functions at 60s — the async BFL-polling flow
-// must be the primary path. The inline fallback below is budgeted to fit.
+// Vercel Hobby caps serverless functions at 60s. Generation is synchronous
+// (AnyModel), with an SVG placeholder as the final fallback.
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
-const BFL_SUBMIT_BUDGET_MS = 25000;
-const BFL_SYNC_BUDGET_MS = 20000;
-const OPENROUTER_SYNC_BUDGET_MS = 30000;
+const KNOWN_ATMOSPHERES = new Set(ATMOSPHERE_PRESETS);
+const KNOWN_MOODS = new Set(MOODS.map((m) => m.id));
 
-async function withBudget<T>(task: () => Promise<T | null>, budgetMs: number): Promise<T | null> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timerP = new Promise<T | null>((resolve) => { timer = setTimeout(() => resolve(null), budgetMs); });
-  try {
-    return await Promise.race([task(), timerP]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/** Synchronous generation used when the BFL submit fails. Bounded to stay
- *  inside the 60s function cap. */
-async function generateBannerSync(
-  prompt: string,
-  title: string,
-  atmosphere: string,
-  address: string,
-): Promise<{ image_url: string; image_engine: "bfl" | "openrouter" | "svg" }> {
-  let imageUrl: string | null = null;
-
-  try {
-    imageUrl = await withBudget(() => generateBflImage(prompt).catch(() => null), BFL_SYNC_BUDGET_MS);
-    if (imageUrl) return { image_url: imageUrl, image_engine: "bfl" };
-  } catch (e: any) {
-    console.warn("⚠️ [Banner] BFL sync failed:", e.message);
-  }
-
-  imageUrl = await withBudget(() => generateOpenRouterImage(prompt), OPENROUTER_SYNC_BUDGET_MS);
-  if (imageUrl) return { image_url: imageUrl, image_engine: "openrouter" };
-
-  const svgUrl = await generateSvgBanner(title, atmosphere);
-  await atomicRefundCredits(address, 10);
-  console.warn("⚠️ [Banner] Only SVG placeholder produced (sync path) — 10 credits refunded");
-  return { image_url: svgUrl, image_engine: "svg" };
-}
+// AnyModel image generation is synchronous. Budget must fit the 60s cap even
+// when the AnyModel call returns late and Pinata pinning adds a few seconds.
+const ANYMODEL_BUDGET_MS = 45000;
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { mood = "neutral", title, bannerDescription, atmosphere: providedAtmosphere, nftTokenId, userAddress, signature, message, content } = body;
+    const { mood = "neutral", title, bannerDescription, atmosphere: providedAtmosphere, nftTokenId, userAddress, signature, message } = body;
 
     if (!userAddress) return NextResponse.json({ error: "Address required" }, { status: 400 });
     if (!nftTokenId) return NextResponse.json({ error: "NFT Mascot required" }, { status: 400 });
@@ -86,47 +53,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: `Mascot DNA not found for token #${nftTokenId}. Try a different mascot.` }, { status: 404 });
     }
 
-    let atmosphere = (providedAtmosphere || "Surrealism")
-      .replace(/["`${}]/g, "").trim().slice(0, 100);
-    if (!atmosphere) atmosphere = "Surrealism";
-
-    const articleContext = content
-      ? content.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim().slice(0, 600)
+    // Only allow controlled enums — arbitrary user strings must never reach the
+    // image prompt (image models hard-block unexpected content). Unknown values
+    // fall back to safe defaults.
+    let atmosphere = providedAtmosphere
+      ? providedAtmosphere.replace(/["`${}]/g, "").trim().slice(0, 100)
       : "";
+    if (!KNOWN_ATMOSPHERES.has(atmosphere)) atmosphere = "Surrealism";
+    const safeMood = KNOWN_MOODS.has(mood) ? mood : "neutral";
 
-    const prompt = getCharacterVisualPrompt(bannerDescription || title, mood, title, atmosphere, activeDna, articleContext);
+    const prompt = sanitizeBannerPrompt(getCharacterVisualPrompt(safeMood, atmosphere, activeDna, bannerDescription || title, title));
 
-    const jobId = await createBannerJob({
-      address: normalizedAddress,
-      prompt,
-      title: title || "",
-      atmosphere,
-      jobId: null,
-      pollingUrl: null,
-    });
+    // Synchronous AnyModel generation. The mascot image is passed as a base64
+    // data URL reference (I2I) — models without image-to-image support simply
+    // ignore it. The image is compressed to WebP and pinned to IPFS inside
+    // generateAnyModelImage; the client gets the ready URL inline.
+    const imageUrl = await withBudget(
+      () => generateAnyModelImage(prompt, { inputImage: activeDna.image_url || undefined }),
+      ANYMODEL_BUDGET_MS,
+    );
 
-    // Async path: submit to BFL WITHOUT a webhook_url so BFL returns the
-    // cluster-specific polling_url (in webhook mode BFL omits polling_url and
-    // the reconstructed global URL 404s for cluster-routed tasks, which broke
-    // self-heal). The client polls /api/ai/banner/status, which polls BFL.
-    // Return job_id immediately.
-    try {
-      const task = await withBudget(() => submitBflTask(prompt, DEFAULT_BFL_MODEL), BFL_SUBMIT_BUDGET_MS);
-      if (!task) throw new Error("BFL submit timed out");
-
-      await updateBannerJob(jobId, { job_id: task.id, polling_url: task.pollingUrl, status: "processing" });
-      return NextResponse.json({ job_id: jobId, status: "processing" });
-    } catch (e: any) {
-      console.warn("⚠️ [Banner] BFL submit failed, using inline fallback:", e.message);
-      const result = await generateBannerSync(prompt, title, atmosphere, normalizedAddress);
-      await updateBannerJob(jobId, {
-        status: result.image_engine === "svg" ? "svg_placeholder" : "ready",
-        image_url: result.image_url,
-        image_engine: result.image_engine,
-        error: result.image_engine === "svg" ? `BFL submit failed: ${e.message}` : null,
-      });
-      return NextResponse.json(result);
+    if (imageUrl) {
+      return NextResponse.json({ image_url: imageUrl, image_engine: "anymodel" });
     }
+
+    // Total failure: refund credits and serve a branded SVG placeholder so the
+    // article still gets a banner instead of an error screen.
+    await atomicRefundCredits(normalizedAddress, 10);
+    const svgUrl = await generateSvgBanner(title || "Pager", atmosphere);
+    if (svgUrl) {
+      return NextResponse.json({ image_url: svgUrl, image_engine: "svg", error: "anymodel_failed" });
+    }
+    return NextResponse.json({ error: "Banner engine unavailable. Please try again." }, { status: 502 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

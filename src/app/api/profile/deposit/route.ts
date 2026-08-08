@@ -72,7 +72,7 @@ export async function POST(req: Request) {
     const supabaseServer = getSupabaseServer();
 
     // 3. АТОМАРНОЕ ОБНОВЛЕНИЕ БАЛАНСА
-    const { data: rpcResult, error: rpcError } = await supabaseServer.rpc('increment_ai_credits', { 
+    const { error: rpcError } = await supabaseServer.rpc('increment_ai_credits', { 
       user_address: normalizedAddress, 
       inc_amount: parsedAmount 
     });

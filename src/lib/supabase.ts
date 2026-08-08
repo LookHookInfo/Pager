@@ -9,8 +9,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Клиент для сервера (использует service_role если есть, иначе анонимный)
 // NOTE: Next.js patches global fetch and caches GET responses (this froze
-// banner_jobs reads — the status route kept seeing the creation-time row even
-// after the job became ready). Force cache: "no-store" so every read is fresh.
+// reads in several routes — they kept seeing stale rows). Force
+// cache: "no-store" so every read is fresh.
 export const getSupabaseServer = () => {
   if (!supabaseServiceKey) {
     console.warn("⚠️ [Supabase] Service Role Key is missing, using Anon Key for server operations.");

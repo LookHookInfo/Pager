@@ -1,8 +1,5 @@
 "use client";
 
-import { Camera, Loader2 } from "lucide-react";
-import { useRef } from "react";
-
 interface Props {
   formData: any;
   displayData: any;
@@ -12,7 +9,7 @@ interface Props {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
 }
 
-export default function ProfileIdentity({ formData, displayData, isUploading, onFormChange, onAvatarUpload, fileInputRef }: Props) {
+export default function ProfileIdentity({ formData, onFormChange }: Props) {
   return (
     <div className="space-y-4">
       <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, Suspense } from "react";
 import { getContract, readContract } from "thirdweb";
-import { useActiveAccount, useSendTransaction } from "thirdweb/react";
+import { useActiveAccount } from "thirdweb/react";
 import { base } from "thirdweb/chains";
 import { supabase } from "@/lib/supabase";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -34,7 +34,6 @@ function WritePageInner() {
   const account = useActiveAccount();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { mutate: sendTransaction } = useSendTransaction();
   const authRef = useRef<{ sig: string; msg: string } | null>(null);
 
   const editorRef = useRef<HTMLDivElement>(null);
@@ -63,7 +62,6 @@ function WritePageInner() {
   const [processingStep, setProcessingStep] = useState<"idle" | "scraping" | "rewriting" | "banner" | "done">("idle");
   const [tokenAddress, setTokenAddress] = useState("");
   const [tokenResults, setTokenResults] = useState<any[]>([]);
-  const [isSearchingToken, setIsSearchingToken] = useState(false);
 
   const isContractAddress = (value: string): boolean => {
     const trimmed = value.trim();
@@ -333,15 +331,12 @@ function WritePageInner() {
 
   const handleSearchToken = async () => {
     if (!tokenAddress.trim()) return;
-    setIsSearchingToken(true);
     try {
       const res = await fetch(`/api/token?q=${encodeURIComponent(tokenAddress.trim())}`);
       const data = await res.json();
       setTokenResults(data.tokens || []);
     } catch {
       addNotification("Token search failed", "error");
-    } finally {
-      setIsSearchingToken(false);
     }
   };
 

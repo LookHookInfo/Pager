@@ -15,7 +15,7 @@ import ProfileIdentity from "@/components/ProfileIdentity";
 import ProfileDistribution from "@/components/ProfileDistribution";
 
 export default function ProfileHeader({
-  profile, totalArticles, totalRewards,
+  profile, totalArticles,
 }: {
   profile: any; totalArticles: number; totalRewards: number;
 }) {

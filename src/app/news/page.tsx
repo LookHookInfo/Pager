@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import {
   Search, ExternalLink, Loader2, Newspaper, Filter,
-  ArrowUpRight, Sparkles, RefreshCw, ChevronDown
+  Sparkles, RefreshCw, ChevronDown
 } from "lucide-react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";

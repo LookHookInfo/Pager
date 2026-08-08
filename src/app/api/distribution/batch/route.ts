@@ -33,7 +33,6 @@ export async function POST(req: Request) {
     if (!article) return NextResponse.json({ error: "Article not found" }, { status: 404 });
 
     const { data: profile } = await supabase.from("profiles").select("name").eq("address", normalizedAddress).single();
-    const aiKey = process.env.OPENROUTER_API_KEY || "";
     const authorName = profile?.name || `${profileAddress.slice(0, 6)}...`;
     const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://pager.lookhook.info").replace(/\/$/, "");
 
@@ -46,7 +45,7 @@ export async function POST(req: Request) {
       let imageUrl = article.image_url;
 
       if (account?.language || account?.style) {
-        const adapted = await adaptContent(title, content, account.language || "English", account.style || "Professional", aiKey, type);
+        const adapted = await adaptContent(title, content, account.language || "English", account.style || "Professional", type);
         title = adapted.title;
         content = adapted.teaser;
       }

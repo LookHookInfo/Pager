@@ -49,7 +49,7 @@ async function getProfileData(address: string, page: number) {
   const totalRewards = allStats?.reduce((sum, art) => sum + (art.likes || 0), 0) || 0;
 
   // 3. Получаем статьи только для текущей страницы (оптимизировано)
-  const { data: articles, error, count } = await supabase
+  const { data: articles, count } = await supabase
     .from("articles")
     .select("id, title, content, image_url, author_address, created_at, likes", { count: 'exact' })
     .eq('author_address', cleanAddress)

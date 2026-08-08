@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
 import { Loader2, ArrowLeft, TrendingUp, TrendingDown, ExternalLink, BarChart3, Droplets, Flame } from "lucide-react";
 import TokenChart from "@/components/TokenChart";
 import Navbar from "@/components/Navbar";

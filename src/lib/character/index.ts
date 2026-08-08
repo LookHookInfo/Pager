@@ -11,15 +11,17 @@ export interface CustomDna {
   image_url: string;
 }
 
-// Atmosphere visual descriptors for image generation
-// ALL styles share a caricature foundation — exaggerated cartoon proportions, bold thick outlines, expressive features
+// Atmosphere visual descriptors for image generation.
+// Each style renders the MASCOT ITSELF in the chosen aesthetic (like the old
+// archive version did) — the mascot is painted as the central piece of the
+// style, not just placed in front of a styled background.
 const ATMOSPHERE_VISUALS: Record<string, string> = {
-  Surrealism: "CARICATURE SURREAL CARTOON: EXAGGERATED rubber hose caricature proportions, wildly distorted cartoon anatomy, giant oversized heads and tiny bodies, bulging crazy eyes, massive goofy grins. Adult swim hand-drawn caricature aesthetic with rough sketchy lineart, cel-shaded flat colors. Mind-bending impossible caricature scenes — giant melting clocks bigger than buildings, characters stretched like taffy, portals with eyeballs. Vibrant toxic color palettes, mad scientist laboratory vibe, interdimensional portal aesthetic. Messy expressive brushstrokes, dynamic smear frames, grotesque yet hilarious character distortions. EVERYTHING IS A CARICATURE — no realistic proportions allowed.",
-  "Pixel Art": "CARICATURE PIXEL ART SCENE: A richly detailed retro 16-bit pixel art illustration that tells a clear story. The scene is densely packed with RECOGNIZABLE objects directly from the article — specific technology, buildings, characters, devices, charts, tokens, weapons, vehicles — all rendered in detailed pixel art with at least 32 colors. The mascot character is prominently positioned interacting with these article-specific elements. Background is a full detailed environment (not empty) — a cityscape, office, trading floor, server room, or landscape matching the article topic. Dynamic pixel lighting, parallax depth layers, detailed pixel textures on every surface. Think modern indie pixel art games (Hyper Light Drifter, Celeste) — detailed, colorful, storytelling through environmental detail. The scene must immediately communicate WHAT the article is about through its visual elements.",
-  "Brick Style": "CARICATURE LEGO BRICK: Everything is built from MASSIVE oversized LEGO bricks with VISIBLE gigantic studs on every surface. Exaggerated caricature proportions — characters have giant blocky LEGO heads with classic yellow plastic skin, huge cylindrical LEGO hands, oversized brick-built features. Giant chunky bricks stacked in comically impossible ways, primary colors (bright red, yellow, blue, green) with bold plastic sheen. Every surface shows large visible LEGO studs, clutch power gaps between bricks, exaggerated modular construction. Characters stand on giant LEGO baseplates, buildings are massive brick towers defying physics. The entire world is CARICATURE LEGO — think LEGO Movie meets cartoon exaggeration with gigantic chunky bricks, oversized stud details, and toy-like volumetric build. PLASTIC TEXTURE visible everywhere with bold cartoon lighting.",
-  "Anime Style": "CARICATURE ANIME: EXTREME over-the-top caricature anime — SUPER-DEFORMED (SD/chibi) proportions with ENORMOUS shiny eyes (60% of face), tiny noses, giant expressive mouths with visible teeth grit. Huge dramatic sweatdrops, massive angular action lines, comically oversized hair spikes defying gravity, exaggerated speed lines everywhere. THICK dynamic cel-shaded lineart with vibrant gradient explosions, dramatic lens flares, excessive sakura petals, over-the-top aura effects (flames, lightning, sparkle backgrounds). Characters strike extreme dramatic poses with giant exaggerated emotion faces — HUGE teary eyes, massive angry veins popping, enormous happy grins showing all teeth. Full cinematic anime composition with caricature distortion — characters can stretch, squash, and deform for comedic effect while staying in anime aesthetic.",
-  "Graffiti": "CARICATURE GRAFFITI MURAL: EXTREME caricature graffiti illustration — massively oversized spray-painted features, wildly exaggerated wildstyle proportions, huge dripping aerosol drips, giant bold cartoon outlines like comic book borders. The mascot character is a vibrant caricature graffiti piece — enormous wide eyes painted with drip effects, comically oversized spray cans, exaggerated urban proportions (huge heads, baggy clothes drawn in spray paint). Bold wide aerosol outlines, dripping paint fills, stencil textures, paint splatters, giant tags in background. The character and environment form a seamless cohesive graffiti mural on brick wall canvas. Vibrant street color palette with exaggerated neon pops, all rendered as one unified caricature graffiti artwork with maximum hip-hop attitude.",
-  Comics: "CARICATURE COMIC BOOK PANEL: Bold thick ink outlines, halftone dot shading, Ben Day dots texture, dramatic dynamic panel composition. The scene is structured like a comic book page with visible panel borders, action lines, and impact effects (POW! BAM! ZOOM!). The mascot character is drawn in a bold Western comic style — strong jawline, expressive eyes, dynamic action pose with speed lines. Background features detailed ink crosshatching, dramatic shadows with stark black/white contrast, and speech bubble-style thought elements. Color palette: bold primary colors with cel-shading, high contrast, dramatic rim lighting. Think Marvel/DC meets caricature — exaggerated superhero proportions, over-the-top action composition, every element tells part of the story through visual sequencing. Article-specific objects are integrated as comic props — coins as shields, charts as prophecy scrolls, contracts as ancient manuscripts.",
+  Surrealism: "Surrealist editorial illustration: the mascot is rendered in melting, dreamlike surrealist style — distorted flowing shapes, painterly textures, uncanny proportion shifts; surreal objects and impossible scenes around it, vibrant unnatural color palettes, soft volumetric light.",
+  "Pixel Art": "Detailed 16-bit pixel art: the mascot is rendered as a chunky crisp pixel-art sprite with dithering and CRT glow, integrated into a richly detailed pixel environment; cinematic pixel lighting, deep color depth, carefully composed scene.",
+  "Brick Style": "Toy-like blocky construction illustration: the mascot is built from giant glossy brick blocks with visible studs and plastic sheen; modular building aesthetic, primary colors, playful volumetric build, soft studio lighting.",
+  "Anime Style": "Bright cel-shaded anime illustration: the mascot drawn in clean anime style with large glossy expressive eyes, sharp lineart, vibrant cel-shading with soft gradients. BRIGHT DAYLIGHT scene: clear blue sky, white fluffy clouds, vivid pastel color palette, soft sunny glow — no dark backgrounds, no night scenes, no heavy shadows, no silhouettes.",
+  Graffiti: "Graffiti street art mural: the mascot is painted as the central graffiti character — bold wide aerosol outlines, spray-painted fills with dripping paint effects, stencil textures, paint splatters; the whole scene is one cohesive graffiti mural on an urban brick wall canvas, vibrant street colors with neon pops, bold hip-hop attitude.",
+  Comics: "Bold comic book panel: the mascot drawn in dynamic comic ink style with thick outlines, halftone dots and Ben Day textures, strong jawline, expressive eyes and an action pose with speed lines; dramatic panel composition, bold primary colors, high contrast.",
 };
 
 const ATMOSPHERE_TEXT_INSTRUCTIONS: Record<string, string> = {
@@ -34,9 +36,7 @@ const ATMOSPHERE_TEXT_INSTRUCTIONS: Record<string, string> = {
 function getAtmosphereVisual(atmosphere: string): string {
   const known = ATMOSPHERE_VISUALS[atmosphere];
   if (known) return known;
-  const clean = atmosphere.replace(/["'`]/g, "").trim().slice(0, 60);
-  if (!clean) return "cinematic lighting, volumetric rays, deep colors, atmospheric depth";
-  return `CARICATURE CARTOON ANIMATION STYLE: the entire image is a caricature illustration in "${clean}" cartoon aesthetic — exaggerated cartoon proportions, giant expressive heads, thick bold outlines, vibrant cel-shaded colors, rubbery physics, big googly eyes, over-the-top action poses. Everything is stylized caricature: ${clean} visual style with huge ${clean} details, giant ${clean} elements, bold ${clean} color palette, exaggerated ${clean} design language rendered as a cohesive caricature cartoon artwork. NO realism — pure cartoon exaggeration in ${clean} universe.`;
+  return "CARICATURE CARTOON ANIMATION STYLE: exaggerated cartoon proportions, giant expressive heads, thick bold outlines, vibrant cel-shaded colors, rubbery physics, big googly eyes, over-the-top action poses. Everything stylized as one cohesive caricature cartoon artwork.";
 }
 
 function getAtmosphereTextInstruction(atmosphere: string): string {
@@ -48,33 +48,79 @@ function getAtmosphereTextInstruction(atmosphere: string): string {
 }
 
 /**
+ * Extracts the mascot's APPEARANCE core from its DNA physical_description.
+ * Keeps the full character part (proportions, face, gear) — like the old
+ * archive version, which used the complete physical_description — but drops
+ * the trailing environment/style sections (ENVIRONMENT DNA, STYLE SIGNATURE,
+ * BACKGROUND) that would fight the user-selected atmosphere. Capped and
+ * cleaned so arbitrary NFT metadata can never break the prompt or trip
+ * moderation; the route-level sanitizer (sanitizeBannerPrompt) runs on top.
+ */
+function getMascotAppearance(dna: CustomDna): string {
+  let raw = (dna.physical_description || "")
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  // Drop leading boilerplate headers so the character core (not a style note)
+  // fills the budget.
+  raw = raw.replace(/^(visual style|visual|style|description|character)\s*:\s*/i, "");
+  if (!raw) {
+    return "A stylized cartoon mascot with exaggerated proportions, oversized head, big expressive eyes, bold outlines, and vibrant colors.";
+  }
+  // Drop environment/style tail sections — they describe a pre-set background
+  // that conflicts with the chosen atmosphere. Everything before them is the
+  // mascot itself and is kept IN FULL for maximum character fidelity.
+  raw = raw.replace(/\s*(environment dna|background dna|setting|environment|style signature)\s*:.*$/i, "");
+  const MAX = 2000;
+  let s = raw.slice(0, MAX);
+  const lastSpace = s.lastIndexOf(" ");
+  if (lastSpace > 400) s = s.slice(0, lastSpace);
+  return s.trim() || raw.slice(0, MAX);
+}
+
+/**
  * Generates a visual prompt for image generation engines.
- * Priority: article meaning → emotional feeling → concrete details → style.
+ * The article's CORE MEANING (the safe, LLM-generated banner_description) sets
+ * the scene and the mascot is placed INTO it as a participant — the structure
+ * that produced the best mascot fidelity. Raw user article text is deliberately
+ * NOT included (image models hard-block arbitrary user text); the mascot
+ * reference image is passed separately as the AnyModel input image, and the
+ * whole prompt is sanitized by sanitizeBannerPrompt() at the call site.
  */
 export function getCharacterVisualPrompt(
-  scene: string,
   mood: string = "neutral",
-  articleTitle?: string,
   atmosphere: string = "Cinematic Digital Art",
   activeDna?: CustomDna,
-  articleContext?: string,
+  scene?: string,
+  articleTitle?: string,
 ): string {
   const moodKey = mood.toLowerCase();
   const visualMood = MOOD_ATMOSPHERES[moodKey] || MOOD_ATMOSPHERES.neutral;
 
   if (!activeDna) throw new Error("DNA Protocol missing.");
 
+  const cleanScene = (scene || "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
+
+  const cleanTitle = (articleTitle || "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+
   return `
     TASK: Create a 16:9 editorial illustration that instantly communicates the CORE MEANING of this article.
 
     [WHAT THIS ARTICLE IS ABOUT — THIS IS THE MOST CRITICAL SECTION]
     The scene must tell a clear visual story. A viewer who knows nothing about crypto must understand the topic just by looking.
-    - CORE SUBJECT: ${scene}
-    - ARTICLE DETAILS: ${articleContext || scene}
+    - CORE SUBJECT: ${cleanScene || cleanTitle || "The latest crypto news"}
     - EMOTIONAL CORE: What feeling does this article carry? Use this mood: ${visualMood}
 
     [SCENE COMPOSITION]
-    - Set the mascot character ${activeDna.name} (${activeDna.physical_description}) INTO the scene as a participant, not a decoration.
+    - Set the mascot character ${activeDna.name} (${getMascotAppearance(activeDna)}) INTO the scene as a participant, not a decoration.
     - The mascot interacts with REAL objects from the article: coins, charts, contracts, servers, logos, documents, buildings.
     - Background must show the article's setting: trading floor, server room, courtroom, DeFi vault, mining farm, etc.
     - Every object in the scene must relate to the article's content. No random props.
@@ -93,7 +139,7 @@ export function getCharacterVisualPrompt(
     5. EMOTIONAL CLARITY: The mood and lighting reinforce the article's message — bullish = green/gold energy, bearish = red/storm, hack = red alert/broken vaults.
     6. NO TEXT OR LETTERS in the image.
 
-    ${articleTitle ? `Article: "${articleTitle.toUpperCase()}"` : ""}
+    ${cleanTitle ? `Article: "${cleanTitle.toUpperCase()}"` : ""}
   `.trim();
 }
 

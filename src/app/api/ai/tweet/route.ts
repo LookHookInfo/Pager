@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
+import { chatAnyModel } from "@/lib/anymodel";
 
 export const maxDuration = 15;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    const { title, content, userAddress, articleUrl } = await req.json();
+    const { title, content, articleUrl } = await req.json();
 
     if (!title) return NextResponse.json({ error: "Title required" }, { status: 400 });
-
-    const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) return NextResponse.json({ error: "AI key missing" }, { status: 403 });
 
     const cleanContent = (content || "")
       .replace(/<[^>]*>/g, "")
@@ -18,20 +16,11 @@ export async function POST(req: Request) {
       .trim()
       .slice(0, 3000);
 
-    const aiRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://pager.sh",
-        "X-Title": "Pager Protocol",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content: `You are a viral Web3 social media copywriter. You write tweets that get engagement — provocative, punchy, clickbait-worthy but factual.
+    const raw = await chatAnyModel({
+      messages: [
+        {
+          role: "system",
+          content: `You are a viral Web3 social media copywriter. You write tweets that get engagement — provocative, punchy, clickbait-worthy but factual.
 
 IMPORTANT: You generate ONLY the hook and hashtags. The link will be added automatically by the system. DO NOT include any URL or "Continue reading" in your output.
 
@@ -45,24 +34,17 @@ RULES:
 4. NO emojis. NO "thread". NO "gm" or "wagmi".
 5. Sound like a smart degen, not a corporate account.
 6. Output ONLY valid JSON. Nothing else.`
-          },
-          {
-            role: "user",
-            content: `Generate a viral tweet hook and hashtags for this article:\n\nTITLE: ${title}\n\nCONTENT: ${cleanContent}`
-          }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.9,
-      }),
+        },
+        {
+          role: "user",
+          content: `Generate a viral tweet hook and hashtags for this article:\n\nTITLE: ${title}\n\nCONTENT: ${cleanContent}`
+        }
+      ],
+      temperature: 0.9,
+      maxTokens: 300,
+      timeoutMs: 20000,
     });
 
-    if (!aiRes.ok) {
-      const err = await aiRes.json().catch(() => ({}));
-      return NextResponse.json({ error: err.error?.message || "AI failed" }, { status: 500 });
-    }
-
-    const aiData = await aiRes.json();
-    const raw = aiData.choices[0]?.message?.content || "{}";
     const match = raw.match(/\{[\s\S]*\}/);
     const result = match ? JSON.parse(match[0]) : {};
 

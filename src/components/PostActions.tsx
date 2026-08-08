@@ -29,7 +29,6 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
   const [toast, setToast] = useState<string | null>(null);
   const [generatedTweet, setGeneratedTweet] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [tweetError, setTweetError] = useState(false);
 
   const decodeHtml = (html: string) => {
     if (typeof document === "undefined") return html;
@@ -51,7 +50,6 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
   const generateTweet = async () => {
     if (generatedTweet) return generatedTweet;
     setIsGenerating(true);
-    setTweetError(false);
     try {
       const res = await fetch("/api/ai/tweet", {
         method: "POST",
@@ -67,7 +65,6 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
       setGeneratedTweet(data.tweet);
       return data.tweet;
     } catch {
-      setTweetError(true);
       return null;
     } finally {
       setIsGenerating(false);
@@ -192,7 +189,6 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
       name: "Twitter",
       icon: isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Twitter size={18} />,
       getUrl: async () => {
-        const url = getShareUrl();
         const tweet = await generateTweet();
         const text = tweet || getFallbackTweet();
         return `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;

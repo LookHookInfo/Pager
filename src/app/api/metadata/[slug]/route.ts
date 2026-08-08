@@ -3,7 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { MASCOTS_CONTRACT_ADDRESS } from "@/lib/web3";
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: { slug: string } }
 ) {
   try {
