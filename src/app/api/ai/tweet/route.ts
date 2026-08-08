@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { chatAnyModel } from "@/lib/anymodel";
 
-export const maxDuration = 15;
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
@@ -42,7 +42,7 @@ RULES:
       ],
       temperature: 0.9,
       maxTokens: 300,
-      timeoutMs: 20000,
+      timeoutMs: 40000,
     });
 
     const match = raw.match(/\{[\s\S]*\}/);

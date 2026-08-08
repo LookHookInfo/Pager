@@ -10,18 +10,14 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@solana-program/token-2022": "^0.13.0",
     "@supabase/supabase-js": "^2.105.1",
-    "@tailwindcss/typography": "^0.5.19",
     "browser-image-compression": "^2.0.2",
-    "clsx": "^2.1.1",
     "lightweight-charts": "^5.2.0",
     "lucide-react": "^0.378.0",
     "next": "14.2.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sharp": "^0.34.5",
-    "tailwind-merge": "^2.3.0",
     "thirdweb": "^5.23.0"
   },
   "devDependencies": {

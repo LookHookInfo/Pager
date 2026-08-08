@@ -1,7 +1,17 @@
 import { extractJson } from "@/lib/utils";
 
 export const ANYMODEL_TEXT_MODEL = () =>
-  process.env.ANYMODEL_TEXT_MODEL?.trim() || "gc/gemini-3.1-flash-lite-preview";
+  process.env.ANYMODEL_TEXT_MODEL?.trim() || "ag/gemini-3.5-flash-low";
+
+// Fallback used when the primary model's upstream is down / rate-limited.
+// gemini-2.5-flash is vision-capable and stable, so the DNA scan keeps working.
+export const ANYMODEL_FALLBACK_TEXT_MODEL = () =>
+  process.env.ANYMODEL_FALLBACK_TEXT_MODEL?.trim() || "gc/gemini-2.5-flash";
+
+// Statuses that mean "upstream hiccup", not a config bug — safe to retry on
+// the fallback model. 400 is included because some models reject image_url
+// input with a 400, which a vision-capable fallback resolves.
+const UPSTREAM_RETRYABLE = new Set([400, 408, 425, 429, 500, 502, 503, 504]);
 
 export interface AnyModelMessage {
   role: "system" | "user" | "assistant";
@@ -29,6 +39,7 @@ export async function chatAnyModel(options: ChatAnyModelOptions): Promise<string
   if (!apiKey) throw new Error("ANYMODEL_API_KEY missing");
 
   const model = options.model || ANYMODEL_TEXT_MODEL();
+  const fallback = ANYMODEL_FALLBACK_TEXT_MODEL();
 
   const body: Record<string, unknown> = {
     model,
@@ -38,17 +49,27 @@ export async function chatAnyModel(options: ChatAnyModelOptions): Promise<string
   if (options.temperature != null) body.temperature = options.temperature;
   if (options.maxTokens) body.max_tokens = options.maxTokens;
 
-  const res = await fetch("https://anymodel.org/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(options.timeoutMs || 30000),
-  });
+  const attempt = async (target: string): Promise<string> => {
+    // The fallback attempt gets a shorter budget (capped at 15s) so two
+    // sequential calls fit the route's maxDuration (60s on Vercel Hobby).
+    const attemptTimeout = target === fallback ? Math.min(options.timeoutMs || 30000, 15000) : options.timeoutMs || 30000;
+    const res = await fetch("https://anymodel.org/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ...body, model: target }),
+      signal: AbortSignal.timeout(attemptTimeout),
+    });
 
-  if (!res.ok) {
+    if (res.ok) {
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) throw new Error("Empty response from AnyModel");
+      return content as string;
+    }
+
     const err = await res.text().catch(() => "unknown");
     const hint =
       res.status === 401
@@ -59,14 +80,28 @@ export async function chatAnyModel(options: ChatAnyModelOptions): Promise<string
             ? " — text model not found/supported (check ANYMODEL_TEXT_MODEL in .env)"
             : "";
     console.error(`AnyModel chat failed: ${res.status} — ${err.slice(0, 300)}${hint}`);
-    throw new Error(`AnyModel AI error (${res.status})`);
+    const e = new Error(`AnyModel AI error (${res.status})`) as Error & { status?: number };
+    e.status = res.status;
+    throw e;
+  };
+
+  try {
+    return await attempt(model);
+  } catch (e: any) {
+    // Transient upstream failures (429 / 5xx / timeout / vision-rejecting 400)
+    // → retry once with the fallback model. Auth/config errors (401/402/404/406)
+    // are NOT retried — a different model won't fix a bad key or empty balance.
+    const retryable = e.name === "TimeoutError" || (e.status && UPSTREAM_RETRYABLE.has(e.status));
+    if (!retryable || model === fallback) throw e;
+
+    console.warn(`AnyModel primary model ${model} failed, falling back to ${fallback}`);
+    try {
+      return await attempt(fallback);
+    } catch (f: any) {
+      console.error(`AnyModel fallback ${fallback} also failed: ${f.message}`);
+      throw f;
+    }
   }
-
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error("Empty response from AnyModel");
-
-  return content as string;
 }
 
 /**

@@ -121,7 +121,7 @@ OUTPUT FORMAT: STRICT JSON
       messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
       temperature: 0.8,
       maxTokens: 4000,
-      timeoutMs: 45000,
+      timeoutMs: 40000,
     });
 
     const finalTitle = (result.title || `${tokenData.symbol} Analysis`).replace(/["']/g, "").trim();

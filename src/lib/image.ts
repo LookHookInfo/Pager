@@ -118,6 +118,21 @@ export interface AnyModelImageOptions {
   inputImage?: string;
 }
 
+// Sizes reported by ag/gemini-3.1-flash-image in the AnyModel catalog, plus
+// 1280x720 which is proven to work against the live gateway. Anything else is
+// clamped to the default to avoid a 400 from the image endpoint.
+const ANYMODEL_IMAGE_SIZES = new Set([
+  "1280x720",
+  "256x256",
+  "512x512",
+  "1024x1024",
+  "1024x1536",
+  "1536x1024",
+  "1024x1792",
+  "1792x1024",
+]);
+const DEFAULT_ANYMODEL_IMAGE_SIZE = "1792x1024";
+
 /**
  * Primary banner engine: AnyModel (https://anymodel.org/v1) — an
  * OpenAI-compatible gateway. Synchronous POST to /v1/images/generations,
@@ -134,7 +149,8 @@ export async function generateAnyModelImage(
   if (!apiKey) return null;
 
   const model = options.model || process.env.ANYMODEL_IMAGE_MODEL?.trim() || "ag/gemini-3.1-flash-image";
-  const size = options.size || process.env.ANYMODEL_IMAGE_SIZE?.trim() || "1792x1024";
+  const requestedSize = options.size || process.env.ANYMODEL_IMAGE_SIZE?.trim() || DEFAULT_ANYMODEL_IMAGE_SIZE;
+  const size = ANYMODEL_IMAGE_SIZES.has(requestedSize) ? requestedSize : DEFAULT_ANYMODEL_IMAGE_SIZE;
 
   const body: Record<string, unknown> = {
     model,

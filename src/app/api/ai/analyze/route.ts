@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { chatAnyModel } from "@/lib/anymodel";
 import { extractJson } from "@/lib/utils";
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 const DNA_PROMPT = `Analyze this mascot image and return JSON with exactly three fields:
 "personality": 2-3 sentences describing the character's temperament, values, worldview, and analytical style. Who they are at their core.
@@ -25,8 +25,9 @@ export async function POST(req: Request) {
             { type: "image_url", image_url: { url: imageUrl } },
           ],
         }],
-        maxTokens: 1000,
-        timeoutMs: 25000,
+        json: true,
+        maxTokens: 2000,
+        timeoutMs: 40000,
       }));
       return NextResponse.json({
         personality: result.personality || "Mysterious entity.",

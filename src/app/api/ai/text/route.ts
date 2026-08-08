@@ -7,7 +7,7 @@ import { verifySessionAnyAction } from "@/lib/auth";
 import { finalFormat } from "@/lib/utils";
 import { chatAnyModelJson } from "@/lib/anymodel";
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
     const result = await chatAnyModelJson({
       messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
       temperature: 0.8,
-      timeoutMs: 30000,
+      timeoutMs: 40000,
     });
 
     const finalTitle = (result.title || providedTitle || "New Intel").replace(/["']/g, "").trim();

@@ -23,7 +23,7 @@ Mascots are NFTs on the **Base** network. Their DNA lives in two places, resolve
 
 ### 3. Creating a Mascot (Forge) — `/mascots`
 1.  **Image upload** → `/api/upload` → pinned to **IPFS (Pinata)** → `image_url`.
-2.  **AI DNA scan** (`/api/ai/analyze`, Gemini via AnyModel) optionally extracts `personality`, `voice`, `visual_desc` from the image.
+2.  **AI DNA scan** (`/api/ai/analyze`, Gemini 3.5 Flash via AnyModel) optionally extracts `personality`, `voice`, `visual_desc` from the image.
 3.  **Required fields:** `name`, `personality`, `image_url`, `price` (`voice`, `visual_desc` optional).
 4.  A row is `upsert`ed into `mascots_dna` with `id = nextTokenId` **before** minting, so the DB is always in sync with the contract.
 5.  `createMascot(price)` runs on-chain (with a `$HASH` approval of `CREATION_FEE`).
@@ -31,7 +31,7 @@ Mascots are NFTs on the **Base** network. Their DNA lives in two places, resolve
 ### 4. AI Pipeline (Publishing Workflow) — `/write`
 1.  **Mascot selection:** `getUserMascots(address)` (on-chain) → active owned token IDs → matched against `mascots_dna` → the user picks a mascot (default: profile `ai_nft_token_id`, else first owned).
 2.  **Scraping:** **Jina Reader (r.jina.ai)** fetches and cleans content from an external URL into structured Markdown.
-3.  **Rewriting:** The text is rewritten with **Gemini 3.1 Flash-Lite (via AnyModel)** applying the selected **Mood** (Sarcastic, Bullish, Bearish, Humorous, Negative, FOMO, Happy, Neutral) and the mascot's **DNA** (`personality` + `voice`) from `getCharacterSystemPrompt`.
+3.  **Rewriting:** The text is rewritten with **Gemini 3.5 Flash (via AnyModel)** applying the selected **Mood** (Sarcastic, Bullish, Bearish, Humorous, Negative, FOMO, Happy, Neutral) and the mascot's **DNA** (`personality` + `voice`) from `getCharacterSystemPrompt`.
 4.  **Visual generation:** See the *Banner Pipeline* below.
 5.  **Distribution:** The engine adapts and posts content to the user's connected **Telegram** channels and **Binance Square** accounts.
 
@@ -84,7 +84,7 @@ User profiles hide several mechanisms for customizing the protocol's operation:
 *   **Styling:** Tailwind CSS 4 (Native CSS variable configuration).
 *   **Blockchain:** Thirdweb SDK + Base Network (mascot NFT contract, $HASH token).
 *   **Database/Auth:** Supabase (`profiles`, `mascots_dna`).
-*   **AI Engine:** AnyModel (Gemini 3.1 Flash-Lite text / Gemini 3.1 Flash-Image banners), Jina Reader (scraping).
+*   **AI Engine:** AnyModel (Gemini 3.5 Flash text / Gemini 3.1 Flash-Image banners), Jina Reader (scraping).
 *   **Media:** Pinata (IPFS), sharp (WebP compression).
 
 ---
@@ -98,9 +98,10 @@ Required in `.env` / Vercel:
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side (RLS bypass) access |
 | `ANYMODEL_API_KEY` | AnyModel gateway key (text + image generation) |
-| `ANYMODEL_TEXT_MODEL` | Text model for all LLM calls (`gc/gemini-3.1-flash-lite-preview`) |
+| `ANYMODEL_TEXT_MODEL` | Text model for all LLM calls (`ag/gemini-3.5-flash-low`) |
+| `ANYMODEL_FALLBACK_TEXT_MODEL` | Backup text model used on upstream failure / when the primary rejects image input (`gc/gemini-2.5-flash`, vision-capable) |
 | `ANYMODEL_IMAGE_MODEL` | Banner image model (`ag/gemini-3.1-flash-image`) |
-| `ANYMODEL_IMAGE_SIZE` | Banner size — only `1024x1024`, `1536x1024`, `1280x720` are accepted (`1280x720` = 16:9) |
+| `ANYMODEL_IMAGE_SIZE` | Banner size — see `ANYMODEL_IMAGE_SIZES` in `src/lib/image.ts` (16:9 `1792x1024` is the default, `1280x720` is proven against the live gateway) |
 | `JINA_API_KEY` | Jina Reader scraping (`/api/ai/scrape`) |
 | `PINATA_JWT` | IPFS pinning (JWT auth) |
 | `PINATA_API_KEY` / `PINATA_API_SECRET` | IPFS pinning (key/secret auth fallback) |
@@ -114,7 +115,7 @@ Pinata keys must include the `pinFileToIPFS` scope (a key without it fails with 
 
 1.  Clone the repository.
 2.  Configure `.env` (Supabase, Thirdweb, AnyModel, Pinata keys).
-3.  Run `npm install` (this also re-syncs `yarn.lock` — a stale lockfile breaks Vercel's `--frozen-lockfile` build) and `npm run dev`.
+3.  Run `npm install` and `npm run dev`.
 4.  Deploy to Vercel. `/api/ai/banner` runs synchronously (AnyModel + SVG fallback) with `maxDuration = 60` (Vercel Hobby cap); the client waits up to 120s for the inline result.
 
 ---
