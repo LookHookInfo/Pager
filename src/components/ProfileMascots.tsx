@@ -255,10 +255,25 @@ export default function ProfileMascots({ address }: { address: string }) {
       setStatusText("Forging...");
       const tx = prepareContractCall({ contract, method: "function createMascot(uint256)", params: [price] });
       sendTransaction(tx, {
-        onSuccess: () => { setBusyId(null); setStatusText(""); fetchAuthorMascots(); },
+        onSuccess: () => { setBusyId(null); setStatusText(""); notifyTelegram(tokenId); fetchAuthorMascots(); },
         onError: (err) => { alert(err.message); setBusyId(null); setStatusText(""); },
       });
     } catch (e: any) { alert(e.message); setBusyId(null); setStatusText(""); }
+  };
+
+  const notifyTelegram = async (tokenId: number) => {
+    if (!account) return;
+    try {
+      const msg = getAuthMessage("notify mascot", account.address);
+      const sig = await account.signMessage({ message: msg });
+      await fetch("/api/notify/mascot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tokenId, address: account.address, signature: sig, message: msg }),
+      });
+    } catch (e: any) {
+      console.warn("TG notification skipped:", e?.message);
+    }
   };
 
   const handlePurchase = async (tokenId: number, price: bigint) => {

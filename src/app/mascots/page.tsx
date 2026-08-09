@@ -7,6 +7,7 @@ import { base } from "thirdweb/chains";
 import { client, MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI, HASH_TOKEN_ADDRESS } from "@/lib/web3";
 import { ShoppingCart, Loader2, Zap, CheckCircle2, RefreshCw, Info, Trash2, Plus, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { getAuthMessage } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
 import ProfileForge from "@/components/ProfileForge";
 
@@ -45,6 +46,21 @@ export default function MascotsPage() {
   const notify = (msg: string, type: "success" | "error" = "success") => {
     setNotification({ message: msg, type });
     setTimeout(() => setNotification(null), 5000);
+  };
+
+  const notifyTelegram = async (tokenId: number) => {
+    if (!account) return;
+    try {
+      const msg = getAuthMessage("notify mascot", account.address);
+      const sig = await account.signMessage({ message: msg });
+      await fetch("/api/notify/mascot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tokenId, address: account.address, signature: sig, message: msg }),
+      });
+    } catch (e: any) {
+      console.warn("TG notification skipped:", e?.message);
+    }
   };
 
   const fetchAllMascots = useCallback(async () => {
@@ -229,6 +245,7 @@ export default function MascotsPage() {
       sendTransaction(tx, {
         onSuccess: () => {
           notify("Protocol activated!");
+          notifyTelegram(tokenId);
           setForgeData({ name: "", personality: "", voice: "", visual_desc: "", image_url: "", price: "" });
           fetchAllMascots();
           setIsForging(false);
