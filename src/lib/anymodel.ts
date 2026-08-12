@@ -49,10 +49,7 @@ export async function chatAnyModel(options: ChatAnyModelOptions): Promise<string
   if (options.temperature != null) body.temperature = options.temperature;
   if (options.maxTokens) body.max_tokens = options.maxTokens;
 
-  const attempt = async (target: string): Promise<string> => {
-    // The fallback attempt gets a shorter budget (capped at 15s) so two
-    // sequential calls fit the route's maxDuration (60s on Vercel Hobby).
-    const attemptTimeout = target === fallback ? Math.min(options.timeoutMs || 30000, 15000) : options.timeoutMs || 30000;
+  const attempt = async (target: string, timeout: number): Promise<string> => {
     const res = await fetch("https://anymodel.org/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -60,7 +57,7 @@ export async function chatAnyModel(options: ChatAnyModelOptions): Promise<string
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ ...body, model: target }),
-      signal: AbortSignal.timeout(attemptTimeout),
+      signal: AbortSignal.timeout(timeout),
     });
 
     if (res.ok) {
@@ -85,8 +82,13 @@ export async function chatAnyModel(options: ChatAnyModelOptions): Promise<string
     throw e;
   };
 
+  // The model chosen by the caller (explicit `options.model` or the primary)
+  // gets the full budget. Only the automatic retry fallback is capped at 15s,
+  // so two sequential calls still fit the route's maxDuration (60s Hobby cap).
+  const primaryTimeout = options.timeoutMs || 30000;
+
   try {
-    return await attempt(model);
+    return await attempt(model, primaryTimeout);
   } catch (e: any) {
     // Transient upstream failures (429 / 5xx / timeout / vision-rejecting 400)
     // → retry once with the fallback model. Auth/config errors (401/402/404/406)
@@ -96,7 +98,7 @@ export async function chatAnyModel(options: ChatAnyModelOptions): Promise<string
 
     console.warn(`AnyModel primary model ${model} failed, falling back to ${fallback}`);
     try {
-      return await attempt(fallback);
+      return await attempt(fallback, Math.min(primaryTimeout, 15000));
     } catch (f: any) {
       console.error(`AnyModel fallback ${fallback} also failed: ${f.message}`);
       throw f;

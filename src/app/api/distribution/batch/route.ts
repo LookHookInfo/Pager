@@ -38,17 +38,28 @@ export async function POST(req: Request) {
 
     const results: { channel: string; success: boolean; error?: string }[] = [];
 
-    for (const target of targets) {
-      const { type, account } = target;
-      let title = article.title;
-      let content = article.content;
-      let imageUrl = article.image_url;
+    // Phase 1: adapt every channel's copy IN PARALLEL. Sequential LLM calls for
+    // many channels would exceed the route's duration budget and silently fall
+    // back to the original (base-language) content on timeout.
+    const prepared = await Promise.all(
+      (targets as any[]).map(async (target) => {
+        const { type, account } = target;
+        let title = article.title;
+        let content = article.content;
 
-      if (account?.language || account?.style) {
-        const adapted = await adaptContent(title, content, account.language || "English", account.style || "Professional", type);
-        title = adapted.title;
-        content = adapted.teaser;
-      }
+        if (account?.language || account?.style) {
+          const adapted = await adaptContent(title, content, account.language || "English", account.style || "Professional", type);
+          title = adapted.title;
+          content = adapted.teaser;
+        }
+
+        return { type, account, title, content };
+      })
+    );
+
+    // Phase 2: post the adapted copies
+    for (const { type, account, title, content } of prepared) {
+      let imageUrl = article.image_url;
 
       // Fallback OG image for any channel if article has no banner
       if (!imageUrl) {

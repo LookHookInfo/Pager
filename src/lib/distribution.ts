@@ -1,4 +1,5 @@
-import { chatAnyModelJson } from "@/lib/anymodel";
+import { chatAnyModelJson, ANYMODEL_FALLBACK_TEXT_MODEL } from "@/lib/anymodel";
+import { stripHtml } from "@/lib/utils";
 
 export interface BinanceAccount {
   label: string;
@@ -68,41 +69,49 @@ function formatForTelegram(title: string, content: string, articleId: string, au
 }
 
 export async function adaptContent(title: string, html: string, language: string, style: string, platform: 'telegram' | 'binance') {
-  const targetLanguage = language || 'English';
+  const targetLanguage = (language || 'English').trim();
+  const targetStyle = (style || 'Engaging and professional').trim();
   try {
-    const prompt = `
-      ACT AS A PROFESSIONAL SMM MANAGER AND CONTENT EDITOR. 
-      TASK: Create a localized, unique "TEASER" version of this article for ${platform.toUpperCase()}.
-      
-      STRICT TARGET LANGUAGE: ${targetLanguage.toUpperCase()}
-      TARGET STYLE: ${style || 'Engaging and professional'}
-      
-      RULES:
-      1. VALUE: Highlight the most important insight of the article.
-      2. STRUCTURE: Teaser should be 2-3 short, punchy paragraphs. Use emojis where appropriate for the style.
-      3. CALL TO ACTION: The tone should be inviting but professional.
-      4. OG TITLE: Create a powerful headline for social media preview.
-      
-      ORIGINAL CONTENT:
-      Title: ${title}
-      Article Content: ${html.replace(/<[^>]*>?/gm, '').slice(0, 5000)}
-      
-      RETURN ONLY VALID JSON: 
-      { 
-        "title": "Social headline in ${targetLanguage}", 
-        "teaser": "Post content with paragraphs in ${targetLanguage}", 
-        "og_title": "SEO preview title in ${targetLanguage}" 
-      }
-    `;
+    const plain = stripHtml(html).trim();
+    const system = [
+      'You are a professional SMM manager and content editor.',
+      `TASK: Create a localized teaser of this article for ${platform.toUpperCase()}.`,
+      `HARD RULES:`,
+      `1. Write the ENTIRE output ONLY in ${targetLanguage}. Every word must be in ${targetLanguage} — never use English or any other language.`,
+      `2. The teaser must be 2-3 short, punchy paragraphs in ${targetLanguage}. Use emojis where appropriate.`,
+      `3. Tone/style: ${targetStyle}.`,
+      `4. Return ONLY a valid JSON object with exactly three keys: "title", "teaser", "og_title".`,
+      `   - "title": social headline in ${targetLanguage}`,
+      `   - "teaser": post content (2-3 paragraphs) in ${targetLanguage}`,
+      `   - "og_title": SEO preview title in ${targetLanguage}`,
+      `5. Be concise. Output the JSON object and nothing else — no reasoning, no comments, no code fences.`,
+    ].join('\n');
+    const user = `ARTICLE TITLE:\n${title}\n\nARTICLE CONTENT:\n${plain.slice(0, 5000)}\n\nREMINDER: respond ONLY in ${targetLanguage}.`;
 
-    const { title: newTitle, teaser, og_title } = await chatAnyModelJson({
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.8,
-      maxTokens: 1000,
-      timeoutMs: 25000,
+    const result = await chatAnyModelJson({
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      // ag/gemini-3.5-flash-low (primary) burns its token budget on "reasoning"
+      // and returns truncated non-JSON for this task → silent fallback to the
+      // original language. The proven stable model is used here directly.
+      // gemini-2.5-flash can be slow, so it gets the full 30s (channels are
+      // adapted in parallel, so this does not multiply per-channel latency).
+      model: ANYMODEL_FALLBACK_TEXT_MODEL(),
+      temperature: 0.7,
+      maxTokens: 3000,
+      timeoutMs: 30000,
     });
-    return { title: newTitle || title, teaser: teaser || html, og_title: og_title || newTitle || title };
-  } catch (e: any) { return { title, teaser: html, og_title: title }; }
+
+    const cleanTitle = typeof result.title === "string" && result.title.trim() ? result.title.trim() : title;
+    const cleanTeaser = typeof result.teaser === "string" && result.teaser.trim() ? result.teaser.trim() : plain;
+    const cleanOg = typeof result.og_title === "string" && result.og_title.trim() ? result.og_title.trim() : cleanTitle;
+    return { title: cleanTitle, teaser: cleanTeaser, og_title: cleanOg };
+  } catch (e: any) {
+    console.warn(`⚠️ [Distribution] adaptContent failed (${platform}, ${targetLanguage}): ${e.message}`);
+    return { title, teaser: stripHtml(html), og_title: title };
+  }
 }
 
 export async function postToBinance(account: BinanceAccount, title: string, content: string, articleId: string, index: number = 0) {
