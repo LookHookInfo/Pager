@@ -6,6 +6,26 @@ import { verifySignature, getAuthMessage } from "@/lib/auth";
 
 export const maxDuration = 120;
 
+/**
+ * The AnyModel gateway rate-limits concurrent requests per key (429/502).
+ * Unlimited parallel adaptation over many channels made most of them silently
+ * fall back to the base-language content. Cap concurrency so the gateway can
+ * actually serve every channel.
+ */
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= items.length) break;
+      results[idx] = await fn(items[idx]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 export async function POST(req: Request) {
   try {
     const { articleId, targets, profileAddress, signature, message } = await req.json();
@@ -36,29 +56,33 @@ export async function POST(req: Request) {
     const authorName = profile?.name || `${profileAddress.slice(0, 6)}...`;
     const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://pager.lookhook.info").replace(/\/$/, "");
 
-    const results: { channel: string; success: boolean; error?: string }[] = [];
+    const results: { channel: string; success: boolean; error?: string; note?: string }[] = [];
 
-    // Phase 1: adapt every channel's copy IN PARALLEL. Sequential LLM calls for
-    // many channels would exceed the route's duration budget and silently fall
-    // back to the original (base-language) content on timeout.
-    const prepared = await Promise.all(
-      (targets as any[]).map(async (target) => {
+    // Phase 1: adapt every channel's copy with a concurrency cap. Unlimited
+    // parallel LLM calls trip the gateway's rate limiter and silently fall back
+    // to the original (base-language) content.
+    const prepared = await mapWithConcurrency(
+      targets as any[],
+      3,
+      async (target) => {
         const { type, account } = target;
         let title = article.title;
         let content = article.content;
+        let adapted = false;
 
         if (account?.language || account?.style) {
-          const adapted = await adaptContent(title, content, account.language || "English", account.style || "Professional", type);
-          title = adapted.title;
-          content = adapted.teaser;
+          const adaptedResult = await adaptContent(title, content, account.language || "English", account.style || "Professional", type);
+          title = adaptedResult.title;
+          content = adaptedResult.teaser;
+          adapted = adaptedResult.adapted;
         }
 
-        return { type, account, title, content };
-      })
+        return { type, account, title, content, adapted };
+      }
     );
 
     // Phase 2: post the adapted copies
-    for (const { type, account, title, content } of prepared) {
+    for (const { type, account, title, content, adapted } of prepared) {
       let imageUrl = article.image_url;
 
       // Fallback OG image for any channel if article has no banner
@@ -85,7 +109,12 @@ export async function POST(req: Request) {
         res = { success: false, error: "Unknown channel type" };
       }
 
-      results.push({ channel: account?.label || type, success: res.success, error: res.error });
+      results.push({
+        channel: account?.label || type,
+        success: res.success,
+        error: res.error,
+        note: adapted ? undefined : "content adaptation failed — posted in original language",
+      });
     }
 
     const allOk = results.every(r => r.success);

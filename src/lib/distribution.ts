@@ -71,46 +71,60 @@ function formatForTelegram(title: string, content: string, articleId: string, au
 export async function adaptContent(title: string, html: string, language: string, style: string, platform: 'telegram' | 'binance') {
   const targetLanguage = (language || 'English').trim();
   const targetStyle = (style || 'Engaging and professional').trim();
-  try {
-    const plain = stripHtml(html).trim();
-    const system = [
-      'You are a professional SMM manager and content editor.',
-      `TASK: Create a localized teaser of this article for ${platform.toUpperCase()}.`,
-      `HARD RULES:`,
-      `1. Write the ENTIRE output ONLY in ${targetLanguage}. Every word must be in ${targetLanguage} — never use English or any other language.`,
-      `2. The teaser must be 2-3 short, punchy paragraphs in ${targetLanguage}. Use emojis where appropriate.`,
-      `3. Tone/style: ${targetStyle}.`,
-      `4. Return ONLY a valid JSON object with exactly three keys: "title", "teaser", "og_title".`,
-      `   - "title": social headline in ${targetLanguage}`,
-      `   - "teaser": post content (2-3 paragraphs) in ${targetLanguage}`,
-      `   - "og_title": SEO preview title in ${targetLanguage}`,
-      `5. Be concise. Output the JSON object and nothing else — no reasoning, no comments, no code fences.`,
-    ].join('\n');
-    const user = `ARTICLE TITLE:\n${title}\n\nARTICLE CONTENT:\n${plain.slice(0, 5000)}\n\nREMINDER: respond ONLY in ${targetLanguage}.`;
+  const plain = stripHtml(html).trim();
+  const system = [
+    'You are a professional SMM manager and content editor.',
+    `TASK: Create a localized teaser of this article for ${platform.toUpperCase()}.`,
+    `HARD RULES:`,
+    `1. Write the ENTIRE output ONLY in ${targetLanguage}. Every word must be in ${targetLanguage} — never use English or any other language.`,
+    `2. The teaser must be 2-3 short, punchy paragraphs in ${targetLanguage}. Use emojis where appropriate.`,
+    `3. Tone/style: ${targetStyle}.`,
+    `4. Return ONLY a valid JSON object with exactly three keys: "title", "teaser", "og_title".`,
+    `   - "title": social headline in ${targetLanguage}`,
+    `   - "teaser": post content (2-3 paragraphs) in ${targetLanguage}`,
+    `   - "og_title": SEO preview title in ${targetLanguage}`,
+    `5. Be concise. Output the JSON object and nothing else — no reasoning, no comments, no code fences.`,
+  ].join('\n');
+  const user = `ARTICLE TITLE:\n${title}\n\nARTICLE CONTENT:\n${plain.slice(0, 5000)}\n\nREMINDER: respond ONLY in ${targetLanguage}.`;
 
-    const result = await chatAnyModelJson({
+  // Primary (fast) model is tried first — its internal retry already alternates
+  // to the fallback model on HTTP/network failures. If it still fails (e.g. it
+  // returns non-JSON for this task), one more shot with the stable model.
+  const run = (model?: string) =>
+    chatAnyModelJson({
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
       ],
-      // ag/gemini-3.5-flash-low (primary) burns its token budget on "reasoning"
-      // and returns truncated non-JSON for this task → silent fallback to the
-      // original language. The proven stable model is used here directly.
-      // gemini-2.5-flash can be slow, so it gets the full 30s (channels are
-      // adapted in parallel, so this does not multiply per-channel latency).
-      model: ANYMODEL_FALLBACK_TEXT_MODEL(),
+      model,
       temperature: 0.7,
       maxTokens: 3000,
       timeoutMs: 30000,
     });
 
-    const cleanTitle = typeof result.title === "string" && result.title.trim() ? result.title.trim() : title;
-    const cleanTeaser = typeof result.teaser === "string" && result.teaser.trim() ? result.teaser.trim() : plain;
+  const normalize = (result: any): { title: string; teaser: string; og_title: string } | null => {
+    if (!result || typeof result !== "object") return null;
+    const cleanTitle = typeof result.title === "string" && result.title.trim() ? result.title.trim() : "";
+    const cleanTeaser = typeof result.teaser === "string" && result.teaser.trim() ? result.teaser.trim() : "";
     const cleanOg = typeof result.og_title === "string" && result.og_title.trim() ? result.og_title.trim() : cleanTitle;
-    return { title: cleanTitle, teaser: cleanTeaser, og_title: cleanOg };
+    if (!cleanTitle && !cleanTeaser) return null;
+    return { title: cleanTitle || title, teaser: cleanTeaser || plain, og_title: cleanOg || cleanTitle || title };
+  };
+
+  try {
+    const result = normalize(await run());
+    if (result) return { ...result, adapted: true };
+    throw new Error("invalid JSON shape");
   } catch (e: any) {
     console.warn(`⚠️ [Distribution] adaptContent failed (${platform}, ${targetLanguage}): ${e.message}`);
-    return { title, teaser: stripHtml(html), og_title: title };
+    try {
+      const result = normalize(await run(ANYMODEL_FALLBACK_TEXT_MODEL()));
+      if (result) return { ...result, adapted: true };
+      throw new Error("invalid JSON shape");
+    } catch (e2: any) {
+      console.warn(`⚠️ [Distribution] adaptContent retry failed (${platform}, ${targetLanguage}): ${e2.message}`);
+      return { title, teaser: plain, og_title: title, adapted: false };
+    }
   }
 }
 

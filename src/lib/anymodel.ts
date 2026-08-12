@@ -13,6 +13,30 @@ export const ANYMODEL_FALLBACK_TEXT_MODEL = () =>
 // input with a 400, which a vision-capable fallback resolves.
 const UPSTREAM_RETRYABLE = new Set([400, 408, 425, 429, 500, 502, 503, 504]);
 
+// The AnyModel gateway rate-limits concurrent requests per key (returns
+// 429/502 with "Retry in Xs"). Sequential calls succeed, but bursty parallel
+// calls fail — distribution used to post base-language content because a
+// single failed call silently fell back. Retry with backoff (honoring the
+// gateway's suggested delay) is what actually makes per-channel adaptation
+// reliable.
+const MAX_ATTEMPTS = 3;
+const MAX_BACKOFF_SECONDS = 5;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryable(e: any): boolean {
+  // TimeoutError, network failures (no HTTP status) and transient HTTP statuses.
+  return e?.name === "TimeoutError" || e?.status === undefined || (e?.status && UPSTREAM_RETRYABLE.has(e.status));
+}
+
+function backoffSeconds(e: any): number {
+  const m = e?.retryAfterText?.match(/Retry in (\d+)s/i);
+  if (m) return Math.min(parseInt(m[1], 10), MAX_BACKOFF_SECONDS);
+  return 2;
+}
+
 export interface AnyModelMessage {
   role: "system" | "user" | "assistant";
   content: unknown;
@@ -38,11 +62,14 @@ export async function chatAnyModel(options: ChatAnyModelOptions): Promise<string
   const apiKey = process.env.ANYMODEL_API_KEY?.trim();
   if (!apiKey) throw new Error("ANYMODEL_API_KEY missing");
 
-  const model = options.model || ANYMODEL_TEXT_MODEL();
+  const requestedModel = options.model || ANYMODEL_TEXT_MODEL();
   const fallback = ANYMODEL_FALLBACK_TEXT_MODEL();
+  // When the caller pins the fallback model explicitly, only it is used
+  // (but still retried). Otherwise alternate primary → fallback → primary…
+  const models = requestedModel === fallback ? [fallback] : [requestedModel, fallback];
 
   const body: Record<string, unknown> = {
-    model,
+    model: models[0],
     messages: options.messages,
   };
   if (options.json) body.response_format = { type: "json_object" };
@@ -77,33 +104,42 @@ export async function chatAnyModel(options: ChatAnyModelOptions): Promise<string
             ? " — text model not found/supported (check ANYMODEL_TEXT_MODEL in .env)"
             : "";
     console.error(`AnyModel chat failed: ${res.status} — ${err.slice(0, 300)}${hint}`);
-    const e = new Error(`AnyModel AI error (${res.status})`) as Error & { status?: number };
+    const e = new Error(`AnyModel AI error (${res.status})`) as Error & { status?: number; retryAfterText?: string };
     e.status = res.status;
+    e.retryAfterText = err;
     throw e;
   };
 
-  // The model chosen by the caller (explicit `options.model` or the primary)
-  // gets the full budget. Only the automatic retry fallback is capped at 15s,
-  // so two sequential calls still fit the route's maxDuration (60s Hobby cap).
+  // The first attempt (the caller-chosen model) gets the full budget. Retries
+  // are capped at 15s each so a retry chain still fits the route's maxDuration.
   const primaryTimeout = options.timeoutMs || 30000;
 
-  try {
-    return await attempt(model, primaryTimeout);
-  } catch (e: any) {
-    // Transient upstream failures (429 / 5xx / timeout / vision-rejecting 400)
-    // → retry once with the fallback model. Auth/config errors (401/402/404/406)
-    // are NOT retried — a different model won't fix a bad key or empty balance.
-    const retryable = e.name === "TimeoutError" || (e.status && UPSTREAM_RETRYABLE.has(e.status));
-    if (!retryable || model === fallback) throw e;
+  let lastError: any = null;
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    const target = models[i % models.length];
+    const timeout = i === 0 ? primaryTimeout : Math.min(primaryTimeout, 15000);
 
-    console.warn(`AnyModel primary model ${model} failed, falling back to ${fallback}`);
     try {
-      return await attempt(fallback, Math.min(primaryTimeout, 15000));
-    } catch (f: any) {
-      console.error(`AnyModel fallback ${fallback} also failed: ${f.message}`);
-      throw f;
+      return await attempt(target, timeout);
+    } catch (e: any) {
+      lastError = e;
+
+      // Auth/config errors (401/402/404/406) are NOT retried — a different
+      // model or a short wait won't fix a bad key or empty balance.
+      if (!isRetryable(e)) throw e;
+
+      // Vision-rejecting 400 on the primary is fixed by the fallback model —
+      // switch to it immediately instead of sleeping first.
+      if (e.status === 400 && i === 0 && models.length > 1) continue;
+
+      if (i < MAX_ATTEMPTS - 1) {
+        const wait = backoffSeconds(e);
+        console.warn(`AnyModel attempt ${i + 1} failed (${target}), retrying in ~${wait}s…`);
+        await sleep(wait * 1000);
+      }
     }
   }
+  throw lastError;
 }
 
 /**

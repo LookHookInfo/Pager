@@ -5,6 +5,9 @@ import { Plus, Trash2, Send, ShieldCheck, Languages, Eye, EyeOff } from "lucide-
 
 const LANGUAGES = ["English", "Russian", "Spanish", "Chinese", "French", "German", "Japanese", "Turkish"];
 
+const MAX_TELEGRAM_CHANNELS = 10;
+const MAX_BINANCE_ACCOUNTS = 5;
+
 function maskChatId(id: string): string {
   if (!id) return "";
   if (id.startsWith("-100")) return "-100••••" + id.slice(-3);
@@ -42,10 +45,12 @@ export default function ProfileDistribution({ formData, onFormChange }: Props) {
           <div className="flex items-center gap-2">
             <Send size={14} className="text-blue-500" />
             <label className="text-[10px] font-black uppercase text-black">Telegram Channels</label>
+            <span className="text-[8px] font-bold text-gray-300">({MAX_TELEGRAM_CHANNELS} max)</span>
           </div>
           <button
             onClick={() => set({ telegram_channels: [...(formData.telegram_channels || []), { label: "", chatId: "", topicId: "", language: "English", style: "Engaging" }] })}
-            className="text-[9px] font-black uppercase text-blue-500 hover:text-blue-600 flex items-center gap-1 bg-white px-2 py-1 border border-gray-200 rounded-sm"
+            disabled={(formData.telegram_channels || []).length >= MAX_TELEGRAM_CHANNELS}
+            className="text-[9px] font-black uppercase text-blue-500 hover:text-blue-600 flex items-center gap-1 bg-white px-2 py-1 border border-gray-200 rounded-sm disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <Plus size={10} /> Add Channel
           </button>
@@ -116,10 +121,12 @@ export default function ProfileDistribution({ formData, onFormChange }: Props) {
           <div className="flex items-center gap-2">
             <ShieldCheck size={14} className="text-yellow-500" />
             <label className="text-[10px] font-black uppercase text-black">Binance Square</label>
+            <span className="text-[8px] font-bold text-gray-300">({MAX_BINANCE_ACCOUNTS} max)</span>
           </div>
           <button
             onClick={() => set({ binance_accounts: [...(formData.binance_accounts || []), { label: "", apiKey: "", language: "English", style: "Professional" }] })}
-            className="text-[9px] font-black uppercase text-blue-500 hover:text-blue-600 flex items-center gap-1 bg-white px-2 py-1 border border-gray-200 rounded-sm"
+            disabled={(formData.binance_accounts || []).length >= MAX_BINANCE_ACCOUNTS}
+            className="text-[9px] font-black uppercase text-blue-500 hover:text-blue-600 flex items-center gap-1 bg-white px-2 py-1 border border-gray-200 rounded-sm disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <Plus size={10} /> Add Account
           </button>
