@@ -47,6 +47,27 @@ export default function ProfileIdentity({ formData, onFormChange }: Props) {
           className="w-full text-xs p-3 border border-gray-200 outline-none bg-white focus:border-black transition-colors"
         />
       </div>
+      <div className="space-y-1.5">
+        <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-1 flex items-center gap-1.5">
+          GemFun Token Contract
+          <a
+            href="https://hashcoin.farm/gem"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="normal-case tracking-normal text-blue-500 hover:text-blue-600 hover:underline flex items-center gap-0.5"
+          >
+            (Open GemFun ↗)
+          </a>
+        </label>
+        <input
+          type="text"
+          value={formData.gemfun_token || ""}
+          onChange={e => onFormChange({ ...formData, gemfun_token: e.target.value })}
+          placeholder="0x... — meme token address from hashcoin.farm/gem"
+          className="w-full text-xs font-mono p-3 border border-gray-200 outline-none bg-white focus:border-black transition-colors"
+        />
+        <p className="text-[9px] text-gray-400 ml-1">Pinned under your bio so readers can buy it.</p>
+      </div>
     </div>
   );
 }

@@ -39,6 +39,7 @@ export default function ProfileHeader({
 
   const [formData, setFormData] = useState({
     name: "", bio: "", website: "", avatar_url: "", cmc_username: "",
+    gemfun_token: "",
     binance_accounts: [], telegram_channels: [], telegram_chat_id: "",
     cta_links: [{ label: "", url: "" }, { label: "", url: "" }, { label: "", url: "" }],
     ref_links: [{ label: "", url: "" }, { label: "", url: "" }, { label: "", url: "" }],
@@ -51,6 +52,7 @@ export default function ProfileHeader({
       name: profile.name || "", bio: profile.bio || "", website: profile.website || "",
       avatar_url: profile.avatar_url || "",
       cmc_username: profile.cmc_username || "",
+      gemfun_token: profile.gemfun_token || "",
       binance_accounts: profile.binance_accounts || [],
       telegram_channels: profile.telegram_channels || [],
       telegram_chat_id: profile.telegram_chat_id || "",

@@ -63,6 +63,18 @@ Publishing on Pager is protected by a "Hash-wall":
 *   **Step 2 (Off-chain Verification):** Only after a successful transaction hash does the frontend call `/api/article/create`.
 *   **Step 3 (Database):** A server-side client (Service Role) creates the record in the database, bypassing RLS (Row Level Security).
 
+### 7. GemFun Integration (Mem-Token Launchpad)
+
+Any profile can pin a **GemFun meme token** (launched on https://hashcoin.farm/gem). The token's address is stored in the profile (`gemfun_token`) and its buy-card is rendered on the author's Tape page.
+
+*   **Where it lives:** `gemfun_token` column in the `profiles` table. Set in profile editing (`ProfileIdentity` → "GemFun Token Contract"), validated + lowercased on the server (`POST /api/profile`).
+*   **On-chain reads (2 per profile, SSR):** `tokenCore()` + `tokens()` on the GemFun factory (`GEMFUN_ADDRESS` = `0xea48...e86`) → name, symbol, description (logo), sold, raised, mining reserve, migration state, curve %. No aggregator calls, no event polling — budget-friendly.
+*   **Logo:** packed into `description` as `ipfs://<CID>|text`, resolved through the Pinata gateway (`gemLogoUrl`).
+*   **Bonding-curve math (`src/lib/gemfun.ts`):**
+    `reserve(sold) = sold/1000 + sold²/(45e9·1e18)`, `costFor(sold, memeOut)` — the $HASH price of `memeOut` tokens, and `memeOutForCost(sold, C)` — the exact quadratic inverse (how many tokens a given $HASH amount buys). All bigint, computed locally — **zero extra RPC** while dragging.
+*   **Buy UI (`GemFunCard`):** a smooth 0–100% slider where **100% = the user's entire $HASH balance**. The handle is clamped by construction — you can only spend what you hold. The cost readout (`X / Y $HASH`) is drawn on the track itself.
+*   **Transaction flow:** if `allowance < cost` → `approve(GemFun, MAX_UINT)` → `buy(token, memeOut, maxHashIn)` with 10% slippage capped at the balance. When the curve is complete or migrated (`isMigrated` / `isCurveCompleted`) the buy UI is hidden and replaced by a status note.
+
 ---
 
 ## 👤 Profile Settings & Their Impact
@@ -75,6 +87,7 @@ User profiles hide several mechanisms for customizing the protocol's operation:
 | **Image Engine** | **Banner rendering.** Banners are generated with **Gemini 3.1 Flash-Image (AnyModel)** using the mascot reference image; an **SVG placeholder** is the final fallback. Every banner costs **10 AI credits** and is pinned to IPFS via Pinata. |
 | **Thirdweb Client ID** | **The key storage switch.** If a Client ID is provided, the system switches from Supabase Storage to **IPFS**. Your images become decentralized and permanent. |
 | **Monetization** | Custom CTA links for Telegram channels, Forums, and Referral networks integrated into every article. |
+| **GemFun Token** | A meme-token address from hashcoin.farm/gem. Pins the **GemFunCard** (bonding-curve progress + buy slider) under the bio on the author's Tape page. |
 
 ---
 
@@ -83,6 +96,7 @@ User profiles hide several mechanisms for customizing the protocol's operation:
 *   **Frontend:** Next.js 14 (App Router) + TypeScript.
 *   **Styling:** Tailwind CSS 4 (Native CSS variable configuration).
 *   **Blockchain:** Thirdweb SDK + Base Network (mascot NFT contract, $HASH token).
+*   **Launchpad:** GemFun (hashcoin.farm/gem) — bonding-curve meme-token buy-card on profile pages.
 *   **Database/Auth:** Supabase (`profiles`, `mascots_dna`).
 *   **AI Engine:** AnyModel (Gemini 3.5 Flash text / Gemini 3.1 Flash-Image banners), Jina Reader (scraping).
 *   **Media:** Pinata (IPFS), sharp (WebP compression).

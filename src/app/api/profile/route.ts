@@ -67,6 +67,7 @@ export async function POST(req: Request) {
       avatar_url, ai_image_model,
       ai_api_key,
       ai_nft_token_id,
+      gemfun_token,
       binance_accounts, telegram_channels, telegram_chat_id,
       cta_links, ref_links, cmc_username,
       signature, message
@@ -92,6 +93,10 @@ export async function POST(req: Request) {
     if (!isAuthorized) {
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
+
+    // 1.5 НОРМАЛИЗАЦИЯ GEMFUN-ТОКЕНА (адрес мем-токена с лаунчпада)
+    const isToken = (v: any) => !!v && /^0x[a-fA-F0-9]{40}$/.test(String(v).trim());
+    const finalGemfunToken = isToken(gemfun_token) ? String(gemfun_token).trim().toLowerCase() : null;
 
     const supabaseServer = getSupabaseServer();
 
@@ -144,6 +149,7 @@ export async function POST(req: Request) {
         ai_image_model,
         ai_api_key: finalAiApiKey,
         ai_nft_token_id,
+        gemfun_token: finalGemfunToken,
         binance_accounts: finalBinanceAccounts,
         telegram_channels,
         telegram_chat_id,

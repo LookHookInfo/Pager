@@ -6,10 +6,12 @@ import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import ProfileHeader from "@/components/ProfileHeader";
 import ProfileMascots from "@/components/ProfileMascots";
+import GemFunCard from "@/components/GemFunCard";
 import DeleteButton from "@/components/DeleteButton";
 import { Metadata } from 'next';
 import { maskKey } from "@/lib/security";
 import { stripHtml } from "@/lib/utils";
+import { fetchGemTokenData } from "@/lib/gemfun";
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -56,12 +58,19 @@ async function getProfileData(address: string, page: number) {
     .order("created_at", { ascending: false })
     .range(from, to);
 
+  // 4. GemFun токен из профиля (1 SSR: 2 чтения -> tokenCore + tokens)
+  let gemData = null;
+  if (profile?.gemfun_token) {
+    gemData = await fetchGemTokenData(profile.gemfun_token);
+  }
+
   return {
     profile: safeProfile || { address: cleanAddress, name: "Anonymous Author" },
     articles: articles || [],
     totalArticles: totalArticlesCount,
     totalRewards,
-    totalPages: Math.ceil((count || 0) / ITEMS_PER_PAGE)
+    totalPages: Math.ceil((count || 0) / ITEMS_PER_PAGE),
+    gemData,
   };
 }
 
@@ -122,7 +131,8 @@ export default async function TapePage({
     articles, 
     totalArticles, 
     totalRewards, 
-    totalPages 
+    totalPages,
+    gemData,
   } = await getProfileData(decodedAddress, currentPage);
 
   return (
@@ -135,6 +145,10 @@ export default async function TapePage({
           totalArticles={totalArticles}
           totalRewards={totalRewards}
         />
+
+        {gemData && (
+          <GemFunCard tokenAddress={gemData.token} tokenData={gemData} />
+        )}
 
         <ProfileMascots address={decodedAddress} />
 
