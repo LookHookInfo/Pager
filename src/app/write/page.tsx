@@ -43,6 +43,7 @@ function WritePageInner() {
 
   const [title, setTitle] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [bannerModel, setBannerModel] = useState("");
   const [bannerDescription, setBannerDescription] = useState("");
   const [externalUrl, setExternalUrl] = useState("");
   const [mood, setMood] = useState("sarcastic");
@@ -229,7 +230,7 @@ function WritePageInner() {
         userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
         content: articleContent,
       });
-      if (bannerData.image_url) setImageUrl(bannerData.image_url);
+      if (bannerData.image_url) { setImageUrl(bannerData.image_url); setBannerModel(bannerData.image_model || ""); }
 
       addNotification("Article ready!", "success");
       setProcessingStep("done");
@@ -259,7 +260,7 @@ function WritePageInner() {
         userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
         content: articleContent,
       });
-      if (data.image_url) { setImageUrl(data.image_url); addNotification("Banner updated!"); fetchProfile(); }
+      if (data.image_url) { setImageUrl(data.image_url); setBannerModel(data.image_model || ""); addNotification("Banner updated!"); fetchProfile(); }
     } catch (err: any) { addNotification(err.message, "error"); }
   };
 
@@ -311,7 +312,7 @@ function WritePageInner() {
             userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
             content: articleContent,
           });
-          if (bannerData.image_url) setImageUrl(bannerData.image_url);
+          if (bannerData.image_url) { setImageUrl(bannerData.image_url); setBannerModel(bannerData.image_model || ""); }
         } catch (bannerErr: any) {
           addNotification(bannerErr.message, "error");
         }
@@ -359,6 +360,7 @@ function WritePageInner() {
       const compressed = await imageCompression(file, COMPRESSION_OPTIONS);
       const url = await uploadToStorage(new File([compressed], `${Date.now()}.webp`, { type: "image/webp" }));
       setImageUrl(url);
+      setBannerModel("");
     } catch (err: any) { addNotification(err.message || "Upload failed", "error"); } finally { setIsUploading(false); }
   };
 
@@ -729,7 +731,7 @@ function WritePageInner() {
           <div className="flex items-center gap-4">
             <div className="flex-1 flex items-center gap-3 text-gray-300 focus-within:text-black">
               <ImageIcon size={20} />
-              <input type="text" placeholder="Banner URL" value={imageUrl} onChange={e => setImageUrl(e.target.value)}
+              <input type="text" placeholder="Banner URL" value={imageUrl} onChange={e => { setImageUrl(e.target.value); setBannerModel(""); }}
                 className="w-full text-[10px] font-black uppercase tracking-widest border-none focus:outline-none bg-transparent" />
             </div>
             <button onClick={() => fileInputRef.current?.click()} disabled={isUploading}
@@ -745,7 +747,12 @@ function WritePageInner() {
           {imageUrl && (
             <div className="aspect-video bg-gray-50 overflow-hidden border border-gray-100 rounded-sm relative group">
               <img src={imageUrl} alt="Banner" className="w-full h-full object-cover" />
-              <button onClick={() => setImageUrl("")} className="absolute top-2 right-2 p-1.5 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 hover:bg-black"><X size={14} /></button>
+              {bannerModel && (
+                <span className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/60 text-white text-[9px] font-black uppercase tracking-widest rounded-full">
+                  {bannerModel}
+                </span>
+              )}
+              <button onClick={() => { setImageUrl(""); setBannerModel(""); }} className="absolute top-2 right-2 p-1.5 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 hover:bg-black"><X size={14} /></button>
             </div>
           )}
         </div>

@@ -131,6 +131,12 @@ export function getCharacterVisualPrompt(
     - Expression: ${MOOD_EXPRESSIONS[moodKey] || MOOD_EXPRESSIONS.neutral}.
     - Lighting: ${visualMood}.
 
+    [RENDER QUALITY — MAXIMUM VISUAL RICHNESS]
+    - High visual impact: bold saturated colors, rich gradients, crisp clean edges, premium editorial illustration finish.
+    - Dense detail and texture: layered depth, volumetric light, glossy highlights, soft reflections, painterly brushwork.
+    - Strong composition: cinematic framing, clear focal point on the mascot, dynamic perspective, balanced negative space.
+    - No flat areas, no washed-out tones, no empty background — every part of the frame is visually interesting.
+
     [RULES]
     1. MEANING FIRST: The image must clearly answer "What is this article about?" through visual elements alone.
     2. CONCRETE OBJECTS: Show specific things from the article — Bitcoin logos, smart contract code, trading charts with actual numbers, specific protocol symbols, government buildings, ASIC rigs.

@@ -8,17 +8,20 @@ import { verifySessionAnyAction } from "@/lib/auth";
 import { atomicDebitCredits, atomicRefundCredits } from "@/lib/credits";
 import { withBudget } from "@/lib/with-budget";
 
-// Vercel Hobby caps serverless functions at 60s. Generation is synchronous
-// (AnyModel), with an SVG placeholder as the final fallback.
-export const maxDuration = 60;
+// gpt-image-2 on the AnyModel gateway takes up to ~2 minutes for a 1280x720
+// banner, so the function must run well past the default 60s. maxDuration=300
+// is valid on Vercel Pro (Hobby is capped at 60s and would time out here).
+export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 const KNOWN_ATMOSPHERES = new Set(ATMOSPHERE_PRESETS);
 const KNOWN_MOODS = new Set(MOODS.map((m) => m.id));
 
-// AnyModel image generation is synchronous. Budget must fit the 60s cap even
-// when the AnyModel call returns late and Pinata pinning adds a few seconds.
-const ANYMODEL_BUDGET_MS = 45000;
+// AnyModel image generation is synchronous. gpt-image-2 needs up to ~2 min
+// for a 1280x720 banner, so the chain budget is generous and each attempt gets
+// a 140s slice; the route must stay under maxDuration (300s) with pinning time.
+const ANYMODEL_BUDGET_MS = 280000;
+const ANYMODEL_ATTEMPT_BUDGET_MS = 140000;
 
 export async function POST(req: Request) {
   try {
@@ -34,7 +37,7 @@ export async function POST(req: Request) {
     if (authError) return authError;
 
     const supabase = getSupabaseServer();
-    const { data: profile } = await supabase.from("profiles").select("ai_credits").eq("address", normalizedAddress).maybeSingle();
+    const { data: profile } = await supabase.from("profiles").select("ai_credits, ai_image_model").eq("address", normalizedAddress).maybeSingle();
 
     const credits = profile?.ai_credits || 0;
     if (credits < 10) {
@@ -68,13 +71,42 @@ export async function POST(req: Request) {
     // data URL reference (I2I) — models without image-to-image support simply
     // ignore it. The image is compressed to WebP and pinned to IPFS inside
     // generateAnyModelImage; the client gets the ready URL inline.
-    const imageUrl = await withBudget(
-      () => generateAnyModelImage(prompt, { inputImage: activeDna.image_url || undefined }),
-      ANYMODEL_BUDGET_MS,
-    );
+    // Model chain: profile choice first, then the env default, then known-good
+    // fallbacks. AnyModel failures (429/503) return fast, so a down pool is
+    // skipped quickly in favor of the next model. Wall time is bounded by
+    // ANYMODEL_BUDGET_MS via per-attempt remaining budget.
+    const preferredModel = profile?.ai_image_model?.trim() || undefined;
+    const defaultModel = process.env.ANYMODEL_IMAGE_MODEL?.trim() || "ag/gemini-3.1-flash-image";
+
+    const CANDIDATE_MODELS = [
+      "ag/gemini-3.1-flash-image",
+      "am/flux.2-klein-4b",
+      "cx/gpt-image-2",
+      "flow/nano-banana",
+    ];
+    const modelChain: string[] = [];
+    for (const m of [preferredModel, defaultModel, ...CANDIDATE_MODELS]) {
+      if (m && !modelChain.includes(m)) modelChain.push(m);
+    }
+
+    const generate = (model: string) =>
+      generateAnyModelImage(prompt, { model, inputImage: activeDna.image_url || undefined });
+
+    const startedAt = Date.now();
+    let imageUrl: string | null = null;
+    let imageModel: string | null = null;
+    for (const model of modelChain) {
+      const remaining = ANYMODEL_BUDGET_MS - (Date.now() - startedAt);
+      if (remaining < 8000) break;
+      imageUrl = await withBudget(() => generate(model), Math.min(ANYMODEL_ATTEMPT_BUDGET_MS, remaining));
+      if (imageUrl) {
+        imageModel = model;
+        break;
+      }
+    }
 
     if (imageUrl) {
-      return NextResponse.json({ image_url: imageUrl, image_engine: "anymodel" });
+      return NextResponse.json({ image_url: imageUrl, image_engine: "anymodel", image_model: imageModel });
     }
 
     // Total failure: refund credits and serve a branded SVG placeholder so the

@@ -3,10 +3,23 @@ import { extractJson } from "@/lib/utils";
 export const ANYMODEL_TEXT_MODEL = () =>
   process.env.ANYMODEL_TEXT_MODEL?.trim() || "ag/gemini-3.5-flash-low";
 
-// Fallback used when the primary model's upstream is down / rate-limited.
-// gemini-2.5-flash is vision-capable and stable, so the DNA scan keeps working.
+// Fallback chain used when the primary model's upstream is down / rate-limited.
+// gemini pools on the gateway go down independently, so try 2.x variants in
+// order — all vision-capable, so the DNA scan keeps working. Configurable via
+// ANYMODEL_FALLBACK_TEXT_MODELS (comma-separated).
 export const ANYMODEL_FALLBACK_TEXT_MODEL = () =>
-  process.env.ANYMODEL_FALLBACK_TEXT_MODEL?.trim() || "gc/gemini-2.5-flash";
+  process.env.ANYMODEL_FALLBACK_TEXT_MODEL?.trim()
+  || process.env.ANYMODEL_FALLBACK_TEXT_MODELS?.split(",").map((s) => s.trim()).filter(Boolean)[0]
+  || "gc/gemini-2.5-flash";
+
+const ANYMODEL_FALLBACK_TEXT_MODELS = () =>
+  process.env.ANYMODEL_FALLBACK_TEXT_MODELS?.split(",").map((s) => s.trim()).filter(Boolean)
+  || [ANYMODEL_FALLBACK_TEXT_MODEL()];
+
+export const ANYMODEL_TEXT_MODEL_CHAIN = (): string[] => {
+  const primary = ANYMODEL_TEXT_MODEL();
+  return [...new Set([primary, ...ANYMODEL_FALLBACK_TEXT_MODELS(), ANYMODEL_FALLBACK_TEXT_MODEL()])];
+};
 
 // Statuses that mean "upstream hiccup", not a config bug — safe to retry on
 // the fallback model. 400 is included because some models reject image_url
@@ -18,8 +31,8 @@ const UPSTREAM_RETRYABLE = new Set([400, 408, 425, 429, 500, 502, 503, 504]);
 // calls fail — distribution used to post base-language content because a
 // single failed call silently fell back. Retry with backoff (honoring the
 // gateway's suggested delay) is what actually makes per-channel adaptation
-// reliable.
-const MAX_ATTEMPTS = 3;
+// reliable. Each model in the chain gets one shot, plus one extra pass over
+// the primary.
 const MAX_BACKOFF_SECONDS = 5;
 
 function sleep(ms: number): Promise<void> {
@@ -62,11 +75,10 @@ export async function chatAnyModel(options: ChatAnyModelOptions): Promise<string
   const apiKey = process.env.ANYMODEL_API_KEY?.trim();
   if (!apiKey) throw new Error("ANYMODEL_API_KEY missing");
 
-  const requestedModel = options.model || ANYMODEL_TEXT_MODEL();
-  const fallback = ANYMODEL_FALLBACK_TEXT_MODEL();
-  // When the caller pins the fallback model explicitly, only it is used
-  // (but still retried). Otherwise alternate primary → fallback → primary…
-  const models = requestedModel === fallback ? [fallback] : [requestedModel, fallback];
+  // A hard user pick (options.model) is strict — only that model is used
+  // (retried for transient hiccups), never swapped for a fallback. Without an
+  // explicit pick, iterate the env chain: primary → fallbacks.
+  const models = options.model ? [options.model] : ANYMODEL_TEXT_MODEL_CHAIN();
 
   const body: Record<string, unknown> = {
     model: models[0],
@@ -115,7 +127,8 @@ export async function chatAnyModel(options: ChatAnyModelOptions): Promise<string
   const primaryTimeout = options.timeoutMs || 30000;
 
   let lastError: any = null;
-  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+  const maxAttempts = models.length + 1;
+  for (let i = 0; i < maxAttempts; i++) {
     const target = models[i % models.length];
     const timeout = i === 0 ? primaryTimeout : Math.min(primaryTimeout, 15000);
 
@@ -132,7 +145,7 @@ export async function chatAnyModel(options: ChatAnyModelOptions): Promise<string
       // switch to it immediately instead of sleeping first.
       if (e.status === 400 && i === 0 && models.length > 1) continue;
 
-      if (i < MAX_ATTEMPTS - 1) {
+      if (i < maxAttempts - 1) {
         const wait = backoffSeconds(e);
         console.warn(`AnyModel attempt ${i + 1} failed (${target}), retrying in ~${wait}s…`);
         await sleep(wait * 1000);

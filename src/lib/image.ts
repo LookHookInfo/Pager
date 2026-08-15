@@ -2,6 +2,12 @@ import sharp from "sharp";
 
 const PINATA_TIMEOUT = 12000;
 
+// Upper bound for a single AnyModel image request. gpt-image-2 on the gateway
+// takes up to ~2 minutes for a 1280x720 banner, so the default 55s fetch
+// timeout would kill it mid-generation. The route's withBudget is the real
+// guard; this just prevents an individual fetch from running forever.
+const ANYMODEL_IMAGE_TIMEOUT_MS = 240000;
+
 const BANNER_MODERATED_TERMS: Array<[RegExp, string]> = [
   // Trademarked / real-world characters.
   [/pepe\s+the\s+frog/gi, "a cheerful green frog"],
@@ -100,7 +106,11 @@ async function pinBufferToPinata(compressed: Buffer): Promise<string | null> {
 /** Fetch a remote image and return it as a base64 data URL (AnyModel reference format). */
 async function imageToDataUrl(url: string): Promise<string | null> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    const res = await fetch(url, {
+      // The Pinata gateway is slow — 10s used to lose the reference on
+      // half the requests. 25s covers connect + body for a typical mascot.
+      signal: AbortSignal.timeout(25000),
+    });
     if (!res.ok) return null;
     const buf = Buffer.from(await res.arrayBuffer());
     const mime = res.headers.get("content-type")?.split(";")[0]?.trim() || "image/png";
@@ -177,7 +187,7 @@ export async function generateAnyModelImage(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(55000),
+      signal: AbortSignal.timeout(ANYMODEL_IMAGE_TIMEOUT_MS),
     });
 
     if (!res.ok) {
@@ -187,9 +197,9 @@ export async function generateAnyModelImage(
           ? " — AnyModel balance empty (top up in cabinet)"
           : res.status === 401
             ? " — AnyModel key invalid/revoked"
-            : res.status === 404 || res.status === 406
-              ? " — image model not found/supported (check ANYMODEL_IMAGE_MODEL in .env)"
-              : "";
+              : res.status === 404 || res.status === 406
+                ? " — image model not found/supported (check banner model in profile settings or ANYMODEL_IMAGE_MODEL in .env)"
+                : "";
       console.error(`AnyModel image failed: ${res.status} — ${err.slice(0, 300)}${hint}`);
       return null;
     }

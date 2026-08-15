@@ -64,7 +64,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { address, name, bio, website,
-      avatar_url, ai_image_model,
+      avatar_url, ai_image_model, ai_text_model,
       ai_api_key,
       ai_nft_token_id,
       gemfun_token,
@@ -147,6 +147,7 @@ export async function POST(req: Request) {
         website,
         avatar_url,
         ai_image_model,
+        ai_text_model,
         ai_api_key: finalAiApiKey,
         ai_nft_token_id,
         gemfun_token: finalGemfunToken,

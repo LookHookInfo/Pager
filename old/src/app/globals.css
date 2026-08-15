@@ -1,0 +1,299 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-serif: "Georgia", serif;
+}
+
+:root {
+  --bg-main: #FBF9F7;
+  --surface: #FFFFFF;
+  --text-primary: #1A1A1A;
+  --text-secondary: #5F5F5F;
+  --border-soft: #E8E6E1;
+  --accent: #000000;
+  --accent-hover: #242424;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Универсальные классы Medium Style */
+
+.card-medium {
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.card-medium:hover {
+  border-color: #d1cfc9;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 99px;
+  font-weight: 500;
+  font-size: 0.875rem;
+  transition: background 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.btn-secondary {
+  border: 1px solid var(--border-soft);
+  color: var(--text-secondary);
+  padding: 8px 16px;
+  border-radius: 99px;
+  font-weight: 500;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-secondary:hover {
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+}
+
+.typography-title {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.typography-body {
+  font-family: var(--font-serif);
+  line-height: 1.8;
+  font-size: 1.25rem;
+}
+
+/* Редактор-холст */
+.article-canvas {
+  outline: none;
+  min-height: 60vh;
+}
+
+.article-canvas[data-placeholder]:empty:before {
+  content: attr(data-placeholder);
+  color: #ccc;
+  font-style: italic;
+  pointer-events: none;
+}
+
+/* Кастомные настройки для типографики */
+.prose {
+  --tw-prose-body: var(--text-primary);
+  --tw-prose-headings: var(--accent);
+  --tw-prose-links: #2563eb;
+  --tw-prose-bold: var(--accent);
+  --tw-prose-quotes: var(--text-secondary);
+  --tw-prose-quote-borders: var(--border-soft);
+  font-family: var(--font-serif);
+}
+
+.prose p {
+  margin-bottom: 1.6em;
+  line-height: 1.85;
+}
+
+.prose a {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  font-weight: 600;
+}
+
+.prose a:hover {
+  color: #1d4ed8;
+}
+
+.prose h1, .prose h2, .prose h3 {
+  font-family: var(--font-sans);
+  margin-top: 2em;
+  margin-bottom: 0.8em;
+  line-height: 1.3;
+}
+
+.prose h2 {
+  font-size: 1.5em;
+  padding-bottom: 0.4em;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.prose h3 {
+  font-size: 1.25em;
+}
+
+.prose ul, .prose ol {
+  margin: 1.5em 0;
+  padding-left: 1.6em;
+}
+
+.prose ul {
+  list-style: disc;
+}
+
+.prose ol {
+  list-style: decimal;
+}
+
+.prose li {
+  margin-bottom: 0.5em;
+  line-height: 1.75;
+}
+
+.prose li::marker {
+  color: var(--text-secondary);
+}
+
+.prose blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 1.2em;
+  margin: 1.8em 0;
+  font-style: italic;
+  color: var(--text-secondary);
+}
+
+.prose blockquote p {
+  margin-bottom: 0.8em;
+}
+
+.prose hr {
+  border: none;
+  border-top: 1px solid var(--border-soft);
+  margin: 2.5em 0;
+}
+
+.prose strong {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.prose em {
+  font-style: italic;
+}
+
+.prose code {
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 0.85em;
+  background: var(--bg-main);
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  border: 1px solid var(--border-soft);
+}
+
+.prose pre {
+  background: #1a1a1a;
+  color: #e8e8e8;
+  padding: 1.2em 1.5em;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 1.8em 0;
+  font-size: 0.85em;
+  line-height: 1.6;
+}
+
+.prose pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Анимация Claps (Струя токенов с зависанием) */
+@keyframes clap-stream {
+  0% { 
+    transform: translate(0, 0) scale(0.3) rotate(0deg); 
+    opacity: 0; 
+  }
+  15% { 
+    opacity: 1; 
+  }
+  60% {
+    transform: translate(calc(var(--x) * 0.8), calc(var(--y) * 0.8)) scale(var(--s)) rotate(calc(var(--r) * 0.5));
+    opacity: 1;
+  }
+  100% { 
+    transform: translate(var(--x), var(--y)) scale(var(--s)) rotate(var(--r)); 
+    opacity: 0; 
+  }
+}
+
+.animate-clap {
+  animation: clap-stream 1.5s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+@keyframes scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-33.333%); }
+}
+
+.animate-scroll {
+  animation: scroll 60s linear infinite;
+}
+
+.animate-scroll:hover {
+  animation-play-state: paused;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.connect-btn-medium {
+  background: var(--accent) !important;
+  color: white !important;
+  border-radius: 0 !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
+  font-size: 11px !important;
+  padding: 8px 20px !important;
+  border: none !important;
+  transition: all 0.2s ease !important;
+}
+
+.connect-btn-medium:hover {
+  background: var(--accent-hover) !important;
+  transform: translateY(-1px);
+}
+
+/* Кастомные стили для скроллбара */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-soft);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #d1cfc9;
+}

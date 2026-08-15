@@ -1,0 +1,1770 @@
+0xD67EFC8C562000a4d17155091B574d6A5BB91B31 контракт.
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.34;
+
+import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/common/ERC2981.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+contract PagerMascotKeysV2 is ERC1155, Ownable, ERC2981, ReentrancyGuard {
+    using Strings for uint256;
+
+    uint256 public constant MAX_SUPPLY = 10000;
+    uint96 public constant ROYALTY_BPS = 2000;
+    uint256 public constant CREATION_FEE = 500 * 10**18;
+    IERC20 public immutable hashToken;
+
+    string public name = "Pager Mascot Keys";
+    string public symbol = "PMK";
+
+    struct MascotKey {
+        address creator;
+        uint256 price;
+        uint32 currentSupply;
+        uint32 totalSold;
+        bool exists;
+    }
+
+    address public teamWallet;
+    uint256 public nextTokenId;
+
+    string public collectionMetadata = "ipfs://bafkreibgkoo4zv3mctvyghtzhx5utmperwkfzl4jpwoes2f2ymfefmz3ea";
+    string public baseURI;
+
+    mapping(uint256 => MascotKey) public keys;
+    uint256[] public allTokenIds;
+
+    mapping(address => uint256[]) private userTokens;
+    mapping(address => mapping(uint256 => bool)) private userTokenExists;
+
+    event CreationFeePaid(address indexed creator, uint256 amount);
+    event MascotCreated(uint256 indexed tokenId, address indexed creator, uint256 price);
+    event MascotMinted(uint256 indexed tokenId, address indexed buyer);
+    event MascotDiscarded(uint256 indexed tokenId, address indexed user);
+    event MascotDeleted(uint256 indexed tokenId);
+    event PriceUpdated(uint256 indexed tokenId, uint256 newPrice);
+
+    constructor(address _hashToken, address _teamWallet, string memory _baseURI)
+        ERC1155("")
+        Ownable(msg.sender)
+    {
+        require(_hashToken != address(0), "Invalid token");
+        require(_teamWallet != address(0), "Invalid wallet");
+
+        hashToken = IERC20(_hashToken);
+        teamWallet = _teamWallet;
+        baseURI = _baseURI;
+        _setDefaultRoyalty(_teamWallet, ROYALTY_BPS);
+    }
+
+    // =====================================================
+    // CORE
+    // =====================================================
+
+    function createMascot(uint256 _price) external {
+        require(hashToken.transferFrom(msg.sender, teamWallet, CREATION_FEE), "Creation fee failed");
+        emit CreationFeePaid(msg.sender, CREATION_FEE);
+
+        uint256 tokenId = nextTokenId++;
+
+        keys[tokenId] = MascotKey({
+            creator: msg.sender,
+            price: _price,
+            currentSupply: 1,
+            totalSold: 0,
+            exists: true
+        });
+
+        allTokenIds.push(tokenId);
+        _mint(msg.sender, tokenId, 1, "");
+
+        emit MascotCreated(tokenId, msg.sender, _price);
+    }
+
+    function mintKey(uint256 _tokenId) external nonReentrant {
+        MascotKey storage k = keys[_tokenId];
+        require(k.exists, "Not exist");
+        require(k.currentSupply < MAX_SUPPLY, "Sold out");
+
+        uint256 teamFee = (k.price * 5) / 100;
+        uint256 creatorShare = k.price - teamFee;
+
+        require(hashToken.transferFrom(msg.sender, teamWallet, teamFee), "Team fee");
+        require(hashToken.transferFrom(msg.sender, k.creator, creatorShare), "Creator fee");
+
+        k.currentSupply++;
+        k.totalSold++;
+        _mint(msg.sender, _tokenId, 1, "");
+
+        emit MascotMinted(_tokenId, msg.sender);
+    }
+
+    function discardMascot(uint256 _tokenId) external {
+        require(balanceOf(msg.sender, _tokenId) > 0, "Not owner");
+        safeTransferFrom(msg.sender, teamWallet, _tokenId, 1, "");
+        emit MascotDiscarded(_tokenId, msg.sender);
+    }
+
+    function setPrice(uint256 _tokenId, uint256 _newPrice) external {
+        require(keys[_tokenId].exists, "Not exist");
+        require(keys[_tokenId].creator == msg.sender, "Only creator");
+        keys[_tokenId].price = _newPrice;
+        emit PriceUpdated(_tokenId, _newPrice);
+    }
+
+    function deleteMascot(uint256 _tokenId) external onlyOwner {
+        require(keys[_tokenId].exists, "Already deleted");
+
+        keys[_tokenId].exists = false;
+        _removeFromAllTokens(_tokenId);
+
+        emit MascotDeleted(_tokenId);
+    }
+
+    // =====================================================
+    // OPTIMIZED VIEWS
+    // =====================================================
+
+    function getAllMascots(uint256 offset, uint256 limit)
+        external
+        view
+        returns (
+            uint256[] memory tokenIds,
+            MascotKey[] memory details,
+            uint256 total
+        )
+    {
+        total = allTokenIds.length;
+
+        if (offset >= total) {
+            return (new uint256[](0), new MascotKey[](0), total);
+        }
+
+        uint256 end = offset + limit > total ? total : offset + limit;
+        uint256 len = end - offset;
+
+        tokenIds = new uint256[](len);
+        details = new MascotKey[](len);
+
+        for (uint256 i = 0; i < len; i++) {
+            tokenIds[i] = allTokenIds[offset + i];
+            details[i] = keys[tokenIds[i]];
+        }
+
+        return (tokenIds, details, total);
+    }
+
+    /// @notice Returns ONLY active (non-deleted) mascots — saves client-side filtering
+    /// @dev Skips deleted tokens on-chain so frontend gets clean data
+    function getActiveMascots(uint256 offset, uint256 limit)
+        external
+        view
+        returns (
+            uint256[] memory tokenIds,
+            MascotKey[] memory details,
+            uint256 totalActive
+        )
+    {
+        uint256 total = allTokenIds.length;
+
+        // First pass: count active tokens
+        uint256 activeCount = 0;
+        for (uint256 i = 0; i < total; i++) {
+            if (keys[allTokenIds[i]].exists) {
+                activeCount++;
+            }
+        }
+        totalActive = activeCount;
+
+        if (offset >= activeCount) {
+            return (new uint256[](0), new MascotKey[](0), activeCount);
+        }
+
+        // Second pass: collect the requested slice of active tokens
+        uint256 end = offset + limit > activeCount ? activeCount : offset + limit;
+        uint256 len = end - offset;
+
+        tokenIds = new uint256[](len);
+        details = new MascotKey[](len);
+
+        uint256 activeIdx = 0;
+        uint256 collected = 0;
+
+        for (uint256 i = 0; i < total && collected < len; i++) {
+            if (keys[allTokenIds[i]].exists) {
+                if (activeIdx >= offset) {
+                    uint256 localIdx = activeIdx - offset;
+                    tokenIds[localIdx] = allTokenIds[i];
+                    details[localIdx] = keys[allTokenIds[i]];
+                    collected++;
+                }
+                activeIdx++;
+            }
+        }
+
+        return (tokenIds, details, activeCount);
+    }
+
+    /// @notice Batch read keys for multiple tokenIds — saves N individual RPC calls
+    function batchGetKeys(uint256[] calldata _tokenIds)
+        external
+        view
+        returns (MascotKey[] memory)
+    {
+        uint256 len = _tokenIds.length;
+        MascotKey[] memory result = new MascotKey[](len);
+        for (uint256 i = 0; i < len; i++) {
+            result[i] = keys[_tokenIds[i]];
+        }
+        return result;
+    }
+
+    /// @notice Batch check ownership for a user across multiple tokenIds
+    /// @return owned True if user has at least 1 of each tokenId
+    function batchHasBalance(address _owner, uint256[] calldata _tokenIds)
+        external
+        view
+        returns (bool[] memory)
+    {
+        uint256 len = _tokenIds.length;
+        bool[] memory result = new bool[](len);
+        for (uint256 i = 0; i < len; i++) {
+            result[i] = balanceOf(_owner, _tokenIds[i]) > 0;
+        }
+        return result;
+    }
+
+    /// @notice Returns user mascots with full details AND batch balances
+    /// @dev Uses ERC1155 balanceOf internally — single RPC for all data
+    function getUserMascots(address _owner)
+        external
+        view
+        returns (
+            uint256[] memory tokenIds,
+            uint256[] memory balances,
+            MascotKey[] memory details
+        )
+    {
+        uint256[] storage list = userTokens[_owner];
+        uint256 len = list.length;
+
+        tokenIds = new uint256[](len);
+        balances = new uint256[](len);
+        details = new MascotKey[](len);
+
+        for (uint256 i = 0; i < len; i++) {
+            tokenIds[i] = list[i];
+            balances[i] = balanceOf(_owner, list[i]);
+            details[i] = keys[list[i]];
+        }
+
+        return (tokenIds, balances, details);
+    }
+
+    /// @notice One-call: get user's owned mascots + their active keys + balances
+    /// @dev Frontend no longer needs separate batchGetKeys or batchHasBalance calls
+    function getUserMascotsCompact(address _owner)
+        external
+        view
+        returns (
+            uint256[] memory tokenIds,
+            uint256[] memory balances,
+            MascotKey[] memory details,
+            uint256 count
+        )
+    {
+        uint256[] storage list = userTokens[_owner];
+        uint256 len = list.length;
+        count = len;
+
+        tokenIds = new uint256[](len);
+        balances = new uint256[](len);
+        details = new MascotKey[](len);
+
+        for (uint256 i = 0; i < len; i++) {
+            tokenIds[i] = list[i];
+            balances[i] = balanceOf(_owner, list[i]);
+            details[i] = keys[list[i]];
+        }
+
+        return (tokenIds, balances, details, count);
+    }
+
+    function getUserMascotCount(address _owner) external view returns (uint256) {
+        return userTokens[_owner].length;
+    }
+
+    // =====================================================
+    // METADATA
+    // =====================================================
+
+    function uri(uint256 _tokenId) public view override returns (string memory) {
+        require(keys[_tokenId].exists, "Nonexistent token");
+        return string(abi.encodePacked(baseURI, _tokenId.toString(), ".json"));
+    }
+
+    function contractURI() public view returns (string memory) {
+        return collectionMetadata;
+    }
+
+    // =====================================================
+    // ADMIN
+    // =====================================================
+
+    function setBaseURI(string memory _newBaseURI) external onlyOwner {
+        baseURI = _newBaseURI;
+    }
+
+    function setCollectionMetadata(string memory _newMetadata) external onlyOwner {
+        collectionMetadata = _newMetadata;
+    }
+
+    function setTeamWallet(address _newWallet) external onlyOwner {
+        require(_newWallet != address(0), "Invalid address");
+        teamWallet = _newWallet;
+        _setDefaultRoyalty(_newWallet, ROYALTY_BPS);
+    }
+
+    function withdrawETH() external onlyOwner {
+        (bool success, ) = payable(owner()).call{value: address(this).balance}("");
+        require(success, "ETH transfer failed");
+    }
+
+    // =====================================================
+    // INTERNAL
+    // =====================================================
+
+    function _removeFromAllTokens(uint256 _tokenId) private {
+        uint256 len = allTokenIds.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (allTokenIds[i] == _tokenId) {
+                allTokenIds[i] = allTokenIds[len - 1];
+                allTokenIds.pop();
+                break;
+            }
+        }
+    }
+
+    function _update(
+        address from,
+        address to,
+        uint256[] memory ids,
+        uint256[] memory values
+    ) internal virtual override {
+        super._update(from, to, ids, values);
+
+        if (to != address(0)) {
+            for (uint256 i = 0; i < ids.length; i++) {
+                if (values[i] > 0 && !userTokenExists[to][ids[i]]) {
+                    userTokens[to].push(ids[i]);
+                    userTokenExists[to][ids[i]] = true;
+                }
+            }
+        }
+
+        if (from != address(0)) {
+            for (uint256 i = 0; i < ids.length; i++) {
+                if (balanceOf(from, ids[i]) == 0) {
+                    userTokenExists[from][ids[i]] = false;
+                    _removeUserToken(from, ids[i]);
+                }
+            }
+        }
+    }
+
+    function _removeUserToken(address user, uint256 tokenId) private {
+        uint256[] storage tokens = userTokens[user];
+        for (uint256 i = 0; i < tokens.length; i++) {
+            if (tokens[i] == tokenId) {
+                tokens[i] = tokens[tokens.length - 1];
+                tokens.pop();
+                break;
+            }
+        }
+    }
+
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC1155, ERC2981)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
+    }
+}
+
+
+
+abi
+[
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_hashToken",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "_teamWallet",
+				"type": "address"
+			},
+			{
+				"internalType": "string",
+				"name": "_baseURI",
+				"type": "string"
+			}
+		],
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "sender",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "balance",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "needed",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "tokenId",
+				"type": "uint256"
+			}
+		],
+		"name": "ERC1155InsufficientBalance",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "approver",
+				"type": "address"
+			}
+		],
+		"name": "ERC1155InvalidApprover",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "idsLength",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "valuesLength",
+				"type": "uint256"
+			}
+		],
+		"name": "ERC1155InvalidArrayLength",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "operator",
+				"type": "address"
+			}
+		],
+		"name": "ERC1155InvalidOperator",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "receiver",
+				"type": "address"
+			}
+		],
+		"name": "ERC1155InvalidReceiver",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "sender",
+				"type": "address"
+			}
+		],
+		"name": "ERC1155InvalidSender",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "operator",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "owner",
+				"type": "address"
+			}
+		],
+		"name": "ERC1155MissingApprovalForAll",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "numerator",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "denominator",
+				"type": "uint256"
+			}
+		],
+		"name": "ERC2981InvalidDefaultRoyalty",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "receiver",
+				"type": "address"
+			}
+		],
+		"name": "ERC2981InvalidDefaultRoyaltyReceiver",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "tokenId",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "numerator",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "denominator",
+				"type": "uint256"
+			}
+		],
+		"name": "ERC2981InvalidTokenRoyalty",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "tokenId",
+				"type": "uint256"
+			},
+			{
+				"internalType": "address",
+				"name": "receiver",
+				"type": "address"
+			}
+		],
+		"name": "ERC2981InvalidTokenRoyaltyReceiver",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "owner",
+				"type": "address"
+			}
+		],
+		"name": "OwnableInvalidOwner",
+		"type": "error"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "account",
+				"type": "address"
+			}
+		],
+		"name": "OwnableUnauthorizedAccount",
+		"type": "error"
+	},
+	{
+		"inputs": [],
+		"name": "ReentrancyGuardReentrantCall",
+		"type": "error"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "account",
+				"type": "address"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "operator",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "bool",
+				"name": "approved",
+				"type": "bool"
+			}
+		],
+		"name": "ApprovalForAll",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "creator",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "CreationFeePaid",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "tokenId",
+				"type": "uint256"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "creator",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "price",
+				"type": "uint256"
+			}
+		],
+		"name": "MascotCreated",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "tokenId",
+				"type": "uint256"
+			}
+		],
+		"name": "MascotDeleted",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "tokenId",
+				"type": "uint256"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "user",
+				"type": "address"
+			}
+		],
+		"name": "MascotDiscarded",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "tokenId",
+				"type": "uint256"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "buyer",
+				"type": "address"
+			}
+		],
+		"name": "MascotMinted",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "previousOwner",
+				"type": "address"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "newOwner",
+				"type": "address"
+			}
+		],
+		"name": "OwnershipTransferred",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "tokenId",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "newPrice",
+				"type": "uint256"
+			}
+		],
+		"name": "PriceUpdated",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "operator",
+				"type": "address"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "from",
+				"type": "address"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "to",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256[]",
+				"name": "ids",
+				"type": "uint256[]"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256[]",
+				"name": "values",
+				"type": "uint256[]"
+			}
+		],
+		"name": "TransferBatch",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "operator",
+				"type": "address"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "from",
+				"type": "address"
+			},
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "to",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "id",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "value",
+				"type": "uint256"
+			}
+		],
+		"name": "TransferSingle",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "value",
+				"type": "string"
+			},
+			{
+				"indexed": true,
+				"internalType": "uint256",
+				"name": "id",
+				"type": "uint256"
+			}
+		],
+		"name": "URI",
+		"type": "event"
+	},
+	{
+		"inputs": [],
+		"name": "CREATION_FEE",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "MAX_SUPPLY",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "ROYALTY_BPS",
+		"outputs": [
+			{
+				"internalType": "uint96",
+				"name": "",
+				"type": "uint96"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"name": "allTokenIds",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "account",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "id",
+				"type": "uint256"
+			}
+		],
+		"name": "balanceOf",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address[]",
+				"name": "accounts",
+				"type": "address[]"
+			},
+			{
+				"internalType": "uint256[]",
+				"name": "ids",
+				"type": "uint256[]"
+			}
+		],
+		"name": "balanceOfBatch",
+		"outputs": [
+			{
+				"internalType": "uint256[]",
+				"name": "",
+				"type": "uint256[]"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "baseURI",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "",
+				"type": "string"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256[]",
+				"name": "_tokenIds",
+				"type": "uint256[]"
+			}
+		],
+		"name": "batchGetKeys",
+		"outputs": [
+			{
+				"components": [
+					{
+						"internalType": "address",
+						"name": "creator",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "price",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint32",
+						"name": "currentSupply",
+						"type": "uint32"
+					},
+					{
+						"internalType": "uint32",
+						"name": "totalSold",
+						"type": "uint32"
+					},
+					{
+						"internalType": "bool",
+						"name": "exists",
+						"type": "bool"
+					}
+				],
+				"internalType": "struct PagerMascotKeysV2.MascotKey[]",
+				"name": "",
+				"type": "tuple[]"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_owner",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256[]",
+				"name": "_tokenIds",
+				"type": "uint256[]"
+			}
+		],
+		"name": "batchHasBalance",
+		"outputs": [
+			{
+				"internalType": "bool[]",
+				"name": "",
+				"type": "bool[]"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "collectionMetadata",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "",
+				"type": "string"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "contractURI",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "",
+				"type": "string"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_price",
+				"type": "uint256"
+			}
+		],
+		"name": "createMascot",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_tokenId",
+				"type": "uint256"
+			}
+		],
+		"name": "deleteMascot",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_tokenId",
+				"type": "uint256"
+			}
+		],
+		"name": "discardMascot",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "offset",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "limit",
+				"type": "uint256"
+			}
+		],
+		"name": "getActiveMascots",
+		"outputs": [
+			{
+				"internalType": "uint256[]",
+				"name": "tokenIds",
+				"type": "uint256[]"
+			},
+			{
+				"components": [
+					{
+						"internalType": "address",
+						"name": "creator",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "price",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint32",
+						"name": "currentSupply",
+						"type": "uint32"
+					},
+					{
+						"internalType": "uint32",
+						"name": "totalSold",
+						"type": "uint32"
+					},
+					{
+						"internalType": "bool",
+						"name": "exists",
+						"type": "bool"
+					}
+				],
+				"internalType": "struct PagerMascotKeysV2.MascotKey[]",
+				"name": "details",
+				"type": "tuple[]"
+			},
+			{
+				"internalType": "uint256",
+				"name": "totalActive",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "offset",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "limit",
+				"type": "uint256"
+			}
+		],
+		"name": "getAllMascots",
+		"outputs": [
+			{
+				"internalType": "uint256[]",
+				"name": "tokenIds",
+				"type": "uint256[]"
+			},
+			{
+				"components": [
+					{
+						"internalType": "address",
+						"name": "creator",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "price",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint32",
+						"name": "currentSupply",
+						"type": "uint32"
+					},
+					{
+						"internalType": "uint32",
+						"name": "totalSold",
+						"type": "uint32"
+					},
+					{
+						"internalType": "bool",
+						"name": "exists",
+						"type": "bool"
+					}
+				],
+				"internalType": "struct PagerMascotKeysV2.MascotKey[]",
+				"name": "details",
+				"type": "tuple[]"
+			},
+			{
+				"internalType": "uint256",
+				"name": "total",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_owner",
+				"type": "address"
+			}
+		],
+		"name": "getUserMascotCount",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_owner",
+				"type": "address"
+			}
+		],
+		"name": "getUserMascots",
+		"outputs": [
+			{
+				"internalType": "uint256[]",
+				"name": "tokenIds",
+				"type": "uint256[]"
+			},
+			{
+				"internalType": "uint256[]",
+				"name": "balances",
+				"type": "uint256[]"
+			},
+			{
+				"components": [
+					{
+						"internalType": "address",
+						"name": "creator",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "price",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint32",
+						"name": "currentSupply",
+						"type": "uint32"
+					},
+					{
+						"internalType": "uint32",
+						"name": "totalSold",
+						"type": "uint32"
+					},
+					{
+						"internalType": "bool",
+						"name": "exists",
+						"type": "bool"
+					}
+				],
+				"internalType": "struct PagerMascotKeysV2.MascotKey[]",
+				"name": "details",
+				"type": "tuple[]"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_owner",
+				"type": "address"
+			}
+		],
+		"name": "getUserMascotsCompact",
+		"outputs": [
+			{
+				"internalType": "uint256[]",
+				"name": "tokenIds",
+				"type": "uint256[]"
+			},
+			{
+				"internalType": "uint256[]",
+				"name": "balances",
+				"type": "uint256[]"
+			},
+			{
+				"components": [
+					{
+						"internalType": "address",
+						"name": "creator",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "price",
+						"type": "uint256"
+					},
+					{
+						"internalType": "uint32",
+						"name": "currentSupply",
+						"type": "uint32"
+					},
+					{
+						"internalType": "uint32",
+						"name": "totalSold",
+						"type": "uint32"
+					},
+					{
+						"internalType": "bool",
+						"name": "exists",
+						"type": "bool"
+					}
+				],
+				"internalType": "struct PagerMascotKeysV2.MascotKey[]",
+				"name": "details",
+				"type": "tuple[]"
+			},
+			{
+				"internalType": "uint256",
+				"name": "count",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "hashToken",
+		"outputs": [
+			{
+				"internalType": "contract IERC20",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "account",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "operator",
+				"type": "address"
+			}
+		],
+		"name": "isApprovedForAll",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"name": "keys",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "creator",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "price",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint32",
+				"name": "currentSupply",
+				"type": "uint32"
+			},
+			{
+				"internalType": "uint32",
+				"name": "totalSold",
+				"type": "uint32"
+			},
+			{
+				"internalType": "bool",
+				"name": "exists",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_tokenId",
+				"type": "uint256"
+			}
+		],
+		"name": "mintKey",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "name",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "",
+				"type": "string"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "nextTokenId",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "owner",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "renounceOwnership",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "tokenId",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "salePrice",
+				"type": "uint256"
+			}
+		],
+		"name": "royaltyInfo",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "receiver",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "from",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "to",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256[]",
+				"name": "ids",
+				"type": "uint256[]"
+			},
+			{
+				"internalType": "uint256[]",
+				"name": "values",
+				"type": "uint256[]"
+			},
+			{
+				"internalType": "bytes",
+				"name": "data",
+				"type": "bytes"
+			}
+		],
+		"name": "safeBatchTransferFrom",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "from",
+				"type": "address"
+			},
+			{
+				"internalType": "address",
+				"name": "to",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "id",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "value",
+				"type": "uint256"
+			},
+			{
+				"internalType": "bytes",
+				"name": "data",
+				"type": "bytes"
+			}
+		],
+		"name": "safeTransferFrom",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "operator",
+				"type": "address"
+			},
+			{
+				"internalType": "bool",
+				"name": "approved",
+				"type": "bool"
+			}
+		],
+		"name": "setApprovalForAll",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "_newBaseURI",
+				"type": "string"
+			}
+		],
+		"name": "setBaseURI",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "_newMetadata",
+				"type": "string"
+			}
+		],
+		"name": "setCollectionMetadata",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_tokenId",
+				"type": "uint256"
+			},
+			{
+				"internalType": "uint256",
+				"name": "_newPrice",
+				"type": "uint256"
+			}
+		],
+		"name": "setPrice",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_newWallet",
+				"type": "address"
+			}
+		],
+		"name": "setTeamWallet",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "bytes4",
+				"name": "interfaceId",
+				"type": "bytes4"
+			}
+		],
+		"name": "supportsInterface",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "symbol",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "",
+				"type": "string"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "teamWallet",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "newOwner",
+				"type": "address"
+			}
+		],
+		"name": "transferOwnership",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_tokenId",
+				"type": "uint256"
+			}
+		],
+		"name": "uri",
+		"outputs": [
+			{
+				"internalType": "string",
+				"name": "",
+				"type": "string"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "withdrawETH",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	}
+]
