@@ -2,13 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Newspaper } from "lucide-react";
-
-const FALLBACK_GATEWAYS = [
-  "https://gateway.pinata.cloud/ipfs/",
-  "https://ipfs.io/ipfs/",
-  "https://cloudflare-ipfs.com/ipfs/",
-  "https://gateway.ipn.io/ipfs/",
-];
+import { ipfsGatewayVariants } from "@/lib/ipfs";
 
 // A freshly-pinned CID (article just generated) can be unreachable on the
 // public gateways for a few seconds even though pinFileToIPFS already returned
@@ -19,34 +13,14 @@ const SAME_GATEWAY_RETRIES = 1;
 const GATEWAY_RETRY_DELAY_MS = 1000;
 const RECYCLE_MS = 5000;
 
-function extractIpfsCid(url: string): string | null {
-  const patterns = [
-    /\/ipfs\/([a-zA-Z0-9]{46,})/,
-    /\/ipfs\/([a-zA-Z0-9]+)/,
-    /^ipfs:\/\/([a-zA-Z0-9]+)/,
-  ];
-  for (const p of patterns) {
-    const m = url.match(p);
-    if (m) return m[1];
-  }
-  return null;
-}
-
-function buildGatewayUrl(originalUrl: string, gatewayIndex: number): string {
-  const cid = extractIpfsCid(originalUrl);
-  if (cid && gatewayIndex < FALLBACK_GATEWAYS.length) {
-    return `${FALLBACK_GATEWAYS[gatewayIndex].replace(/\/+$/, "")}/${cid}`;
-  }
-  return originalUrl;
-}
-
 export default function BannerImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
   const [gatewayIdx, setGatewayIdx] = useState(0);
   const [gatewayRetries, setGatewayRetries] = useState(0);
   const [failed, setFailed] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
-  const currentSrc = buildGatewayUrl(src, gatewayIdx);
+  const variants = ipfsGatewayVariants(src);
+  const currentSrc = variants[gatewayIdx] ?? src;
 
   const handleError = useCallback(() => {
     const retrySame = gatewayRetries < SAME_GATEWAY_RETRIES;
@@ -56,7 +30,7 @@ export default function BannerImage({ src, alt, className }: { src: string; alt:
         setGatewayRetries((r) => r + 1);
       } else {
         const next = gatewayIdx + 1;
-        if (next < FALLBACK_GATEWAYS.length) {
+        if (next < variants.length) {
           setGatewayIdx(next);
           setGatewayRetries(0);
         } else {
@@ -64,7 +38,7 @@ export default function BannerImage({ src, alt, className }: { src: string; alt:
         }
       }
     }, retrySame ? GATEWAY_RETRY_DELAY_MS : 0);
-  }, [gatewayIdx, gatewayRetries]);
+  }, [gatewayIdx, gatewayRetries, variants.length]);
 
   useEffect(() => {
     if (!failed) return;

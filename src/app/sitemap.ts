@@ -1,8 +1,9 @@
 import { MetadataRoute } from 'next';
 import { supabase } from '@/lib/supabase';
+import { getSiteUrl } from '@/lib/site';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info').replace(/\/$/, '');
+  const baseUrl = getSiteUrl();
 
   // Fetch all articles for sitemap
   const { data: articles } = await supabase

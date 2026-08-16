@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
 import { verifySignature, getAuthMessage } from '@/lib/auth';
-import { encryptData, maskKey, isEncrypted } from '@/lib/security';
+import { encryptData, maskKey, isEncrypted, sanitizeProfile } from '@/lib/security';
 
 export async function GET(req: Request) {
   try {
@@ -27,30 +27,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ profile: null });
     }
 
-    const maskChatId = (id: string) => {
-      if (!id) return id;
-      if (id.startsWith('-100')) return '-100' + '•'.repeat(Math.max(0, id.length - 7)) + id.slice(-3);
-      if (id.startsWith('-')) return '-' + '•'.repeat(Math.max(0, id.length - 4)) + id.slice(-3);
-      return id;
-    };
-
-    const safeProfile = {
-      ...data,
-      ai_credits: data.ai_credits || 0,
-      ai_api_key: data.ai_api_key ? maskKey(data.ai_api_key) : "",
-      binance_accounts: (data.binance_accounts || []).map((acc: any) => ({
-        ...acc,
-        apiKey: acc.apiKey ? maskKey(acc.apiKey) : ""
-      })),
-      telegram_channels: (data.telegram_channels || []).map((ch: any) => ({
-        ...ch,
-        chatId: ch.chatId?.startsWith('-') ? maskChatId(ch.chatId) : ch.chatId
-      })),
-      cta_links: (data.cta_links || []).map((link: any) => ({
-        ...link,
-        url: link.url?.includes('t.me/') && link.url.match(/\/-?\d+/) ? link.url.replace(/\/-?\d+/, '/' + maskChatId(link.url.match(/\/-?\d+/)![0].slice(1))) : link.url
-      }))
-    };
+    const safeProfile = sanitizeProfile(data, { maskChannels: true });
 
     const response = NextResponse.json({ profile: safeProfile });
     response.headers.set('Cache-Control', 'no-store, max-age=0');
@@ -163,29 +140,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message || "Database error" }, { status: 500 });
     }
 
-    const maskChatId = (id: string) => {
-      if (!id) return id;
-      if (id.startsWith('-100')) return '-100' + '•'.repeat(Math.max(0, id.length - 7)) + id.slice(-3);
-      if (id.startsWith('-')) return '-' + '•'.repeat(Math.max(0, id.length - 4)) + id.slice(-3);
-      return id;
-    };
-
-    const safeProfile = {
-      ...data,
-      ai_api_key: data.ai_api_key ? maskKey(data.ai_api_key) : "",
-      binance_accounts: (data.binance_accounts || []).map((acc: any) => ({
-        ...acc,
-        apiKey: acc.apiKey ? maskKey(acc.apiKey) : ""
-      })),
-      telegram_channels: (data.telegram_channels || []).map((ch: any) => ({
-        ...ch,
-        chatId: ch.chatId?.startsWith('-') ? maskChatId(ch.chatId) : ch.chatId
-      })),
-      cta_links: (data.cta_links || []).map((link: any) => ({
-        ...link,
-        url: link.url?.includes('t.me/') && link.url.match(/\/-?\d+/) ? link.url.replace(/\/-?\d+/, '/' + maskChatId(link.url.match(/\/-?\d+/)![0].slice(1))) : link.url
-      }))
-    };
+    const safeProfile = sanitizeProfile(data, { maskChannels: true });
 
     const response = NextResponse.json({ success: true, profile: safeProfile });
     response.headers.set('Cache-Control', 'no-store, max-age=0');

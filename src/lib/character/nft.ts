@@ -2,6 +2,7 @@ import { getContract, readContract } from "thirdweb";
 import { client, MASCOTS_CONTRACT_ADDRESS, MASCOTS_ABI } from "@/lib/web3";
 import { base } from "thirdweb/chains";
 import { getSupabaseServer } from "@/lib/supabase";
+import { ipfsGatewayVariants } from "@/lib/ipfs";
 
 export interface PagerDna {
   version: string;
@@ -19,13 +20,6 @@ export interface NftMascotMetadata {
   image: string;
   pager_dna: PagerDna;
 }
-
-const GATEWAYS = [
-  "https://gateway.ipn.io/ipfs/",
-  "https://ipfs.io/ipfs/",
-  "https://cloudflare-ipfs.com/ipfs/",
-  "https://gateway.pinata.cloud/ipfs/"
-];
 
 async function fetchMetadataFromUri(uri: string): Promise<NftMascotMetadata | null> {
   // 1. If it's a standard HTTP URL, fetch directly
@@ -46,26 +40,22 @@ async function fetchMetadataFromUri(uri: string): Promise<NftMascotMetadata | nu
   }
 
   // 2. IPFS Multi-Gateway Fallback
-  const cid = uri.replace("ipfs://", "");
-  if (cid !== uri || !uri.startsWith("http")) {
-    for (const gateway of GATEWAYS) {
-      try {
-        const fetchUrl = uri.startsWith("http") ? uri : `${gateway}${cid}`;
-        console.log(`📡 [NFT DNA] Trying gateway/URL: ${fetchUrl}`);
-        const response = await fetch(fetchUrl, {
-          signal: AbortSignal.timeout(12000),
-          headers: { 'Accept': 'application/json' }
-        });
+  for (const fetchUrl of ipfsGatewayVariants(uri)) {
+    try {
+      console.log(`📡 [NFT DNA] Trying gateway/URL: ${fetchUrl}`);
+      const response = await fetch(fetchUrl, {
+        signal: AbortSignal.timeout(12000),
+        headers: { 'Accept': 'application/json' }
+      });
 
-        if (response.ok) {
-          const metadata = await response.json();
-          if (metadata.pager_dna) {
-            return metadata as NftMascotMetadata;
-          }
+      if (response.ok) {
+        const metadata = await response.json();
+        if (metadata.pager_dna) {
+          return metadata as NftMascotMetadata;
         }
-      } catch (e) {
-        continue;
       }
+    } catch (e) {
+      continue;
     }
   }
 

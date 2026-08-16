@@ -1,3 +1,6 @@
+import { normalizeIpfs } from "@/lib/ipfs";
+import { getSiteUrl, shortAddress } from "@/lib/site";
+
 export interface MascotNotifyData {
   tokenId: number | string;
   name: string;
@@ -14,18 +17,6 @@ const escapeHtml = (s: string) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-function shortAddress(addr: string): string {
-  if (!addr) return "?";
-  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-}
-
-function normalizeIpfs(url?: string): string {
-  if (!url) return "";
-  return url.startsWith("ipfs://")
-    ? url.replace("ipfs://", "https://gateway.ipn.io/ipfs/")
-    : url;
-}
-
 /** DB `price` хранится как целое число ($HASH); старые строки могут содержать wei. */
 function formatPrice(raw: string | number): string {
   const n = Number(raw);
@@ -34,7 +25,7 @@ function formatPrice(raw: string | number): string {
 }
 
 export function formatMascotMessage(d: MascotNotifyData): string {
-  const site = (process.env.NEXT_PUBLIC_SITE_URL || "https://pager.lookhook.info").replace(/\/+$/, "");
+  const site = getSiteUrl();
   const name = escapeHtml(d.name || `Protocol #${d.tokenId}`).toUpperCase();
   let desc = (d.personality || "").replace(/\s+/g, " ").trim();
   if (desc.length > 200) desc = desc.slice(0, 197).trimEnd() + "...";
@@ -63,7 +54,7 @@ export async function sendMascotToForum(data: MascotNotifyData): Promise<{ succe
 
   const message = formatMascotMessage(data);
   const messageThreadId = process.env.TG_MASCOT_TOPIC_ID ? parseInt(process.env.TG_MASCOT_TOPIC_ID, 10) : undefined;
-  const image = normalizeIpfs(data.imageUrl);
+  const image = normalizeIpfs(data.imageUrl || "");
 
   if (image) {
     try {

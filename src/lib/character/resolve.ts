@@ -1,5 +1,5 @@
 import { resolveNftDna } from "./nft";
-import { normalizeReference } from "@/lib/utils";
+import { normalizeIpfs } from "@/lib/ipfs";
 import type { CustomDna } from "./index";
 
 /**
@@ -15,6 +15,6 @@ export async function resolveDna(tokenId: string): Promise<CustomDna | null> {
     personality: metadata.pager_dna.personality,
     voice: metadata.pager_dna.voice,
     physical_description: metadata.pager_dna.physical_description,
-    image_url: normalizeReference(metadata.image),
+    image_url: normalizeIpfs(metadata.image),
   };
 }

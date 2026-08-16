@@ -9,7 +9,7 @@ import ProfileMascots from "@/components/ProfileMascots";
 import GemFunCard from "@/components/GemFunCard";
 import DeleteButton from "@/components/DeleteButton";
 import { Metadata } from 'next';
-import { maskKey } from "@/lib/security";
+import { sanitizeProfile } from "@/lib/security";
 import { stripHtml } from "@/lib/utils";
 import { fetchGemTokenData } from "@/lib/gemfun";
 
@@ -32,14 +32,7 @@ async function getProfileData(address: string, page: number) {
     .maybeSingle();
 
   // Маскируем ключи для безопасности на фронтенде
-  const safeProfile = profile ? {
-    ...profile,
-    ai_api_key: profile.ai_api_key ? maskKey(profile.ai_api_key) : "",
-    binance_accounts: (profile.binance_accounts || []).map((acc: any) => ({
-      ...acc,
-      apiKey: acc.apiKey ? maskKey(acc.apiKey) : ""
-    }))
-  } : null;
+  const safeProfile = profile ? sanitizeProfile(profile) : null;
 
   // 2. Получаем общее количество наград и статей (нужно для хедера)
   const { data: allStats } = await supabase

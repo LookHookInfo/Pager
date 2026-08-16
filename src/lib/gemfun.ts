@@ -1,6 +1,9 @@
 import { getContract, readContract } from "thirdweb";
 import { base } from "thirdweb/chains";
 import { client, HASH_TOKEN_ADDRESS } from "@/lib/web3";
+import { shortAddress } from "@/lib/site";
+
+export { shortAddress };
 
 export const GEMFUN_ADDRESS = "0xea4831Df95738d6Ef0f2b47e5345fa75A2E59e86";
 
@@ -24,11 +27,6 @@ export function isValidTokenAddress(value: string | null | undefined): boolean {
 export function normalizeTokenAddress(value: string | null | undefined): string | null {
   if (!isValidTokenAddress(value)) return null;
   return value!.trim().toLowerCase();
-}
-
-export function shortAddress(address: string): string {
-  if (!address) return "";
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
 export function reserveFor(sold: bigint): bigint {

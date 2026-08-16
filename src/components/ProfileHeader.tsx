@@ -13,11 +13,12 @@ import { base } from "thirdweb/chains";
 import { getAuthMessage } from "@/lib/auth";
 import ProfileIdentity from "@/components/ProfileIdentity";
 import ProfileDistribution from "@/components/ProfileDistribution";
+import type { Profile } from "@/types";
 
 export default function ProfileHeader({
   profile, totalArticles,
 }: {
-  profile: any; totalArticles: number; totalRewards: number;
+  profile: Profile; totalArticles: number; totalRewards: number;
 }) {
   const account = useActiveAccount();
   const { mutate: sendTransaction } = useSendTransaction();
@@ -37,7 +38,8 @@ export default function ProfileHeader({
 
   const isOwner = account?.address?.toLowerCase() === profile.address?.toLowerCase();
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<Profile>({
+    address: "",
     name: "", bio: "", website: "", avatar_url: "", cmc_username: "",
     gemfun_token: "",
     binance_accounts: [], telegram_channels: [], telegram_chat_id: "",
@@ -48,7 +50,8 @@ export default function ProfileHeader({
   const [displayData, setDisplayData] = useState<{ name: string; bio: string; website?: string }>({ name: "Anonymous Author", bio: "" });
 
   useEffect(() => {
-    const data = {
+    const data: Profile = {
+      address: profile.address || "",
       name: profile.name || "", bio: profile.bio || "", website: profile.website || "",
       avatar_url: profile.avatar_url || "",
       cmc_username: profile.cmc_username || "",
@@ -60,7 +63,7 @@ export default function ProfileHeader({
       ref_links: profile.ref_links || [{ label: "", url: "" }, { label: "", url: "" }, { label: "", url: "" }],
     };
     setFormData(data);
-    setDisplayData({ name: profile.name || "Anonymous Author", bio: profile.bio || "Web3 enthusiast.", website: profile.website });
+    setDisplayData({ name: profile.name || "Anonymous Author", bio: profile.bio || "Web3 enthusiast.", website: profile.website || undefined });
   }, [profile]);
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -124,7 +127,7 @@ export default function ProfileHeader({
       const res = await fetch("/api/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: profile.address.toLowerCase(), ...formData, signature: sig, message: msg }),
+        body: JSON.stringify({ ...formData, address: profile.address.toLowerCase(), signature: sig, message: msg }),
       });
       if (!res.ok) {
         let errMsg = "Save failed";

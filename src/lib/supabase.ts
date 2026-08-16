@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -11,11 +11,14 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 // NOTE: Next.js patches global fetch and caches GET responses (this froze
 // reads in several routes — they kept seeing stale rows). Force
 // cache: "no-store" so every read is fresh.
+let serverClient: SupabaseClient | null = null;
+
 export const getSupabaseServer = () => {
+  if (serverClient) return serverClient;
   if (!supabaseServiceKey) {
     console.warn("⚠️ [Supabase] Service Role Key is missing, using Anon Key for server operations.");
   }
-  return createClient(supabaseUrl, supabaseServiceKey || supabaseAnonKey, {
+  serverClient = createClient(supabaseUrl, supabaseServiceKey || supabaseAnonKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -24,4 +27,5 @@ export const getSupabaseServer = () => {
       fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
     },
   });
+  return serverClient;
 };

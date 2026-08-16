@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { MASCOTS_CONTRACT_ADDRESS } from "@/lib/web3";
+import { getSiteUrl } from "@/lib/site";
 
 export async function GET(
   _request: Request,
@@ -37,7 +38,7 @@ export async function GET(
       name: dna.name,
       description: dna.personality,
       image: dna.image_url,
-      external_url: `https://pager.lookhook.info/tape/${dna.creator_address}`,
+      external_url: `${getSiteUrl()}/tape/${dna.creator_address}`,
       attributes: [
         { trait_type: "Creator", value: dna.creator_address },
         { trait_type: "Voice", value: dna.voice },

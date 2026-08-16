@@ -3,28 +3,10 @@ import { getSupabaseServer } from "@/lib/supabase";
 import { postToBinance, postToTelegram, adaptContent } from "@/lib/distribution";
 import { decryptData } from "@/lib/security";
 import { verifySignature, getAuthMessage } from "@/lib/auth";
+import { mapWithConcurrency } from "@/lib/async";
+import { getSiteUrl } from "@/lib/site";
 
 export const maxDuration = 120;
-
-/**
- * The AnyModel gateway rate-limits concurrent requests per key (429/502).
- * Unlimited parallel adaptation over many channels made most of them silently
- * fall back to the base-language content. Cap concurrency so the gateway can
- * actually serve every channel.
- */
-async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (true) {
-      const idx = cursor++;
-      if (idx >= items.length) break;
-      results[idx] = await fn(items[idx]);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
 
 export async function POST(req: Request) {
   try {
@@ -54,7 +36,7 @@ export async function POST(req: Request) {
 
     const { data: profile } = await supabase.from("profiles").select("name").eq("address", normalizedAddress).single();
     const authorName = profile?.name || `${profileAddress.slice(0, 6)}...`;
-    const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://pager.lookhook.info").replace(/\/$/, "");
+    const baseUrl = getSiteUrl();
 
     const results: { channel: string; success: boolean; error?: string; note?: string }[] = [];
 

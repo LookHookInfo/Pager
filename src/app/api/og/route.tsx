@@ -1,5 +1,6 @@
 import { ImageResponse } from 'next/og';
 import { getSupabaseServer } from '@/lib/supabase';
+import { normalizeIpfs } from '@/lib/ipfs';
 
 export const runtime = 'edge';
 
@@ -14,10 +15,7 @@ export const runtime = 'edge';
 function getOptimizedImageUrl(url: string) {
   if (!url) return "";
   
-  let rawUrl = url;
-  if (url.startsWith('ipfs://')) {
-    rawUrl = url.replace('ipfs://', 'https://cloudflare-ipfs.com/ipfs/');
-  }
+  let rawUrl = normalizeIpfs(url);
 
   // Используем wsrv.nl для ресайза и сжатия "на лету"
   // w=1200 - ширина

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import { ThirdwebProvider } from "thirdweb/react";
+import { getSiteUrl } from "@/lib/site";
 
 import AccountSync from "@/components/AccountSync";
 import Footer from "@/components/Footer";
@@ -12,7 +13,7 @@ const serif = Source_Serif_4({ subsets: ["latin", "cyrillic"], variable: "--font
 export const metadata: Metadata = {
   title: "Pager - Web3 Media",
   description: "A minimalist decentralized news platform built on Base. Curated by AI, powered by $HASH.",
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://pager.lookhook.info"),
+  metadataBase: new URL(getSiteUrl()),
   icons: {
     icon: "/favicon.png",
   },

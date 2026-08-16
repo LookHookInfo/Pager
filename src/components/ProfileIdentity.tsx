@@ -1,10 +1,12 @@
 "use client";
 
+import type { Profile } from "@/types";
+
 interface Props {
-  formData: any;
-  displayData: any;
+  formData: Profile;
+  displayData: { name: string; bio: string; website?: string };
   isUploading: boolean;
-  onFormChange: (data: any) => void;
+  onFormChange: (data: Profile) => void;
   onAvatarUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
 }
@@ -18,21 +20,21 @@ export default function ProfileIdentity({ formData, onFormChange }: Props) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <input
           type="text"
-          value={formData.name}
+          value={formData.name || ""}
           onChange={e => onFormChange({ ...formData, name: e.target.value })}
           placeholder="Display Name"
           className="w-full text-xs font-bold p-3 border border-gray-200 outline-none bg-white focus:border-black transition-colors"
         />
         <input
           type="text"
-          value={formData.website}
+          value={formData.website || ""}
           onChange={e => onFormChange({ ...formData, website: e.target.value })}
           placeholder="Website URL"
           className="w-full text-xs p-3 border border-gray-200 outline-none bg-white focus:border-black transition-colors"
         />
       </div>
       <textarea
-        value={formData.bio}
+        value={formData.bio || ""}
         onChange={e => onFormChange({ ...formData, bio: e.target.value })}
         placeholder="Biographical Data..."
         className="w-full text-xs p-3 border border-gray-200 outline-none bg-white focus:border-black transition-colors min-h-[80px]"

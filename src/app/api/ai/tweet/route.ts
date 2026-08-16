@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { chatAnyModel } from "@/lib/anymodel";
 import { cleanHashtag, detectCommunities } from "@/lib/tweet-entities";
+import { getSiteUrl } from "@/lib/site";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
@@ -115,7 +116,7 @@ RULES:
     hashtags = finalTags.slice(0, 5).join(" ");
 
     // ---- 2) Hook: guarantee at least one relevant community @mention ----
-    const fullUrl = articleUrl || "https://pager.lookhook.info";
+    const fullUrl = articleUrl || getSiteUrl();
     const linkLine = `\n\nContinue reading: ${fullUrl}`;
     const hashtagsLine = "\n\n" + hashtags;
     const hookBudget = 280 - linkLine.length - hashtagsLine.length;

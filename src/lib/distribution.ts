@@ -1,52 +1,13 @@
 import { chatAnyModelJson } from "@/lib/anymodel";
 import { ANYMODEL_FALLBACK_TEXT_MODEL } from "@/lib/ai-models";
-import { stripHtml, normalizeReference } from "@/lib/utils";
-
-export interface BinanceAccount {
-  label: string;
-  apiKey: string;
-  language?: string;
-  style?: string;
-}
-
-export interface TelegramChannel {
-  label: string;
-  chatId: string;
-  topicId?: string;
-  language?: string;
-  style?: string;
-}
+import { stripHtml } from "@/lib/utils";
+import { ipfsGatewayVariants, normalizeIpfs } from "@/lib/ipfs";
+import { getSiteUrl } from "@/lib/site";
+import type { BinanceAccount, TelegramChannel } from "@/types";
 
 const HASH_TOKEN_LINK = "https://www.cryptocompare.com/coins/hashcoin";
 
-const IPFS_GATEWAYS = [
-  "https://gateway.pinata.cloud/ipfs/",
-  "https://ipfs.io/ipfs/",
-  "https://cloudflare-ipfs.com/ipfs/",
-  "https://gateway.ipn.io/ipfs/",
-];
-
 const IMAGE_FETCH_TIMEOUT_MS = 10000;
-
-function extractIpfsCid(url: string): string | null {
-  const patterns = [
-    /\/ipfs\/([a-zA-Z0-9]{46,})/,
-    /\/ipfs\/([a-zA-Z0-9]+)/,
-    /^ipfs:\/\/([a-zA-Z0-9]+)/,
-  ];
-  for (const p of patterns) {
-    const m = url.match(p);
-    if (m) return m[1];
-  }
-  return null;
-}
-
-function rotateGatewayUrl(originalUrl: string, gatewayIndex: number): string {
-  if (gatewayIndex === 0) return originalUrl;
-  const cid = extractIpfsCid(originalUrl);
-  if (!cid || gatewayIndex >= IPFS_GATEWAYS.length) return originalUrl;
-  return `${IPFS_GATEWAYS[gatewayIndex].replace(/\/+$/, "")}/${cid}`;
-}
 
 interface ImageBytes {
   buffer: Buffer;
@@ -68,9 +29,9 @@ async function fetchImageBytes(imageUrl: string): Promise<ImageBytes | null> {
     } catch { return null; }
   }
 
-  for (let i = 0; i < IPFS_GATEWAYS.length; i++) {
+  for (const candidate of ipfsGatewayVariants(imageUrl)) {
     try {
-      const res = await fetch(rotateGatewayUrl(imageUrl, i), { signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS) });
+      const res = await fetch(candidate, { signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS) });
       if (!res.ok) continue;
       const mime = res.headers.get("content-type")?.split(";")[0]?.trim() || "image/webp";
       const buffer = Buffer.from(await res.arrayBuffer());
@@ -82,8 +43,7 @@ async function fetchImageBytes(imageUrl: string): Promise<ImageBytes | null> {
 }
 
 function formatForBinance(title: string, content: string, articleId: string, index: number = 0): string {
-  const rawBaseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info';
-  const baseUrl = rawBaseUrl.replace(/\/$/, '');
+  const baseUrl = getSiteUrl();
   const articleUrl = `${baseUrl}/article/${articleId}`;
 
   let text = content.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/g, '\n\n').replace(/<[^>]*>?/gm, '').replace(/#\w+/g, '');
@@ -103,7 +63,7 @@ function formatForBinance(title: string, content: string, articleId: string, ind
 }
 
 function formatForTelegram(title: string, content: string, articleId: string, authorInfo?: string): string {
-  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://pager.lookhook.info').replace(/\/$/, '');
+  const baseUrl = getSiteUrl();
   const articleUrl = `${baseUrl}/article/${articleId}`;
   const escapeHtml = (str: string) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   let cleanText = content.replace(/<[^>]*>?/gm, '').trim();
@@ -250,7 +210,7 @@ export async function postToTelegram(chatId: string, title: string, content: str
         messageThreadId = parseInt(topic);
     }
 
-    const resolvedImageUrl = normalizeReference(imageUrl || "");
+    const resolvedImageUrl = normalizeIpfs(imageUrl || "");
     if (resolvedImageUrl) {
       // 1) Cheapest: let Telegram fetch the photo by URL.
       if (await sendPhotoWithUrl(targetChatId, messageThreadId, resolvedImageUrl, message, token)) return { success: true };

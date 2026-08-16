@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { LogOut } from "lucide-react";
 import { client } from "@/lib/web3";
+import { getSiteUrl } from "@/lib/site";
 
 const wallets = [
   inAppWallet({
@@ -81,7 +82,7 @@ export default function Navbar() {
               wallets={wallets}
               appMetadata={{ 
                 name: "Pager", 
-                url: "https://pager.lookhook.info",
+                url: getSiteUrl(),
                 description: "Web3 Media"
               }}
               connectButton={{ className: "connect-btn-medium", label: "Sign In" }}

@@ -8,15 +8,6 @@ export function stripHtml(html: string | null | undefined): string {
   return html.replace(/<[^>]*>?/gm, "");
 }
 
-/** Normalize IPFS gateway references */
-export function normalizeReference(url: string): string {
-  if (!url) return "";
-  if (url.startsWith("ipfs://")) {
-    return url.replace("ipfs://", "https://gateway.ipn.io/ipfs/");
-  }
-  return url;
-}
-
 /** Convert markdown bold/italic to HTML tags */
 export function finalFormat(text: string): string {
   if (!text) return "";

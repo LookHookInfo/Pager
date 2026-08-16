@@ -2,6 +2,9 @@
 
 import { Twitter, ExternalLink } from "lucide-react";
 import Link from "next/link";
+import { getSiteUrl } from "@/lib/site";
+
+const siteUrl = getSiteUrl();
 
 const ecosystem = [
   { name: "Mining Hash", url: "https://hashcoin.farm" },
@@ -13,7 +16,7 @@ const ecosystem = [
   { name: "Name Service", url: "https://lookhook.info/" },
   { name: "Guild", url: "https://guild.xyz/hashcoin" },
   { name: "Galxe", url: "https://app.galxe.com/quest/bAFdwDecXS6NRWsbYqVAgh" },
-  { name: "Pager", url: "https://pager.lookhook.info/" },
+  { name: "Pager", url: `${siteUrl}/` },
 ];
 
 export default function Footer() {

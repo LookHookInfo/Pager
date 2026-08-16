@@ -3,6 +3,7 @@ import { ExternalLink, Radio } from 'lucide-react';
 import Link from 'next/link';
 import { Metadata } from 'next';
 import { getSupabaseServer } from '@/lib/supabase';
+import { getSiteUrl } from '@/lib/site';
 import LikeButton from '@/components/LikeButton';
 import Navbar from '@/components/Navbar';
 import BackButton from '@/components/BackButton';
@@ -36,7 +37,7 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
 
   const cleanContent = (article.content || '').replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim();
   const description = cleanContent.slice(0, 160) + (cleanContent.length > 160 ? '...' : '');
-  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+  const baseUrl = getSiteUrl();
   const articleUrl = `${baseUrl}/article/${article.id}`;
   const ogImageUrl = `${baseUrl}/api/og?id=${article.id}`;
   
@@ -75,7 +76,7 @@ export default async function ArticlePage({ params }: { params: { id: string } }
   const article = await getArticle(params.id);
   if (!article) notFound();
   const authorProfile = await getAuthorProfile(article.author_address);
-  const jsonLd = { "@context": "https://schema.org", "@type": "NewsArticle", "headline": article.title, "image": [article.image_url], "datePublished": article.created_at, "author": [{ "@type": "Person", "name": article.author_address, "url": `${process.env.NEXT_PUBLIC_SITE_URL}/tape/${article.author_address}` }] };
+  const jsonLd = { "@context": "https://schema.org", "@type": "NewsArticle", "headline": article.title, "image": [article.image_url], "datePublished": article.created_at, "author": [{ "@type": "Person", "name": article.author_address, "url": `${getSiteUrl()}/tape/${article.author_address}` }] };
   return (
     <main className="min-h-screen bg-[var(--bg-main)]">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />

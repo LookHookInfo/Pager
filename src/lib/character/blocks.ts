@@ -1,4 +1,5 @@
 import type { CustomDna } from "./index";
+import { getSiteUrl } from "@/lib/site";
 
 const BTC_ANALYSIS_RULES = {
   correlation: "Always link the news to BTC's long-term cycle (Halving, ETF flows, Hashrate).",
@@ -74,7 +75,7 @@ export function getBtcAnalysisBlock(
 }
 
 export function getMiningSponsorBlock(): string {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "";
+  const baseUrl = getSiteUrl();
   const { partner } = MINING_PROJECT;
   const logoSrc = partner.logo
     ? (partner.logo.startsWith("http") ? partner.logo : `${baseUrl}${partner.logo}`)
