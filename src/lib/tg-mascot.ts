@@ -42,7 +42,7 @@ export function formatMascotMessage(d: MascotNotifyData): string {
   const lines = [
     "⚡ NEW MASCOT · PAGER",
     "",
-    `<b>${name}</b> · Mascot #${d.tokenId}`,
+    `<b>${name}</b> · Mascot 🐣 #${d.tokenId}`,
     `💵 Price: <b>${formatPrice(d.price)} $HASH</b>`,
   ];
   if (desc) lines.push(`🧬 ${escapeHtml(desc)}`);

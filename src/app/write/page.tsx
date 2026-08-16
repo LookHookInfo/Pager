@@ -19,6 +19,7 @@ import { getAuthMessage } from "@/lib/auth";
 import { MOODS, ATMOSPHERE_PRESETS } from "@/lib/moods";
 import imageCompression from "browser-image-compression";
 import ForgeOverlay from "@/components/ForgeOverlay";
+import BannerImage from "@/components/BannerImage";
 import { requestBannerJob } from "@/lib/banner-client";
 
 const COMPRESSION_OPTIONS = {
@@ -746,7 +747,7 @@ function WritePageInner() {
           </div>
           {imageUrl && (
             <div className="aspect-video bg-gray-50 overflow-hidden border border-gray-100 rounded-sm relative group">
-              <img src={imageUrl} alt="Banner" className="w-full h-full object-cover" />
+              <BannerImage src={imageUrl} alt="Banner" className="w-full h-full object-cover" />
               {bannerModel && (
                 <span className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/60 text-white text-[9px] font-black uppercase tracking-widest rounded-full">
                   {bannerModel}

@@ -32,14 +32,6 @@ export async function POST(req: Request) {
     const activeDna = await resolveDna(nftTokenId);
     if (!activeDna) return NextResponse.json({ error: `Mascot DNA not found for token #${nftTokenId}. This mascot may not have DNA uploaded. Try a different mascot.` }, { status: 404 });
 
-    const VALID_TEXT_MODELS = new Set([
-      "ag/gemini-3.5-flash-low",
-      "ag/gemini-3.5-flash-extra-low",
-      "gc/gemini-2.5-flash",
-      "gc/gemini-2.5-pro",
-    ]);
-    const textModel = VALID_TEXT_MODELS.has(profile?.ai_text_model) ? profile.ai_text_model : undefined;
-
     let atmosphere = (providedAtmosphere || "Surrealism")
       .replace(/["`${}]/g, "").trim().slice(0, 100);
     if (!atmosphere) atmosphere = "Surrealism";
@@ -74,7 +66,6 @@ export async function POST(req: Request) {
       messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
       temperature: 0.8,
       timeoutMs: 40000,
-      model: textModel,
     });
 
     const finalTitle = (result.title || providedTitle || "New Intel").replace(/["']/g, "").trim();

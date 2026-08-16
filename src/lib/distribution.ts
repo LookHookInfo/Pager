@@ -1,5 +1,6 @@
-import { chatAnyModelJson, ANYMODEL_FALLBACK_TEXT_MODEL } from "@/lib/anymodel";
-import { stripHtml } from "@/lib/utils";
+import { chatAnyModelJson } from "@/lib/anymodel";
+import { ANYMODEL_FALLBACK_TEXT_MODEL } from "@/lib/ai-models";
+import { stripHtml, normalizeReference } from "@/lib/utils";
 
 export interface BinanceAccount {
   label: string;
@@ -18,12 +19,66 @@ export interface TelegramChannel {
 
 const HASH_TOKEN_LINK = "https://www.cryptocompare.com/coins/hashcoin";
 
-function resolveIpfs(url: string | undefined): string {
-  if (!url) return "";
-  if (url.startsWith('ipfs://')) {
-    return url.replace('ipfs://', 'https://gateway.ipn.io/ipfs/');
+const IPFS_GATEWAYS = [
+  "https://gateway.pinata.cloud/ipfs/",
+  "https://ipfs.io/ipfs/",
+  "https://cloudflare-ipfs.com/ipfs/",
+  "https://gateway.ipn.io/ipfs/",
+];
+
+const IMAGE_FETCH_TIMEOUT_MS = 10000;
+
+function extractIpfsCid(url: string): string | null {
+  const patterns = [
+    /\/ipfs\/([a-zA-Z0-9]{46,})/,
+    /\/ipfs\/([a-zA-Z0-9]+)/,
+    /^ipfs:\/\/([a-zA-Z0-9]+)/,
+  ];
+  for (const p of patterns) {
+    const m = url.match(p);
+    if (m) return m[1];
   }
-  return url;
+  return null;
+}
+
+function rotateGatewayUrl(originalUrl: string, gatewayIndex: number): string {
+  if (gatewayIndex === 0) return originalUrl;
+  const cid = extractIpfsCid(originalUrl);
+  if (!cid || gatewayIndex >= IPFS_GATEWAYS.length) return originalUrl;
+  return `${IPFS_GATEWAYS[gatewayIndex].replace(/\/+$/, "")}/${cid}`;
+}
+
+interface ImageBytes {
+  buffer: Buffer;
+  mime: string;
+}
+
+/**
+ * Download the banner ourselves, rotating across IPFS gateways, so a fresh
+ * CID or a slow Pinata gateway can't stop the photo from being posted.
+ */
+async function fetchImageBytes(imageUrl: string): Promise<ImageBytes | null> {
+  if (imageUrl.startsWith("data:image/")) {
+    const comma = imageUrl.indexOf(",");
+    if (comma === -1) return null;
+    const mime = imageUrl.slice(0, comma).match(/^data:([^;]+)/)?.[1] || "image/webp";
+    try {
+      const buffer = Buffer.from(imageUrl.slice(comma + 1), "base64");
+      return buffer.length ? { buffer, mime } : null;
+    } catch { return null; }
+  }
+
+  for (let i = 0; i < IPFS_GATEWAYS.length; i++) {
+    try {
+      const res = await fetch(rotateGatewayUrl(imageUrl, i), { signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS) });
+      if (!res.ok) continue;
+      const mime = res.headers.get("content-type")?.split(";")[0]?.trim() || "image/webp";
+      const buffer = Buffer.from(await res.arrayBuffer());
+      if (!buffer.length) continue;
+      return { buffer, mime };
+    } catch { continue; }
+  }
+  return null;
 }
 
 function formatForBinance(title: string, content: string, articleId: string, index: number = 0): string {
@@ -87,9 +142,10 @@ export async function adaptContent(title: string, html: string, language: string
   ].join('\n');
   const user = `ARTICLE TITLE:\n${title}\n\nARTICLE CONTENT:\n${plain.slice(0, 5000)}\n\nREMINDER: respond ONLY in ${targetLanguage}.`;
 
-  // Primary (fast) model is tried first — its internal retry already alternates
-  // to the fallback model on HTTP/network failures. If it still fails (e.g. it
-  // returns non-JSON for this task), one more shot with the stable model.
+  // Primary model first, then one explicit retry with the fallback model if
+  // the first pass fails or returns non-JSON. No model chain — each call uses
+  // exactly one model; chatAnyModel only swaps to its fallback on transient
+  // upstream errors.
   const run = (model?: string) =>
     chatAnyModelJson({
       messages: [
@@ -141,6 +197,43 @@ export async function postToBinance(account: BinanceAccount, title: string, cont
   } catch (e: any) { return { success: false, error: `${account.label}: ${e.message}` }; }
 }
 
+async function sendPhotoWithUrl(chatId: string, messageThreadId: number | undefined, photoUrl: string, caption: string, token: string): Promise<boolean> {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, photo: photoUrl, caption, parse_mode: 'HTML', message_thread_id: messageThreadId }),
+    });
+    const data = await res.json();
+    if (data.ok) return true;
+    console.warn("⚠️ [Telegram] sendPhoto (URL) failed:", data.description);
+  } catch (e: any) {
+    console.warn("⚠️ [Telegram] sendPhoto (URL) error:", e.message);
+  }
+  return false;
+}
+
+async function sendPhotoWithBytes(chatId: string, messageThreadId: number | undefined, image: ImageBytes, caption: string, token: string): Promise<boolean> {
+  try {
+    const formData = new FormData();
+    formData.append("photo", new Blob([new Uint8Array(image.buffer)], { type: image.mime }), "banner.webp");
+    formData.append("chat_id", chatId);
+    formData.append("caption", caption);
+    formData.append("parse_mode", "HTML");
+    if (messageThreadId !== undefined) formData.append("message_thread_id", String(messageThreadId));
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      method: 'POST',
+      body: formData,
+    });
+    const data = await res.json();
+    if (data.ok) return true;
+    console.warn("⚠️ [Telegram] sendPhoto (upload) failed:", data.description);
+  } catch (e: any) {
+    console.warn("⚠️ [Telegram] sendPhoto (upload) error:", e.message);
+  }
+  return false;
+}
+
 export async function postToTelegram(chatId: string, title: string, content: string, articleId: string, imageUrl?: string, authorInfo?: string) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) return { success: false, error: "Bot token missing" };
@@ -157,22 +250,15 @@ export async function postToTelegram(chatId: string, title: string, content: str
         messageThreadId = parseInt(topic);
     }
 
-    const resolvedImageUrl = resolveIpfs(imageUrl);
+    const resolvedImageUrl = normalizeReference(imageUrl || "");
     if (resolvedImageUrl) {
-      const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { 
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ 
-            chat_id: targetChatId, 
-            photo: resolvedImageUrl, 
-            caption: message, 
-            parse_mode: 'HTML', 
-            message_thread_id: messageThreadId 
-        }) 
-      });
-      const data = await res.json();
-      if (data.ok) return { success: true };
-      console.warn("⚠️ [Telegram] sendPhoto failed, falling back to message:", data.description);
+      // 1) Cheapest: let Telegram fetch the photo by URL.
+      if (await sendPhotoWithUrl(targetChatId, messageThreadId, resolvedImageUrl, message, token)) return { success: true };
+
+      // 2) Reliable: download the banner ourselves (gateway rotation) and
+      //    upload the bytes — a fresh CID or a slow Pinata gateway can't break it.
+      const image = await fetchImageBytes(resolvedImageUrl);
+      if (image && (await sendPhotoWithBytes(targetChatId, messageThreadId, image, message, token))) return { success: true };
     }
 
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { 

@@ -1,12 +1,13 @@
 import sharp from "sharp";
+import { ANYMODEL_IMAGE_MODEL } from "@/lib/ai-models";
 
 const PINATA_TIMEOUT = 12000;
 
-// Upper bound for a single AnyModel image request. gpt-image-2 on the gateway
-// takes up to ~2 minutes for a 1280x720 banner, so the default 55s fetch
-// timeout would kill it mid-generation. The route's withBudget is the real
-// guard; this just prevents an individual fetch from running forever.
-const ANYMODEL_IMAGE_TIMEOUT_MS = 240000;
+// Upper bound for a single AnyModel image request. nano-banana-lite renders in
+// ~4s and the fallback chain models in 15-40s, so 150s is generous headroom.
+// The route's withBudget is the real guard; this just prevents an individual
+// fetch from running forever.
+const ANYMODEL_IMAGE_TIMEOUT_MS = 150000;
 
 const BANNER_MODERATED_TERMS: Array<[RegExp, string]> = [
   // Trademarked / real-world characters.
@@ -158,7 +159,7 @@ export async function generateAnyModelImage(
   const apiKey = process.env.ANYMODEL_API_KEY?.trim();
   if (!apiKey) return null;
 
-  const model = options.model || process.env.ANYMODEL_IMAGE_MODEL?.trim() || "ag/gemini-3.1-flash-image";
+  const model = options.model || ANYMODEL_IMAGE_MODEL();
   const requestedSize = options.size || process.env.ANYMODEL_IMAGE_SIZE?.trim() || DEFAULT_ANYMODEL_IMAGE_SIZE;
   const size = ANYMODEL_IMAGE_SIZES.has(requestedSize) ? requestedSize : DEFAULT_ANYMODEL_IMAGE_SIZE;
 
@@ -198,7 +199,7 @@ export async function generateAnyModelImage(
           : res.status === 401
             ? " — AnyModel key invalid/revoked"
               : res.status === 404 || res.status === 406
-                ? " — image model not found/supported (check banner model in profile settings or ANYMODEL_IMAGE_MODEL in .env)"
+                ? " — image model not found/supported (check ANYMODEL_IMAGE_MODEL in .env)"
                 : "";
       console.error(`AnyModel image failed: ${res.status} — ${err.slice(0, 300)}${hint}`);
       return null;

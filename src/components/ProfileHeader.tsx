@@ -14,56 +14,6 @@ import { getAuthMessage } from "@/lib/auth";
 import ProfileIdentity from "@/components/ProfileIdentity";
 import ProfileDistribution from "@/components/ProfileDistribution";
 
-const BANNER_IMAGE_MODELS = [
-  { id: "ag/gemini-3.1-flash-image", label: "Gemini Flash-Image" },
-  { id: "cx/gpt-image-2", label: "GPT Image 2" },
-  { id: "am/flux.2-klein-4b", label: "FLUX.2 Klein 4B" },
-  { id: "flow/nano-banana", label: "Nano Banana" },
-] as const;
-
-const BANNER_MODEL_IDS = new Set<string>(BANNER_IMAGE_MODELS.map((m) => m.id));
-const DEFAULT_BANNER_MODEL = "ag/gemini-3.1-flash-image";
-const bannerModelValue = (v?: string) => (v && BANNER_MODEL_IDS.has(v) ? v : DEFAULT_BANNER_MODEL);
-
-const TEXT_MODELS = [
-  { id: "ag/gemini-3.5-flash-low", label: "Gemini 3.5 Flash" },
-  { id: "ag/gemini-3.5-flash-extra-low", label: "Gemini 3.5 Flash Extra Low" },
-  { id: "gc/gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-  { id: "gc/gemini-2.5-pro", label: "Gemini 2.5 Pro" },
-] as const;
-
-const TEXT_MODEL_IDS = new Set<string>(TEXT_MODELS.map((m) => m.id));
-const DEFAULT_TEXT_MODEL = "ag/gemini-3.5-flash-low";
-const textModelValue = (v?: string) => (v && TEXT_MODEL_IDS.has(v) ? v : DEFAULT_TEXT_MODEL);
-
-function ModelStatusRow({ model }: { model: any }) {
-  const dot =
-    model.status === "ok" ? "bg-green-500" : model.status === "slow" ? "bg-yellow-400" : "bg-red-500";
-  return (
-    <div className="flex items-center justify-between py-0.5">
-      <span className="flex items-center gap-1.5 text-gray-700">
-        <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />
-        {model.label}
-      </span>
-      <span className="text-gray-400">
-        {model.status}
-        {model.latencyMs ? ` · ${Math.round(model.latencyMs / 1000)}s` : ""}
-      </span>
-    </div>
-  );
-}
-
-function ModelStatusGroup({ title, models }: { title: string; models: any[] }) {
-  return (
-    <div>
-      <p className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-0.5">{title}</p>
-      {models.map((m) => (
-        <ModelStatusRow key={m.id} model={m} />
-      ))}
-    </div>
-  );
-}
-
 export default function ProfileHeader({
   profile, totalArticles,
 }: {
@@ -78,8 +28,6 @@ export default function ProfileHeader({
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isDepositing, setIsDepositing] = useState(false);
-  const [modelStatus, setModelStatus] = useState<{ text: any[]; banner: any[]; checkedAt: number } | null>(null);
-  const [checkingStatus, setCheckingStatus] = useState(false);
   const [notification, setNotification] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const notify = (msg: string, type: "success" | "error" = "success") => {
@@ -87,26 +35,10 @@ export default function ProfileHeader({
     setTimeout(() => setNotification(null), 5000);
   };
 
-  const checkModelStatus = async () => {
-    if (checkingStatus) return;
-    setCheckingStatus(true);
-    try {
-      const res = await fetch("/api/ai/status?refresh=1");
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Status check failed");
-      setModelStatus(data);
-    } catch (e: any) {
-      notify(e.message || "Status check failed", "error");
-    } finally {
-      setCheckingStatus(false);
-    }
-  };
-
   const isOwner = account?.address?.toLowerCase() === profile.address?.toLowerCase();
 
   const [formData, setFormData] = useState({
     name: "", bio: "", website: "", avatar_url: "", cmc_username: "",
-    ai_image_model: "", ai_text_model: "",
     gemfun_token: "",
     binance_accounts: [], telegram_channels: [], telegram_chat_id: "",
     cta_links: [{ label: "", url: "" }, { label: "", url: "" }, { label: "", url: "" }],
@@ -120,8 +52,6 @@ export default function ProfileHeader({
       name: profile.name || "", bio: profile.bio || "", website: profile.website || "",
       avatar_url: profile.avatar_url || "",
       cmc_username: profile.cmc_username || "",
-      ai_image_model: bannerModelValue(profile.ai_image_model),
-      ai_text_model: textModelValue(profile.ai_text_model),
       gemfun_token: profile.gemfun_token || "",
       binance_accounts: profile.binance_accounts || [],
       telegram_channels: profile.telegram_channels || [],
@@ -320,58 +250,6 @@ export default function ProfileHeader({
                   </div>
                 </div>
                 <p className="text-[10px] text-gray-400 font-medium">Mascot creation is on the <a href="/mascots" className="underline hover:text-black">Mascots page</a>.</p>
-                <div className="space-y-1.5">
-                  <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-1">Banner Image Model</label>
-                  <select
-                    value={formData.ai_image_model}
-                    onChange={e => setFormData({ ...formData, ai_image_model: e.target.value })}
-                    className="w-full text-xs p-3 border border-gray-200 outline-none bg-white focus:border-black transition-colors"
-                  >
-                    {BANNER_IMAGE_MODELS.map(m => (
-                      <option key={m.id} value={m.id}>{m.label}</option>
-                    ))}
-                  </select>
-                  <p className="text-[9px] text-gray-400 ml-1">Used to render article banners. Falls back to the other model when unavailable.</p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-1">Text Model</label>
-                  <select
-                    value={formData.ai_text_model}
-                    onChange={e => setFormData({ ...formData, ai_text_model: e.target.value })}
-                    className="w-full text-xs p-3 border border-gray-200 outline-none bg-white focus:border-black transition-colors"
-                  >
-                    {TEXT_MODELS.map(m => (
-                      <option key={m.id} value={m.id}>{m.label}</option>
-                    ))}
-                  </select>
-                  <p className="text-[9px] text-gray-400 ml-1">Used to rewrite articles. Your pick is used as-is — switch here if it stops working.</p>
-                </div>
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-1">Model Status</label>
-                    <button
-                      onClick={checkModelStatus}
-                      disabled={checkingStatus}
-                      className="text-[9px] font-black px-2.5 py-1 bg-black text-white rounded-full hover:bg-gray-800 transition-all disabled:opacity-50"
-                    >
-                      {checkingStatus ? <Loader2 size={10} className="inline animate-spin mr-1" /> : null}
-                      {checkingStatus ? "Checking…" : "Check"}
-                    </button>
-                  </div>
-                  {modelStatus ? (
-                    <div className="bg-white border border-gray-200 rounded p-2 space-y-1.5 text-[10px]">
-                      <ModelStatusGroup title="Text" models={modelStatus.text} />
-                      <ModelStatusGroup title="Banner" models={modelStatus.banner} />
-                      <p className="text-gray-400 pt-0.5">
-                        {Math.max(0, Math.round((Date.now() - modelStatus.checkedAt) / 1000))}s ago · min 30s between checks
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-[9px] text-gray-400 ml-1">
-                      Press Check to probe every model (image probes spend a few credits).
-                    </p>
-                  )}
-                </div>
               </div>
             </div>
           </div>

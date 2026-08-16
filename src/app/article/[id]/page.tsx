@@ -36,18 +36,20 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
 
   const cleanContent = (article.content || '').replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim();
   const description = cleanContent.slice(0, 160) + (cleanContent.length > 160 ? '...' : '');
-  const ogImageUrl = `/api/og?id=${article.id}`;
+  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
+  const articleUrl = `${baseUrl}/article/${article.id}`;
+  const ogImageUrl = `${baseUrl}/api/og?id=${article.id}`;
   
   return {
     title: article.title,
     description: description,
     alternates: { 
-      canonical: `/article/${article.id}` 
+      canonical: articleUrl 
     },
     openGraph: {
       title: article.title,
       description: description,
-      url: `/article/${article.id}`,
+      url: articleUrl,
       siteName: 'Pager',
       images: [
         { 

@@ -51,11 +51,11 @@ The banner always depicts **the user's chosen mascot**. Two mechanisms enforce t
 
 1.  Session verification + **atomic debit of 10 $HASH credits** (`ai_credits`).
 2.  `resolveDna(nftTokenId)` → if no DNA: refund + `404`.
-3.  Build + sanitize the prompt; call **`generateAnyModelImage`** (`ag/gemini-3.1-flash-image`, 1280×720, sync, budget-bounded via `withBudget`). The mascot reference is passed as a base64 data URL.
+3.  Build + sanitize the prompt; call **`generateAnyModelImage`** (`flow/nano-banana-lite`, 1280×720, sync, budget-bounded via `withBudget`). The mascot reference is passed as a base64 data URL.
 4.  On success the image is compressed to WebP (**sharp**), pinned to **IPFS (Pinata)**, and the ready gateway URL is returned inline (`image_engine: "anymodel"`).
 5.  On total failure the 10 credits are **refunded** (`atomicRefundCredits`) and a branded **SVG placeholder** (`generateSvgBanner`) is returned so the article still gets a banner.
 
-Because generation is synchronous, the client `requestBannerJob` (`src/lib/banner-client.ts`) waits up to 120s for the inline result and never auto-retries (the endpoint is paid and non-idempotent). `maxDuration = 60` covers the AnyModel call + pinning (Vercel Hobby cap).
+Because generation is synchronous, the client `requestBannerJob` (`src/lib/banner-client.ts`) waits up to 140s for the inline result and never auto-retries (the endpoint is paid and non-idempotent). `maxDuration = 150` covers the AnyModel call + pinning.
 
 ### 6. Publishing Gate (Economic Barrier)
 Publishing on Pager is protected by a "Hash-wall":
@@ -84,7 +84,7 @@ User profiles hide several mechanisms for customizing the protocol's operation:
 | Setting | Impact on the System |
 | :--- | :--- |
 | **User AI API Key** | If provided, AI requests are routed through the user's key. This bypasses platform limits and allows the use of personal distribution protocols. |
-| **Image Engine** | **Banner rendering.** Banners are generated with **Gemini 3.1 Flash-Image (AnyModel)** using the mascot reference image; an **SVG placeholder** is the final fallback. Every banner costs **10 AI credits** and is pinned to IPFS via Pinata. |
+| **Image Engine** | **Banner rendering.** Banners are generated with **Nano Banana 2 Lite (AnyModel)** using the mascot reference image; an **SVG placeholder** is the final fallback. Every banner costs **10 AI credits** and is pinned to IPFS via Pinata. |
 | **Thirdweb Client ID** | **The key storage switch.** If a Client ID is provided, the system switches from Supabase Storage to **IPFS**. Your images become decentralized and permanent. |
 | **Monetization** | Custom CTA links for Telegram channels, Forums, and Referral networks integrated into every article. |
 | **GemFun Token** | A meme-token address from hashcoin.farm/gem. Pins the **GemFunCard** (bonding-curve progress + buy slider) under the bio on the author's Tape page. |
@@ -98,7 +98,7 @@ User profiles hide several mechanisms for customizing the protocol's operation:
 *   **Blockchain:** Thirdweb SDK + Base Network (mascot NFT contract, $HASH token).
 *   **Launchpad:** GemFun (hashcoin.farm/gem) — bonding-curve meme-token buy-card on profile pages.
 *   **Database/Auth:** Supabase (`profiles`, `mascots_dna`).
-*   **AI Engine:** AnyModel (Gemini 3.5 Flash text / Gemini 3.1 Flash-Image banners), Jina Reader (scraping).
+*   **AI Engine:** AnyModel (Gemini 2.5 Flash text / Nano Banana 2 Lite banners), Jina Reader (scraping).
 *   **Media:** Pinata (IPFS), sharp (WebP compression).
 
 ---
@@ -112,9 +112,9 @@ Required in `.env` / Vercel:
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side (RLS bypass) access |
 | `ANYMODEL_API_KEY` | AnyModel gateway key (text + image generation) |
-| `ANYMODEL_TEXT_MODEL` | Text model for all LLM calls (`ag/gemini-3.5-flash-low`) |
-| `ANYMODEL_FALLBACK_TEXT_MODEL` | Backup text model used on upstream failure / when the primary rejects image input (`gc/gemini-2.5-flash`, vision-capable) |
-| `ANYMODEL_IMAGE_MODEL` | Banner image model (`ag/gemini-3.1-flash-image`) |
+| `ANYMODEL_TEXT_MODEL` | Text model for all LLM calls (`gc/gemini-2.5-flash`) |
+| `ANYMODEL_FALLBACK_TEXT_MODEL` | Retry model on upstream failure — same pool as primary, app is strictly limited to two models (`gc/gemini-2.5-flash`) |
+| `ANYMODEL_IMAGE_MODEL` | Banner image model (`flow/nano-banana-lite`) |
 | `ANYMODEL_IMAGE_SIZE` | Banner size — see `ANYMODEL_IMAGE_SIZES` in `src/lib/image.ts` (16:9 `1792x1024` is the default, `1280x720` is proven against the live gateway) |
 | `JINA_API_KEY` | Jina Reader scraping (`/api/ai/scrape`) |
 | `PINATA_JWT` | IPFS pinning (JWT auth) |

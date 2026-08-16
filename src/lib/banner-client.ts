@@ -8,15 +8,15 @@ export interface BannerResult {
  * Generate a banner synchronously. The endpoint is paid and non-idempotent, so
  * this must NOT auto-retry (that would double-charge credits). The server
  * returns the ready image inline (AnyModel, or an SVG placeholder on total
- * failure) or responds with an error. gpt-image-2 can take up to ~2 min, so
- * the client waits generously — the server has a 300s cap.
+ * failure) or responds with an error. nano-banana-lite renders in ~4s and the
+ * server budget is ~120s, so the client waits a bit more than that.
  */
 export async function requestBannerJob(body: Record<string, unknown>): Promise<BannerResult> {
   const res = await fetch("/api/ai/banner", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(240000),
+    signal: AbortSignal.timeout(140000),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || "Banner generation failed");
