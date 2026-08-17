@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { chatAnyModel } from "@/lib/anymodel";
+import { ANYMODEL_VISION_FALLBACK_MODEL } from "@/lib/ai-models";
 import { extractJson } from "@/lib/utils";
 
 export const maxDuration = 60;
@@ -28,6 +29,7 @@ export async function POST(req: Request) {
         json: true,
         maxTokens: 2000,
         timeoutMs: 40000,
+        fallback: ANYMODEL_VISION_FALLBACK_MODEL(),
       }));
       return NextResponse.json({
         personality: result.personality || "Mysterious entity.",

@@ -18,6 +18,8 @@ export interface ChatAnyModelOptions {
   maxTokens?: number;
   timeoutMs?: number;
   model?: string;
+  /** Override the default fallback model (e.g. a vision-capable model for image inputs). */
+  fallback?: string;
 }
 
 /**
@@ -34,7 +36,7 @@ export async function chatAnyModel(options: ChatAnyModelOptions): Promise<string
   // A hard pick (options.model) is strict — only that model is used, never
   // swapped for a fallback. Without a pick, retry once on the fallback model.
   const primary = options.model || ANYMODEL_TEXT_MODEL();
-  const fallback = ANYMODEL_FALLBACK_TEXT_MODEL();
+  const fallback = options.fallback || ANYMODEL_FALLBACK_TEXT_MODEL();
 
   const body: Record<string, unknown> = {
     model: primary,

@@ -24,3 +24,10 @@ export const ANYMODEL_IMAGE_MODEL = () =>
 /** Fallback image model when primary returns 429/5xx/timeout. */
 export const ANYMODEL_IMAGE_FALLBACK_MODEL = () =>
   process.env.ANYMODEL_IMAGE_FALLBACK_MODEL?.trim() || "gemini-3.1-flash-image";
+
+/**
+ * Vision-capable text fallback — used for calls that include image_url content
+ * (e.g. DNA scan). The default text fallback (gpt-5.4-mini) rejects image inputs.
+ */
+export const ANYMODEL_VISION_FALLBACK_MODEL = () =>
+  process.env.ANYMODEL_VISION_FALLBACK_MODEL?.trim() || "gc/gemini-2.5-flash-lite";
