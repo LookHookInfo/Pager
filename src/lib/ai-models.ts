@@ -20,3 +20,7 @@ export const ANYMODEL_FALLBACK_TEXT_MODEL = () =>
 /** Banner / image generation model. */
 export const ANYMODEL_IMAGE_MODEL = () =>
   process.env.ANYMODEL_IMAGE_MODEL?.trim() || "flow/nano-banana-lite";
+
+/** Fallback image model when primary returns 429/5xx/timeout. */
+export const ANYMODEL_IMAGE_FALLBACK_MODEL = () =>
+  process.env.ANYMODEL_IMAGE_FALLBACK_MODEL?.trim() || "am/flux.2-klein-4b";

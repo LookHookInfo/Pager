@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { ANYMODEL_IMAGE_MODEL } from "@/lib/ai-models";
+import { ANYMODEL_IMAGE_MODEL, ANYMODEL_IMAGE_FALLBACK_MODEL } from "@/lib/ai-models";
 
 const PINATA_TIMEOUT = 12000;
 
@@ -144,6 +144,9 @@ const ANYMODEL_IMAGE_SIZES = new Set([
 ]);
 const DEFAULT_ANYMODEL_IMAGE_SIZE = "1792x1024";
 
+// Transient upstream failures — safe to retry on a different model.
+const IMAGE_RETRYABLE = new Set([400, 408, 425, 429, 500, 502, 503, 504]);
+
 /**
  * Primary banner engine: AnyModel (https://anymodel.org/v1) — an
  * OpenAI-compatible gateway. Synchronous POST to /v1/images/generations,
@@ -151,6 +154,7 @@ const DEFAULT_ANYMODEL_IMAGE_SIZE = "1792x1024";
  * The mascot reference image is passed as a base64 data URL in `image`
  * (the gateway rejects public URLs unless a model explicitly supports them).
  * Returns the Pinata IPFS URL on success, or null on any failure.
+ * Retries once with the fallback image model on transient errors (429/5xx).
  */
 export async function generateAnyModelImage(
   prompt: string,
@@ -159,71 +163,92 @@ export async function generateAnyModelImage(
   const apiKey = process.env.ANYMODEL_API_KEY?.trim();
   if (!apiKey) return null;
 
-  const model = options.model || ANYMODEL_IMAGE_MODEL();
-  const requestedSize = options.size || process.env.ANYMODEL_IMAGE_SIZE?.trim() || DEFAULT_ANYMODEL_IMAGE_SIZE;
-  const size = ANYMODEL_IMAGE_SIZES.has(requestedSize) ? requestedSize : DEFAULT_ANYMODEL_IMAGE_SIZE;
+  const primary = options.model || ANYMODEL_IMAGE_MODEL();
+  const fallback = ANYMODEL_IMAGE_FALLBACK_MODEL();
 
   const body: Record<string, unknown> = {
-    model,
     prompt,
     n: 1,
-    size,
     quality: options.quality || "medium",
     output_format: "png",
     response_format: "b64_json",
   };
 
-  if (options.inputImage) {
-    const dataUrl = options.inputImage.startsWith("data:")
-      ? options.inputImage
-      : await imageToDataUrl(options.inputImage);
+  const inputImage = options.inputImage;
+  if (inputImage) {
+    const dataUrl = inputImage.startsWith("data:")
+      ? inputImage
+      : await imageToDataUrl(inputImage);
     if (dataUrl) body.image = dataUrl;
   }
 
+  const attempt = async (target: string, timeoutMs: number): Promise<string | null> => {
+    const requestedSize = options.size || process.env.ANYMODEL_IMAGE_SIZE?.trim() || DEFAULT_ANYMODEL_IMAGE_SIZE;
+    const size = ANYMODEL_IMAGE_SIZES.has(requestedSize) ? requestedSize : DEFAULT_ANYMODEL_IMAGE_SIZE;
+
+    try {
+      const res = await fetch("https://anymodel.org/v1/images/generations", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ...body, model: target, size }),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+
+      if (!res.ok) {
+        const err = await res.text().catch(() => "unknown");
+        const hint =
+          res.status === 402
+            ? " — AnyModel balance empty (top up in cabinet)"
+            : res.status === 401
+              ? " — AnyModel key invalid/revoked"
+                : res.status === 404 || res.status === 406
+                  ? " — image model not found (check ANYMODEL_IMAGE_MODEL in .env)"
+                  : "";
+        console.error(`AnyModel image ${target} failed: ${res.status} — ${err.slice(0, 300)}${hint}`);
+        const e = new Error(`AnyModel image error (${res.status})`) as Error & { status?: number };
+        e.status = res.status;
+        throw e;
+      }
+
+      const data = await res.json();
+      const item = data?.data?.[0];
+      let buffer: Buffer | null = null;
+      if (item?.b64_json) {
+        buffer = Buffer.from(item.b64_json, "base64");
+      } else if (item?.url) {
+        const imgRes = await fetch(item.url, { signal: AbortSignal.timeout(10000) });
+        if (imgRes.ok) buffer = Buffer.from(await imgRes.arrayBuffer());
+      }
+      if (!buffer) {
+        console.error("AnyModel returned no image data");
+        return null;
+      }
+
+      const compressed = await sharp(buffer).webp({ quality: 85, effort: 4 }).toBuffer();
+      const pinned = await pinBufferToPinata(compressed);
+      return pinned || null;
+    } catch (e: any) {
+      console.error(`AnyModel image ${target} error: ${e.message}`);
+      throw e;
+    }
+  };
+
   try {
-    const res = await fetch("https://anymodel.org/v1/images/generations", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(ANYMODEL_IMAGE_TIMEOUT_MS),
-    });
-
-    if (!res.ok) {
-      const err = await res.text().catch(() => "unknown");
-      const hint =
-        res.status === 402
-          ? " — AnyModel balance empty (top up in cabinet)"
-          : res.status === 401
-            ? " — AnyModel key invalid/revoked"
-              : res.status === 404 || res.status === 406
-                ? " — image model not found/supported (check ANYMODEL_IMAGE_MODEL in .env)"
-                : "";
-      console.error(`AnyModel image failed: ${res.status} — ${err.slice(0, 300)}${hint}`);
-      return null;
-    }
-
-    const data = await res.json();
-    const item = data?.data?.[0];
-    let buffer: Buffer | null = null;
-    if (item?.b64_json) {
-      buffer = Buffer.from(item.b64_json, "base64");
-    } else if (item?.url) {
-      const imgRes = await fetch(item.url, { signal: AbortSignal.timeout(10000) });
-      if (imgRes.ok) buffer = Buffer.from(await imgRes.arrayBuffer());
-    }
-    if (!buffer) {
-      console.error("AnyModel returned no image data");
-      return null;
-    }
-
-    const compressed = await sharp(buffer).webp({ quality: 85, effort: 4 }).toBuffer();
-    const pinned = await pinBufferToPinata(compressed);
-    return pinned || null;
+    const result = await attempt(primary, ANYMODEL_IMAGE_TIMEOUT_MS);
+    if (result) return result;
   } catch (e: any) {
-    console.error("AnyModel image error:", e.message);
+    const retryable = e?.name === "TimeoutError" || e?.status === undefined || (e?.status && IMAGE_RETRYABLE.has(e.status));
+    if (!retryable || primary === fallback) return null;
+    console.warn(`AnyModel image primary ${primary} failed, falling back to ${fallback}`);
+  }
+
+  try {
+    return await attempt(fallback, ANYMODEL_IMAGE_TIMEOUT_MS);
+  } catch (e: any) {
+    console.error(`AnyModel image fallback ${fallback} also failed: ${e.message}`);
     return null;
   }
 }

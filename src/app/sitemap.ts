@@ -5,16 +5,19 @@ import { getSiteUrl } from '@/lib/site';
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = getSiteUrl();
 
-  // Fetch all articles for sitemap
-  const { data: articles } = await supabase
-    .from('articles')
-    .select('id, created_at')
-    .order('created_at', { ascending: false });
+  let articles: { id: string; created_at: string }[] | null = null;
+  let profiles: { address: string }[] | null = null;
 
-  // Fetch all profiles/tapes
-  const { data: profiles } = await supabase
-    .from('profiles')
-    .select('address');
+  try {
+    const [a, p] = await Promise.all([
+      supabase.from('articles').select('id, created_at').order('created_at', { ascending: false }),
+      supabase.from('profiles').select('address'),
+    ]);
+    articles = a.data;
+    profiles = p.data;
+  } catch {
+    return [{ url: baseUrl, lastModified: new Date(), changeFrequency: 'daily', priority: 1 }];
+  }
 
   const articleEntries: MetadataRoute.Sitemap = (articles || []).map((article) => ({
     url: `${baseUrl}/article/${article.id}`,
