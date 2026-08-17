@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { chatAnyModel } from "@/lib/anymodel";
-import { ANYMODEL_VISION_FALLBACK_MODEL } from "@/lib/ai-models";
 import { extractJson } from "@/lib/utils";
 
 export const maxDuration = 60;
@@ -10,6 +9,16 @@ const DNA_PROMPT = `Analyze this mascot image and return JSON with exactly three
 "voice": 2-3 sentences describing how the character SPEAKS — unique vocabulary, sentence rhythm, catchphrases, slang, rhetorical style. Must be DISTINCT from personality. Example: "Short punchy sentences. Military jargon. Calls everyone 'soldier'. Ends every take with 'over and out'."
 "visual": Technical visual description for AI image generation. Cover: proportions and silhouette, physical traits (species, colors, facial features), materials and textures, and a rich cinematic environment description for banners.`;
 
+/** Fetch image from URL and convert to a base64 data URL that AnyModel's
+ *  upstream providers can process (they can't reach IPFS gateways directly). */
+async function toDataUrl(url: string): Promise<string> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (!res.ok) throw new Error(`Image fetch failed (${res.status})`);
+  const ct = res.headers.get("content-type") || "image/png";
+  const buf = Buffer.from(await res.arrayBuffer());
+  return `data:${ct};base64,${buf.toString("base64")}`;
+}
+
 export async function POST(req: Request) {
   try {
     const { imageUrl, userAddress } = await req.json();
@@ -18,18 +27,19 @@ export async function POST(req: Request) {
     }
 
     try {
+      const dataUrl = await toDataUrl(imageUrl);
+
       const result = extractJson(await chatAnyModel({
+        model: "cx/gpt-5.4-mini",
         messages: [{
           role: "user",
           content: [
             { type: "text", text: DNA_PROMPT },
-            { type: "image_url", image_url: { url: imageUrl } },
+            { type: "image_url", image_url: { url: dataUrl } },
           ],
         }],
-        json: false,
         maxTokens: 2000,
         timeoutMs: 40000,
-        fallback: ANYMODEL_VISION_FALLBACK_MODEL(),
       }));
       return NextResponse.json({
         personality: result.personality || "Mysterious entity.",

@@ -8,11 +8,11 @@
 
 /** Primary text model for all LLM calls (rewrites, translations, analysis). */
 export const ANYMODEL_TEXT_MODEL = () =>
-  process.env.ANYMODEL_TEXT_MODEL?.trim() || "gc/gemini-2.5-flash";
+  process.env.ANYMODEL_TEXT_MODEL?.trim() || "ag/gemini-3-flash";
 
 /**
  * Fallback text model — used when the primary returns 429/5xx/timeout.
- * Falls back to gpt-5.4-mini if gemini-2.5-flash is rate-limited.
+ * Falls back to gpt-5.4-mini if gemini-3-flash is rate-limited.
  */
 export const ANYMODEL_FALLBACK_TEXT_MODEL = () =>
   process.env.ANYMODEL_FALLBACK_TEXT_MODEL?.trim() || "cx/gpt-5.4-mini";
