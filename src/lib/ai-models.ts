@@ -30,4 +30,4 @@ export const ANYMODEL_IMAGE_FALLBACK_MODEL = () =>
  * (e.g. DNA scan). The default text fallback (gpt-5.4-mini) rejects image inputs.
  */
 export const ANYMODEL_VISION_FALLBACK_MODEL = () =>
-  process.env.ANYMODEL_VISION_FALLBACK_MODEL?.trim() || "gc/gemini-2.5-flash-lite";
+  process.env.ANYMODEL_VISION_FALLBACK_MODEL?.trim() || "cx/gpt-5.4-mini";
