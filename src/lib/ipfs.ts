@@ -6,10 +6,10 @@
  */
 
 export const IPFS_GATEWAYS = [
-  "https://gateway.ipn.io/ipfs/",
+  "https://cf-ipfs.com/ipfs/",
   "https://gateway.pinata.cloud/ipfs/",
+  "https://dweb.link/ipfs/",
   "https://ipfs.io/ipfs/",
-  "https://cloudflare-ipfs.com/ipfs/",
 ] as const;
 
 export function extractIpfsCid(url: string): string | null {

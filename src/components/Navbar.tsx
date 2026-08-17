@@ -6,7 +6,7 @@ import { base } from "thirdweb/chains";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, LogOut, Layers } from "lucide-react";
+import { ChevronDown, LogOut, Layers, User } from "lucide-react";
 import { client } from "@/lib/web3";
 
 const WalletConnect = dynamic(() => import("./WalletConnect"), {
@@ -85,8 +85,8 @@ export default function Navbar() {
                   onClick={() => setMenuOpen((o) => !o)}
                   className="flex items-center gap-2 pl-1 pr-2 h-9 rounded-full border border-[var(--border-soft)] hover:border-black transition-colors bg-white"
                 >
-                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-black text-white text-[10px] font-bold">
-                    {(account.address.slice(2, 4) || "").toUpperCase()}
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-black text-white">
+                    <User size={14} />
                   </span>
                   <ChevronDown
                     size={14}
