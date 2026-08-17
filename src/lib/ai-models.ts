@@ -11,12 +11,11 @@ export const ANYMODEL_TEXT_MODEL = () =>
   process.env.ANYMODEL_TEXT_MODEL?.trim() || "gc/gemini-2.5-flash";
 
 /**
- * Fallback text model — same pool as the primary. The app is strictly limited
- * to two models: gemini-2.5-flash for text and nano-banana-lite for banners.
- * No other model may be configured here (gemini-2.5-pro is not used).
+ * Fallback text model — used when the primary returns 429/5xx/timeout.
+ * Falls back to gpt-5.4-mini if gemini-2.5-flash is rate-limited.
  */
 export const ANYMODEL_FALLBACK_TEXT_MODEL = () =>
-  process.env.ANYMODEL_FALLBACK_TEXT_MODEL?.trim() || "gc/gemini-2.5-flash";
+  process.env.ANYMODEL_FALLBACK_TEXT_MODEL?.trim() || "cx/gpt-5.4-mini";
 
 /** Banner / image generation model. */
 export const ANYMODEL_IMAGE_MODEL = () =>

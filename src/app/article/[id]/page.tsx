@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { ExternalLink, Radio } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { Metadata } from 'next';
 import { getSupabaseServer } from '@/lib/supabase';
@@ -84,14 +84,12 @@ export default async function ArticlePage({ params }: { params: { id: string } }
       <article className="max-w-3xl mx-auto px-6 pt-16 md:pt-24 pb-24">
         <header className="mb-12">
           <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-3 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-secondary)]">
-              <span className="text-black leading-none"><Radio size={14} strokeWidth={3} /></span>
-              <span className="text-[var(--border-soft)]">/</span>
-              <span>{new Date(article.created_at).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })}</span>
+            <div className="text-xs text-[var(--text-secondary)]">
+              {new Date(article.created_at).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })}
             </div>
             <BackButton />
           </div>
-          <h1 className="text-4xl md:text-6xl typography-title mb-10 leading-[1.05]">{article.title}</h1>
+          <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-10 leading-[1.05]">{article.title}</h1>
           <div className="flex items-center gap-3 py-6 border-t border-[var(--border-soft)]">
              <Link href={`/tape/${article.author_address}`} className="shrink-0">
                <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center border border-[var(--border-soft)] overflow-hidden hover:ring-2 hover:ring-black/10 transition-all">
@@ -113,13 +111,13 @@ export default async function ArticlePage({ params }: { params: { id: string } }
           const tokenLink = tokenMatch ? `/token/${tokenMatch[1]}` : null;
           return (
             <div className="w-full mb-16 flex justify-center">
-              <div className="w-full max-w-5xl aspect-video overflow-hidden bg-gray-100 border border-[var(--border-soft)] rounded-sm shadow-xl">
+              <div className="w-full max-w-5xl aspect-video overflow-hidden bg-gray-100 border border-[var(--border-soft)] rounded-lg">
                 {tokenLink ? (
                   <Link href={tokenLink} className="block w-full h-full">
-                    <BannerImage src={article.image_url} alt={article.title} className="w-full h-full object-cover object-center grayscale-[0.05] hover:grayscale-0 transition-all duration-1000 ease-in-out" />
+                    <BannerImage src={article.image_url} alt={article.title} className="w-full h-full object-cover object-center" />
                   </Link>
                 ) : (
-                  <BannerImage src={article.image_url} alt={article.title} className="w-full h-full object-cover object-center grayscale-[0.05] hover:grayscale-0 transition-all duration-1000 ease-in-out" />
+                  <BannerImage src={article.image_url} alt={article.title} className="w-full h-full object-cover object-center" />
                 )}
               </div>
             </div>
@@ -139,10 +137,10 @@ export default async function ArticlePage({ params }: { params: { id: string } }
             </div>
             <div className="flex items-center justify-between border-t border-[var(--border-soft)] pt-8">
               <div className="flex flex-col">
-                <span className="text-[10px] text-[var(--text-secondary)] uppercase font-bold tracking-[0.2em] mb-1">Curated by</span>
-                <span className="font-bold text-lg tracking-tighter uppercase leading-none">Pager AI</span>
+                <span className="text-xs text-[var(--text-secondary)] mb-0.5">Curated by</span>
+                <span className="font-semibold tracking-tight">Pager AI</span>
               </div>
-              <Link href="/" className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-secondary)] hover:text-black transition-colors">Back to Feed</Link>
+              <Link href="/" className="text-sm text-[var(--text-secondary)] hover:text-black transition-colors">Back to Feed</Link>
             </div>
           </div>
         </footer>

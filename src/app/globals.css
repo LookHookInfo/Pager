@@ -6,43 +6,46 @@
 }
 
 :root {
-  --bg-main: #FBF9F7;
+  --bg-main: #FFFFFF;
   --surface: #FFFFFF;
-  --text-primary: #1A1A1A;
-  --text-secondary: #5F5F5F;
-  --border-soft: #E8E6E1;
-  --accent: #000000;
-  --accent-hover: #242424;
+  --text-primary: #0A0A0A;
+  --text-secondary: #6F6F6F;
+  --border-soft: #E6E6E6;
+  --accent: #0A0A0A;
+  --accent-hover: #262626;
 }
 
 body {
   background-color: var(--bg-main);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Универсальные классы Medium Style */
+/* --- Карточки (Polymarket) --- */
 
 .card-medium {
   background: var(--surface);
   border: 1px solid var(--border-soft);
-  border-radius: 4px;
-  transition: all 0.2s ease;
+  border-radius: 8px;
+  transition: border-color 0.15s ease;
 }
 
 .card-medium:hover {
-  border-color: #d1cfc9;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  border-color: #BFBFBF;
 }
+
+/* --- Кнопки (Polymarket) --- */
 
 .btn-primary {
   background: var(--accent);
   color: white;
-  padding: 8px 16px;
-  border-radius: 99px;
-  font-weight: 500;
+  padding: 8px 18px;
+  border-radius: 999px;
+  font-weight: 600;
   font-size: 0.875rem;
-  transition: background 0.2s ease;
+  line-height: 1.25rem;
+  transition: background 0.15s ease;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -52,35 +55,60 @@ body {
   background: var(--accent-hover);
 }
 
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .btn-secondary {
   border: 1px solid var(--border-soft);
-  color: var(--text-secondary);
-  padding: 8px 16px;
-  border-radius: 99px;
+  color: var(--text-primary);
+  background: var(--surface);
+  padding: 8px 18px;
+  border-radius: 999px;
   font-weight: 500;
   font-size: 0.875rem;
-  transition: all 0.2s ease;
+  line-height: 1.25rem;
+  transition: border-color 0.15s ease;
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
 
 .btn-secondary:hover {
-  border-color: var(--text-primary);
-  color: var(--text-primary);
+  border-color: var(--accent);
 }
+
+/* --- Типографика (Medium) --- */
 
 .typography-title {
   font-family: var(--font-sans);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
 }
 
 .typography-body {
   font-family: var(--font-serif);
   line-height: 1.8;
   font-size: 1.25rem;
+}
+
+/* --- ConnectButton (Thirdweb) --- */
+
+.connect-btn {
+  background: var(--accent);
+  color: white;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 8px 18px;
+  border: none;
+  transition: background 0.15s ease;
+}
+
+.connect-btn:hover {
+  background: var(--accent-hover);
 }
 
 /* Редактор-холст */
@@ -96,11 +124,11 @@ body {
   pointer-events: none;
 }
 
-/* Кастомные настройки для типографики */
+/* Типографика статей (Medium) */
 .prose {
   --tw-prose-body: var(--text-primary);
   --tw-prose-headings: var(--accent);
-  --tw-prose-links: #2563eb;
+  --tw-prose-links: var(--accent);
   --tw-prose-bold: var(--accent);
   --tw-prose-quotes: var(--text-secondary);
   --tw-prose-quote-borders: var(--border-soft);
@@ -116,10 +144,11 @@ body {
   text-decoration: underline;
   text-underline-offset: 4px;
   font-weight: 600;
+  color: var(--accent);
 }
 
 .prose a:hover {
-  color: #1d4ed8;
+  text-decoration-thickness: 2px;
 }
 
 .prose h1, .prose h2, .prose h3 {
@@ -201,7 +230,7 @@ body {
   background: #1a1a1a;
   color: #e8e8e8;
   padding: 1.2em 1.5em;
-  border-radius: 6px;
+  border-radius: 8px;
   overflow-x: auto;
   margin: 1.8em 0;
   font-size: 0.85em;
@@ -223,64 +252,9 @@ body {
   scrollbar-width: none;
 }
 
-/* Анимация Claps (Струя токенов с зависанием) */
-@keyframes clap-stream {
-  0% { 
-    transform: translate(0, 0) scale(0.3) rotate(0deg); 
-    opacity: 0; 
-  }
-  15% { 
-    opacity: 1; 
-  }
-  60% {
-    transform: translate(calc(var(--x) * 0.8), calc(var(--y) * 0.8)) scale(var(--s)) rotate(calc(var(--r) * 0.5));
-    opacity: 1;
-  }
-  100% { 
-    transform: translate(var(--x), var(--y)) scale(var(--s)) rotate(var(--r)); 
-    opacity: 0; 
-  }
-}
-
-.animate-clap {
-  animation: clap-stream 1.5s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
-  will-change: transform, opacity;
-}
-
-@keyframes scroll {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-33.333%); }
-}
-
-.animate-scroll {
-  animation: scroll 60s linear infinite;
-}
-
-.animate-scroll:hover {
-  animation-play-state: paused;
-}
-
 @keyframes shimmer {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(200%); }
-}
-
-.connect-btn-medium {
-  background: var(--accent) !important;
-  color: white !important;
-  border-radius: 0 !important;
-  font-weight: 700 !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.1em !important;
-  font-size: 11px !important;
-  padding: 8px 20px !important;
-  border: none !important;
-  transition: all 0.2s ease !important;
-}
-
-.connect-btn-medium:hover {
-  background: var(--accent-hover) !important;
-  transform: translateY(-1px);
 }
 
 /* Кастомные стили для скроллбара */

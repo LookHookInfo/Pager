@@ -16,7 +16,6 @@ interface ShareLink {
   name: string;
   icon: React.ReactNode;
   getUrl: () => Promise<string> | string;
-  color: string;
   needsAsync?: boolean;
 }
 
@@ -193,7 +192,6 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
         const text = tweet || getFallbackTweet();
         return `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
       },
-      color: "hover:bg-sky-500",
       needsAsync: true,
     },
     {
@@ -203,7 +201,6 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
         const url = getShareUrl();
         return `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(`${title}\n\n${shortDescription}\n\n${fallbackFormatted}`)}`;
       },
-      color: "hover:bg-blue-500",
       needsAsync: false,
     },
     {
@@ -212,14 +209,12 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
       getUrl: () => {
         return `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(getShareUrl())}`;
       },
-      color: "hover:bg-blue-600",
       needsAsync: true,
     },
     {
       name: "Instagram",
       icon: isGenerating ? <Loader2 size={18} className="animate-spin" /> : <Instagram size={18} />,
       getUrl: () => "https://www.instagram.com/",
-      color: "hover:bg-pink-500",
       needsAsync: true,
     },
   ];
@@ -268,23 +263,23 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
         </div>
       )}
       <div className="relative">
-        <button onClick={() => setShowShareModal(!showShareModal)} className="text-[var(--text-secondary)] hover:text-black transition-colors flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest"><Share2 size={18} /><span>Share</span></button>
+        <button onClick={() => setShowShareModal(!showShareModal)} className="text-[var(--text-secondary)] hover:text-black transition-colors flex items-center gap-1.5 text-sm"><Share2 size={16} /><span>Share</span></button>
         {showShareModal && (
           <>
             <div className="fixed inset-0 z-[100]" onClick={() => setShowShareModal(false)} />
-            <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-64 bg-white border border-[var(--border-soft)] shadow-xl z-[101] p-2 animate-in fade-in slide-in-from-bottom-2">
+            <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-64 bg-white border border-[var(--border-soft)] rounded-lg shadow-xl z-[101] p-2 animate-in fade-in slide-in-from-bottom-2">
               {/* Tweet preview */}
               {generatedTweet && (
-                <div className="px-3 py-2 mb-1 bg-sky-50 rounded-sm border border-sky-100">
-                  <p className="text-[9px] font-bold text-sky-600 uppercase tracking-widest mb-1">Generated Tweet</p>
+                <div className="px-3 py-2 mb-1 bg-gray-50 rounded-md border border-[var(--border-soft)]">
+                  <p className="text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-widest mb-1">Generated Tweet</p>
                   <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">{generatedTweet}</p>
                   <div className="flex items-center justify-between mt-2">
-                    <span className={`text-[9px] font-bold ${generatedTweet.length > 250 ? "text-red-500" : "text-green-600"}`}>
+                    <span className={`text-[10px] font-semibold ${generatedTweet.length > 250 ? "text-red-500" : "text-green-600"}`}>
                       {generatedTweet.length}/250
                     </span>
                     <button
                       onClick={() => setGeneratedTweet(null)}
-                      className="text-[9px] font-bold text-sky-500 hover:text-sky-700 flex items-center gap-1"
+                      className="text-[10px] font-semibold text-[var(--text-secondary)] hover:text-black flex items-center gap-1"
                     >
                       <RefreshCw size={10} /> Regenerate
                     </button>
@@ -297,7 +292,7 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
                     key={link.name}
                     onClick={() => handleShareClick(link)}
                     disabled={isGenerating && link.needsAsync}
-                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors hover:text-white rounded-sm ${link.color} disabled:opacity-50`}
+                    className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors hover:bg-gray-50 rounded-md disabled:opacity-50`}
                   >
                     {link.icon}
                     <span>{link.name}</span>
@@ -306,10 +301,10 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
                     )}
                   </button>
                 ))}
-                <div className="border-t border-gray-100 my-1" />
+                <div className="border-t border-[var(--border-soft)] my-1" />
                 <button
                   onClick={handleCmcShare}
-                  className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors rounded-sm ${copied ? "bg-green-500 text-white" : "hover:bg-yellow-500 hover:text-white"}`}
+                  className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors rounded-md ${copied ? "bg-green-500 text-white" : "hover:bg-gray-50"}`}
                 >
                   {copied ? <Check size={18} /> : <Copy size={18} />}
                   <span>{copied ? "Copied!" : "CoinMarketCap"}</span>
