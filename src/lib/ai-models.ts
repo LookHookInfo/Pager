@@ -23,7 +23,7 @@ export const ANYMODEL_IMAGE_MODEL = () =>
 
 /** Fallback image model when primary returns 429/5xx/timeout. */
 export const ANYMODEL_IMAGE_FALLBACK_MODEL = () =>
-  process.env.ANYMODEL_IMAGE_FALLBACK_MODEL?.trim() || "gemini-3.1-flash-image";
+  process.env.ANYMODEL_IMAGE_FALLBACK_MODEL?.trim() || "am/flux.2-klein-4b";
 
 /**
  * Vision-capable text fallback — used for calls that include image_url content
