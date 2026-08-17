@@ -26,7 +26,7 @@ export async function POST(req: Request) {
             { type: "image_url", image_url: { url: imageUrl } },
           ],
         }],
-        json: true,
+        json: false,
         maxTokens: 2000,
         timeoutMs: 40000,
         fallback: ANYMODEL_VISION_FALLBACK_MODEL(),
