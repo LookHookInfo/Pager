@@ -35,7 +35,7 @@ export default function TokenSearchPage() {
         </div>
 
         <div className="flex items-center gap-3 max-w-xl mx-auto">
-          <div className="flex-1 flex items-center gap-3 px-4 py-3 border border-[var(--border-soft)] focus-within:border-black rounded-lg transition-colors">
+          <div className="flex-1 flex items-center gap-3 px-4 py-3 border border-[var(--border)] focus-within:border-black rounded-lg transition-colors">
             <Search size={18} className="text-gray-300" />
             <input type="text" placeholder="Search token (e.g. PEPE, 0x...)" value={query} onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleSearch()}
@@ -49,11 +49,11 @@ export default function TokenSearchPage() {
 
         {results.length > 0 && (
           <div className="space-y-3">
-            <span className="text-sm text-[var(--text-secondary)]">{results.length} results</span>
+            <span className="text-sm text-[var(--text-dim)]">{results.length} results</span>
             {results.map((t: any) => (
               <button key={t.address} onClick={() => router.push(`/token/${t.address}`)}
-                className="w-full flex items-center gap-4 p-4 border border-[var(--border-soft)] rounded-lg hover:border-black transition-all text-left group">
-                {t.imageUrl && <img src={t.imageUrl} alt={t.symbol} className="w-12 h-12 rounded-full object-cover border border-[var(--border-soft)]" />}
+                className="w-full flex items-center gap-4 p-4 border border-[var(--border)] rounded-lg hover:border-black transition-all text-left group">
+                {t.imageUrl && <img src={t.imageUrl} alt={t.symbol} className="w-12 h-12 rounded-full object-cover border border-[var(--border)]" />}
                 <div className="flex-1 min-w-0 space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-bold uppercase">{t.symbol}</span>
@@ -69,7 +69,7 @@ export default function TokenSearchPage() {
                     <span className="text-gray-400">Liq: ${t.liquidity >= 1e6 ? (t.liquidity / 1e6).toFixed(1) + "M" : t.liquidity.toFixed(0)}</span>
                   </div>
                 </div>
-                <span className="text-xs text-[var(--text-secondary)] group-hover:text-black transition-colors">View</span>
+                <span className="text-xs text-[var(--text-dim)] group-hover:text-black transition-colors">View</span>
               </button>
             ))}
           </div>

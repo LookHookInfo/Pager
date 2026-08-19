@@ -6,22 +6,22 @@ const siteUrl = getSiteUrl();
 
 export default function Footer() {
   return (
-    <footer className="bg-[#0A0A0A] text-white">
-      <div className="max-w-7xl mx-auto px-4 md:px-10 py-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-        <div className="flex flex-col gap-1">
-          <span className="text-lg font-extrabold tracking-tight">Pager</span>
-          <span className="text-xs text-white/50">
+    <footer className="bg-[var(--accent)] text-white">
+      <div className="max-w-6xl mx-auto px-4 md:px-8 py-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[15px] font-black tracking-tight">Pager</span>
+          <span className="text-[11px] text-white/40">
             Web3 media for $HASH on Base. Powered by LookHook.
           </span>
         </div>
 
-        <div className="flex items-center gap-6 text-xs text-white/60">
+        <div className="flex items-center gap-4 text-[11px] text-white/50">
           <Link
-            href={`${siteUrl}/`}
+            href={siteUrl}
             className="flex items-center gap-1.5 hover:text-white transition-colors"
           >
             Ecosystem
-            <ExternalLink size={11} />
+            <ExternalLink size={10} />
           </Link>
           <Link
             href="https://x.com/LookHookInfo"
@@ -29,7 +29,7 @@ export default function Footer() {
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 hover:text-white transition-colors"
           >
-            <Twitter size={14} />
+            <Twitter size={12} />
             X
           </Link>
         </div>

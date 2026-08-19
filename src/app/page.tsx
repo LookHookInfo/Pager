@@ -21,10 +21,7 @@ async function getArticles(page: number) {
     .order("created_at", { ascending: false })
     .range(from, to);
 
-  if (error) {
-    console.error("Fetch error:", error);
-    return { articles: [], totalPages: 0 };
-  }
+  if (error) return { articles: [], totalPages: 0 };
 
   return {
     articles: data || [],
@@ -37,102 +34,88 @@ export default async function Home({ searchParams }: { searchParams: { page?: st
   const { articles, totalPages } = await getArticles(currentPage);
 
   return (
-    <main className="min-h-screen bg-[var(--bg-main)]">
+    <main className="min-h-screen bg-[var(--bg)]">
       <Navbar />
 
-      <section className="max-w-7xl mx-auto px-4 md:px-10 pt-20 pb-12 border-b border-[var(--border-soft)]">
-        <div className="max-w-2xl">
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
+      <section className="max-w-6xl mx-auto px-4 md:px-8 pt-16 pb-10 border-b border-[var(--border)]">
+        <div className="max-w-xl">
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-3">
             Post your opinion.
           </h1>
-          <p className="text-lg text-[var(--text-secondary)] leading-relaxed">
+          <p className="text-[15px] text-[var(--text-dim)] leading-relaxed">
             Web3 media community of $HASH on the Base network.
           </p>
         </div>
       </section>
 
-      <section className="max-w-7xl mx-auto px-4 md:px-10 py-12">
-        <div className="space-y-14">
+      <section className="max-w-6xl mx-auto px-4 md:px-8 py-10">
+        <div className="space-y-10">
           {articles.map((article) => (
-            <article key={article.id} className="flex flex-col md:flex-row gap-8 group">
-              <div className="flex-[2] flex flex-col justify-between py-1">
-                <div className="space-y-3">
-                  <div className="text-xs text-[var(--text-secondary)]">
+            <article key={article.id} className="flex flex-col md:flex-row gap-6 group">
+              <div className="flex-[2] flex flex-col justify-between py-1 min-w-0">
+                <div className="space-y-2">
+                  <div className="text-[11px] text-[var(--text-dim)] font-medium">
                     {new Date(article.created_at).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "2-digit",
-                      year: "numeric"
+                      month: "short", day: "2-digit", year: "numeric"
                     })}
                   </div>
                   <Link href={`/article/${article.id}`}>
-                    <h2 className="text-2xl md:text-3xl font-bold tracking-tight leading-snug group-hover:text-[var(--text-secondary)] transition-colors line-clamp-2">
+                    <h2 className="text-xl md:text-2xl font-bold tracking-tight leading-snug group-hover:text-[var(--text-dim)] transition-colors line-clamp-2">
                       {article.title}
                     </h2>
                   </Link>
-                  <p className="text-lg text-[var(--text-secondary)] leading-relaxed line-clamp-3 typography-body">
+                  <p className="text-[15px] text-[var(--text-dim)] leading-relaxed line-clamp-2 typography-body">
                     {stripHtml(article.content)}
                   </p>
                 </div>
-                <div className="mt-6">
+                <div className="mt-4">
                   <LikeButton articleId={article.id} initialLikes={article.likes || 0} authorAddress={article.author_address} />
                 </div>
               </div>
-              <Link href={`/article/${article.id}`} className="flex-1 order-first md:order-last">
-                <div className="w-full aspect-[4/3] overflow-hidden bg-gray-100 border border-[var(--border-soft)] rounded-lg">
-                  {article.image_url ? (
+              {article.image_url ? (
+                <Link href={`/article/${article.id}`} className="flex-1 order-first md:order-last shrink-0">
+                  <div className="w-full aspect-[4/3] overflow-hidden rounded-xl bg-[var(--surface-dim)] border border-[var(--border)]">
                     <BannerImage
                       src={article.image_url}
                       alt={article.title}
                       className="w-full h-full object-cover object-center"
                     />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <Newspaper size={32} className="text-gray-200" />
-                    </div>
-                  )}
-                </div>
-              </Link>
+                  </div>
+                </Link>
+              ) : null}
             </article>
           ))}
 
           {articles.length === 0 && (
-            <div className="py-20 text-center text-[var(--text-secondary)]">
+            <div className="py-20 text-center text-[var(--text-dim)] text-[15px]">
               No articles found.
             </div>
           )}
         </div>
 
         {totalPages > 1 && (
-          <div className="mt-20 pt-10 border-t border-[var(--border-soft)] flex items-center justify-between">
-            <span className="text-sm text-[var(--text-secondary)]">
+          <div className="mt-16 pt-8 border-t border-[var(--border)] flex items-center justify-between">
+            <span className="text-[13px] text-[var(--text-dim)]">
               Page {currentPage} of {totalPages}
             </span>
-
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {currentPage > 1 ? (
-                <Link
-                  href={`/?page=${currentPage - 1}`}
-                  className="p-2.5 rounded-full border border-black hover:bg-black hover:text-white transition-all"
-                >
-                  <ChevronLeft size={18} />
+                <Link href={`/?page=${currentPage - 1}`} className="btn btn--ghost btn--sm">
+                  <ChevronLeft size={14} /> Prev
                 </Link>
               ) : (
-                <div className="p-2.5 rounded-full border border-[var(--border-soft)] text-gray-300 cursor-not-allowed">
-                  <ChevronLeft size={18} />
-                </div>
+                <span className="btn btn--ghost btn--sm opacity-40 pointer-events-none">
+                  <ChevronLeft size={14} /> Prev
+                </span>
               )}
-
               {currentPage < totalPages ? (
-                <Link
-                  href={`/?page=${currentPage + 1}`}
-                  className="p-2.5 rounded-full border border-black hover:bg-black hover:text-white transition-all"
-                >
-                  <ChevronRight size={18} />
+                <Link href={`/?page=${currentPage + 1}`} className="btn btn--primary btn--sm">
+                  Next <ChevronRight size={14} />
                 </Link>
               ) : (
-                <div className="p-2.5 rounded-full border border-[var(--border-soft)] text-gray-300 cursor-not-allowed">
-                  <ChevronRight size={18} />
-                </div>
+                <span className="btn btn--primary btn--sm opacity-40 pointer-events-none">
+                  Next <ChevronRight size={14} />
+                </span>
               )}
             </div>
           </div>

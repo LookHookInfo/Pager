@@ -30,6 +30,13 @@ export default function MascotsPage() {
   const [forgeErrors, setForgeErrors] = useState<string[]>([]);
   const [selectedMascot, setSelectedMascot] = useState<any>(null);
   const [articleCount, setArticleCount] = useState<number | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!errorMsg) return;
+    const t = setTimeout(() => setErrorMsg(null), 5000);
+    return () => clearTimeout(t);
+  }, [errorMsg]);
 
   useEffect(() => {
     if (!selectedMascot?.creator) { setArticleCount(null); return; }
@@ -45,7 +52,7 @@ export default function MascotsPage() {
 
   const notify = (msg: string, type: "success" | "error" = "success") => {
     setNotification({ message: msg, type });
-    setTimeout(() => setNotification(null), 5000);
+    setTimeout(() => setNotification(null), 4000);
   };
 
   const notifyTelegram = async (tokenId: number) => {
@@ -58,9 +65,7 @@ export default function MascotsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tokenId, address: account.address, signature: sig, message: msg }),
       });
-    } catch (e: any) {
-      console.warn("TG notification skipped:", e?.message);
-    }
+    } catch {}
   };
 
   const fetchAllMascots = useCallback(async () => {
@@ -123,10 +128,9 @@ export default function MascotsPage() {
   useEffect(() => { fetchAllMascots(); }, [fetchAllMascots]);
 
   const handleDiscard = async (tokenId: number) => {
-    if (!account) { alert("Connect wallet"); return; }
+    if (!account) return;
     if (!confirm("Remove your key for this mascot?")) return;
-    setBusyId(String(tokenId));
-    setStatusText("Burning...");
+    setBusyId(String(tokenId)); setStatusText("Burning...");
     try {
       const contract = getContract({ client, chain: base, address: MASCOTS_CONTRACT_ADDRESS, abi: MASCOTS_ABI as any });
       const tx = prepareContractCall({ contract, method: "function discardMascot(uint256)", params: [BigInt(tokenId)] });
@@ -135,20 +139,20 @@ export default function MascotsPage() {
           setMascots(prev => prev.map(m => m.id === tokenId ? { ...m, owned: false, totalSold: Number(m.totalSold) - 1 } : m));
           setBusyId(null); setStatusText("");
         },
-        onError: (err) => { alert(err.message); setBusyId(null); setStatusText(""); },
+        onError: (err) => { setBusyId(null); setStatusText(""); setErrorMsg(err.message); },
       });
-    } catch (e: any) { alert(e.message); setBusyId(null); setStatusText(""); }
+    } catch (e: any) { setBusyId(null); setStatusText(""); setErrorMsg(e.message); }
   };
 
   const handlePurchase = async (tokenId: number, price: bigint) => {
-    if (!account) { alert("Connect wallet"); return; }
+    if (!account) return;
     setBusyId(String(tokenId));
     try {
       const hashContract = getContract({ client, chain: base, address: HASH_TOKEN_ADDRESS });
       const allowance = await readContract({ contract: hashContract, method: "function allowance(address,address) view returns (uint256)", params: [account.address as any, MASCOTS_CONTRACT_ADDRESS as any] });
 
       if (allowance < price) {
-        setStatusText("Approval...");
+        setStatusText("Approving...");
         const approve = prepareContractCall({ contract: hashContract, method: "function approve(address,uint256)", params: [MASCOTS_CONTRACT_ADDRESS, BigInt("115792089237316195423570985008687907853269984665640564039457584007913129639935")] });
         await new Promise((res, rej) => sendTransaction(approve, { onSuccess: res, onError: rej }));
       }
@@ -164,9 +168,9 @@ export default function MascotsPage() {
           setMascots(prev => prev.map(m => m.id === tokenId ? { ...m, owned: true, totalSold: Number(m.totalSold) + 1 } : m));
           setBusyId(null); setStatusText("");
         },
-        onError: (err) => { alert(err.message); setBusyId(null); setStatusText(""); },
+        onError: (err) => { setBusyId(null); setStatusText(""); setErrorMsg(err.message); },
       });
-    } catch (e: any) { setBusyId(null); setStatusText(""); alert(e.message); }
+    } catch (e: any) { setBusyId(null); setStatusText(""); setErrorMsg(e.message); }
   };
 
   const handleMascotImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -257,47 +261,47 @@ export default function MascotsPage() {
   };
 
   return (
-    <main className="min-h-screen bg-white">
+    <main className="min-h-screen bg-[var(--bg)]">
       <Navbar />
 
       {notification && (
-        <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-[100] px-8 py-4 rounded-sm shadow-2xl border-l-4 animate-in slide-in-from-top-4 duration-300 flex items-center gap-4 ${notification.type === "success" ? "bg-black text-white border-green-500" : "bg-red-600 text-white border-red-800"}`}>
-          {notification.type === "success" ? <CheckCircle2 size={20} /> : <Zap size={20} />}
-          <div className="flex flex-col">
-            <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Protocol</span>
-            <span className="text-sm font-bold">{notification.message}</span>
-          </div>
+        <div className={`toast ${notification.type === "success" ? "toast--success" : "toast--error"}`}>
+          {notification.type === "success" ? <CheckCircle2 size={16} /> : <Zap size={16} />}
+          <span>{notification.message}</span>
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-4 md:px-10 py-12">
-        <header className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-yellow-400">
-              <Zap size={16} className="fill-yellow-400" />
-              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-black">Live Protocols</span>
-            </div>
-            <h1 className="text-4xl font-black uppercase tracking-tighter">Mascot Market</h1>
-            <p className="text-sm text-gray-500 max-w-lg font-medium">
+      {errorMsg && (
+        <div className="toast toast--error" onClick={() => setErrorMsg(null)}>
+          <Zap size={14} />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      <div className="max-w-6xl mx-auto px-4 md:px-8 py-10">
+        <header className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div className="space-y-1">
+            <span className="section-label text-[var(--blue)]">Live Protocols</span>
+            <h1 className="text-3xl font-black tracking-tight">Mascot Market</h1>
+            <p className="text-[13px] text-[var(--text-dim)] max-w-md">
               Acquire NFT Keys to unlock unique AI voices and visual styles.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {account && (
-              <button onClick={() => setShowForge(!showForge)}
-                className="text-[9px] font-black uppercase tracking-widest text-white bg-black hover:bg-gray-800 flex items-center gap-2 px-4 py-2.5 rounded-sm shadow-lg transition-all">
-                <Plus size={12} /> {showForge ? "Close Forge" : "Create Mascot"}
+              <button onClick={() => setShowForge(!showForge)} className="btn btn--primary btn--sm">
+                <Plus size={12} /> {showForge ? "Close" : "Create"}
               </button>
             )}
-            <button onClick={fetchAllMascots} className="text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-black flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-sm border border-gray-100">
+            <button onClick={fetchAllMascots} className="btn btn--ghost btn--sm">
               <RefreshCw size={10} className={isLoading ? "animate-spin" : ""} />
-              {isLoading ? "Syncing..." : `${mascots.length} Protocols`}
+              {isLoading ? "Sync..." : `${mascots.length}`}
             </button>
           </div>
         </header>
 
         {showForge && account && (
-          <div className="mb-12 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className="mb-10 animate-in fade-in duration-300">
             <ProfileForge
               forgeData={forgeData}
               isForging={isForging}
@@ -310,50 +314,44 @@ export default function MascotsPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
           {mascots.map(m => (
-            <div key={m.id} className="group bg-white border border-gray-100 rounded-sm overflow-hidden flex flex-col transition-all duration-500 hover:shadow-2xl hover:-translate-y-1">
-              <div className="aspect-square bg-gray-50 relative overflow-hidden cursor-pointer" onClick={() => setSelectedMascot(m)}>
-                <img src={m.metadata.image} className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" alt={m.metadata.name} />
-                <div className="absolute top-2 right-2 bg-black text-white text-[8px] font-black px-1.5 py-0.5 rounded-sm shadow-xl z-10">Mascot #{m.id}</div>
+            <div key={m.id} className="card overflow-hidden flex flex-col group">
+              <div className="aspect-square bg-[var(--surface-dim)] relative overflow-hidden cursor-pointer" onClick={() => setSelectedMascot(m)}>
+                <img src={m.metadata.image} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" alt={m.metadata.name} />
+                <div className="absolute top-2 right-2 badge badge--accent">#{m.id}</div>
                 {m.owned && (
-                  <div className="absolute inset-0 bg-black/20 backdrop-blur-[1px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="bg-black text-white text-[8px] font-black uppercase px-2 py-1 flex items-center gap-1.5 shadow-2xl"><CheckCircle2 size={10} className="text-green-500" /> Active</div>
+                  <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="badge badge--green"><CheckCircle2 size={10} /> Owned</div>
                     <button onClick={(e) => { e.stopPropagation(); handleDiscard(m.id); }} disabled={busyId !== null}
-                      className="absolute bottom-2 right-2 bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-sm shadow-xl transition-all disabled:opacity-50">
+                      className="absolute bottom-2 right-2 w-6 h-6 bg-[var(--red)] text-white rounded-lg flex items-center justify-center disabled:opacity-50">
                       <Trash2 size={10} />
                     </button>
                   </div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4">
-                  <p className="text-white text-[8px] font-bold leading-relaxed italic line-clamp-2">&ldquo;{m.metadata.voice}&rdquo;</p>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
+                  <p className="text-white text-[11px] font-medium leading-relaxed line-clamp-2">&ldquo;{m.metadata.voice}&rdquo;</p>
                 </div>
                 {busyId === String(m.id) && (
-                  <div className="absolute inset-0 bg-white/90 backdrop-blur-sm flex flex-col items-center justify-center gap-2 z-20">
-                    <Loader2 size={20} className="animate-spin text-black" />
-                    <span className="text-[8px] font-black uppercase">{statusText}</span>
+                  <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center gap-1.5 z-20">
+                    <Loader2 size={16} className="animate-spin text-[var(--text)]" />
+                    <span className="badge badge--accent">{statusText}</span>
                   </div>
                 )}
               </div>
 
-              <div className="p-4 flex flex-col flex-1 gap-4">
-                <div className="min-h-[40px]">
-                  <h3 className="text-sm font-black uppercase tracking-tight group-hover:text-blue-600 transition-colors line-clamp-1">{m.metadata.name}</h3>
-                  <p className="text-[8px] font-bold text-gray-400 uppercase tracking-widest mt-1">By {m.creator.slice(0, 4)}...{m.creator.slice(-4)}</p>
+              <div className="p-3 flex flex-col flex-1 gap-2.5">
+                <div>
+                  <h3 className="text-[13px] font-bold tracking-tight truncate">{m.metadata.name}</h3>
+                  <p className="text-[10px] font-medium text-[var(--text-dim)]">{m.creator.slice(0, 4)}...{m.creator.slice(-4)}</p>
                 </div>
-                <div className="flex items-center justify-between py-3 border-y border-gray-50">
-                  <div className="flex flex-col">
-                    <span className="text-[7px] font-black uppercase text-gray-400">Minted</span>
-                    <span className="text-[10px] font-black">{m.totalSold}</span>
-                  </div>
-                  <div className="flex flex-col items-end">
-                    <span className="text-[7px] font-black uppercase text-gray-400">Access</span>
-                    <span className="text-[10px] font-black text-black">{Math.floor(Number(m.price) / 1e18)} $HASH</span>
-                  </div>
+                <div className="flex items-center justify-between text-[11px] font-medium text-[var(--text-dim)]">
+                  <span>{m.totalSold} minted</span>
+                  <span className="font-bold text-[var(--text)]">{Math.floor(Number(m.price) / 1e18)} $HASH</span>
                 </div>
                 <button onClick={() => handlePurchase(m.id, m.price)} disabled={busyId !== null || m.owned}
-                  className={`w-full py-3 text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${m.owned ? "bg-gray-50 text-gray-300" : "bg-black text-white hover:bg-gray-800 shadow-md"}`}>
-                  {m.owned ? <><CheckCircle2 size={12} /> Unlocked</> : <><ShoppingCart size={12} /> Acquire Key</>}
+                  className={`btn btn--sm btn--full ${m.owned ? "btn--ghost opacity-50" : "btn--primary"}`}>
+                  {m.owned ? <><CheckCircle2 size={10} /> Owned</> : <><ShoppingCart size={10} /> Acquire</>}
                 </button>
               </div>
             </div>
@@ -361,57 +359,57 @@ export default function MascotsPage() {
         </div>
 
         {!isLoading && mascots.length === 0 && (
-          <div className="h-64 border border-dashed border-gray-100 rounded-sm flex flex-col items-center justify-center text-center p-12 gap-3 mt-12">
-            <Info size={32} className="text-gray-200" />
-            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Network Empty</p>
+          <div className="h-48 border border-dashed border-[var(--border)] rounded-xl flex flex-col items-center justify-center gap-2">
+            <Info size={24} className="text-[var(--text-faint)]" />
+            <p className="section-label">Network Empty</p>
           </div>
         )}
       </div>
+
       {selectedMascot && (() => {
         const priceNum = Math.floor(Number(selectedMascot.price) / 1e18);
         return (
-          <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-[2px]" onClick={() => setSelectedMascot(null)}>
-            <div className="relative w-full sm:max-w-md max-h-[90vh] bg-white sm:rounded-sm rounded-t-sm shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300 flex flex-col" onClick={e => e.stopPropagation()}>
-              <div className="h-20 bg-gradient-to-br from-gray-900 via-gray-800 to-black relative shrink-0">
-                <button onClick={() => setSelectedMascot(null)} className="absolute top-3 right-3 w-7 h-7 bg-black/40 hover:bg-black/60 rounded-full flex items-center justify-center text-white/70 hover:text-white transition-colors"><X size={14} /></button>
+          <div className="modal-overlay" onClick={() => setSelectedMascot(null)}>
+            <div className="modal" onClick={e => e.stopPropagation()}>
+              <div className="relative h-24 bg-[var(--surface-dim)] shrink-0">
+                <button onClick={() => setSelectedMascot(null)} className="absolute top-3 right-3 w-7 h-7 rounded-lg bg-[var(--border)] flex items-center justify-center text-[var(--text-dim)] hover:text-[var(--text)]"><X size={14} /></button>
               </div>
               <div className="px-5 -mt-10 pb-5 flex flex-col items-center relative z-10">
-                <img src={selectedMascot.metadata.image} className="w-20 h-20 rounded-full border-4 border-white object-cover shadow-lg" alt={selectedMascot.metadata.name} />
-                <h3 className="text-sm font-black uppercase tracking-tight mt-3 text-center">{selectedMascot.metadata.name}</h3>
-                <p className="text-[8px] font-bold text-gray-300 uppercase tracking-widest mt-0.5">Protocol #{selectedMascot.id}</p>
-                <div className="flex items-center gap-6 mt-4 py-3 border-y border-gray-100 w-full justify-center">
-                  <div className="text-center"><span className="text-sm font-black block">{selectedMascot.totalSold}</span><span className="text-[7px] font-black uppercase text-gray-400 tracking-widest">Holders</span></div>
-                  <div className="text-center"><span className="text-sm font-black block">{priceNum}</span><span className="text-[7px] font-black uppercase text-gray-400 tracking-widest">$HASH</span></div>
-                  <div className="text-center"><span className="text-sm font-black block">{Number(selectedMascot.totalSold)}/{Number(selectedMascot.maxSupply || 10000)}</span><span className="text-[7px] font-black uppercase text-gray-400 tracking-widest">Supply</span></div>
-                  {articleCount !== null && <div className="text-center"><span className="text-sm font-black block">{articleCount}</span><span className="text-[7px] font-black uppercase text-gray-400 tracking-widest">Stories</span></div>}
+                <div className="avatar avatar--lg border-4 border-[var(--surface)] shadow-md">
+                  <img src={selectedMascot.metadata.image} className="w-full h-full object-cover" alt={selectedMascot.metadata.name} />
+                </div>
+                <h3 className="text-sm font-bold tracking-tight mt-3 text-center">{selectedMascot.metadata.name}</h3>
+                <p className="text-[10px] font-medium text-[var(--text-dim)]">Protocol #{selectedMascot.id}</p>
+                <div className="flex items-center gap-5 mt-4 py-3 border-y border-[var(--border)] w-full justify-center">
+                  <div className="stat"><span className="stat-value">{selectedMascot.totalSold}</span><span className="stat-label">Holders</span></div>
+                  <div className="stat"><span className="stat-value">{priceNum}</span><span className="stat-label">$HASH</span></div>
+                  <div className="stat"><span className="stat-value">{Number(selectedMascot.totalSold)}/{Number(selectedMascot.maxSupply || 10000)}</span><span className="stat-label">Supply</span></div>
+                  {articleCount !== null && <div className="stat"><span className="stat-value">{articleCount}</span><span className="stat-label">Stories</span></div>}
                 </div>
                 {!selectedMascot.owned ? (
-                  <button onClick={() => { setSelectedMascot(null); handlePurchase(selectedMascot.id, selectedMascot.price); }} disabled={busyId !== null || !selectedMascot.isActive} className="w-full mt-4 bg-black text-white py-2.5 text-[9px] font-black uppercase tracking-widest hover:bg-gray-800 transition-all disabled:opacity-40 flex items-center justify-center gap-2 shadow-md rounded-sm"><ShoppingCart size={12} /> Acquire Key</button>
+                  <button onClick={() => { setSelectedMascot(null); handlePurchase(selectedMascot.id, selectedMascot.price); }}
+                    disabled={busyId !== null || !selectedMascot.isActive}
+                    className="w-full mt-4 btn btn--primary btn--full">
+                    <ShoppingCart size={12} /> Acquire Key
+                  </button>
                 ) : (
-                  <div className="w-full mt-4 bg-gray-50 text-gray-400 py-2.5 text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 rounded-sm border border-gray-100"><CheckCircle2 size={12} className="text-green-500" /> Key Unlocked</div>
+                  <div className="w-full mt-4 btn btn--ghost btn--full opacity-50">
+                    <CheckCircle2 size={12} /> Unlocked
+                  </div>
                 )}
               </div>
-              <div className="border-t border-gray-100 overflow-y-auto max-h-[40vh]">
+              <div className="border-t border-[var(--border)] overflow-y-auto max-h-[40vh] p-4 space-y-2">
                 {selectedMascot.metadata.personality && (
-                  <div className="px-5 py-4 border-b border-gray-50">
-                    <div className="flex items-center gap-1.5 text-[8px] font-black uppercase text-blue-500 tracking-widest mb-2"><span className="w-1 h-1 bg-blue-500 rounded-full" /> Personality</div>
-                    <p className="text-[11px] text-gray-500 leading-relaxed">{selectedMascot.metadata.personality}</p>
-                  </div>
+                  <div className="dna-pill dna-pill--personality">{selectedMascot.metadata.personality}</div>
                 )}
                 {selectedMascot.metadata.voice && (
-                  <div className="px-5 py-4 border-b border-gray-50">
-                    <div className="flex items-center gap-1.5 text-[8px] font-black uppercase text-purple-500 tracking-widest mb-2"><span className="w-1 h-1 bg-purple-500 rounded-full" /> Voice</div>
-                    <p className="text-[11px] text-gray-500 leading-relaxed">{selectedMascot.metadata.voice}</p>
-                  </div>
+                  <div className="dna-pill dna-pill--voice">{selectedMascot.metadata.voice}</div>
                 )}
                 {selectedMascot.metadata.physical_desc && (
-                  <div className="px-5 py-4">
-                    <div className="flex items-center gap-1.5 text-[8px] font-black uppercase text-green-500 tracking-widest mb-2"><span className="w-1 h-1 bg-green-500 rounded-full" /> Physical DNA</div>
-                    <p className="text-[11px] text-gray-500 leading-relaxed">{selectedMascot.metadata.physical_desc}</p>
-                  </div>
+                  <div className="dna-pill dna-pill--physical">{selectedMascot.metadata.physical_desc}</div>
                 )}
                 {!selectedMascot.metadata.personality && !selectedMascot.metadata.voice && !selectedMascot.metadata.physical_desc && (
-                  <div className="px-5 py-6 text-center"><p className="text-[10px] text-gray-300 italic">No DNA data available for this protocol.</p></div>
+                  <p className="text-center text-[12px] text-[var(--text-faint)] py-4">No DNA data available.</p>
                 )}
               </div>
             </div>

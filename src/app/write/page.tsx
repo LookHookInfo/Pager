@@ -436,8 +436,8 @@ function WritePageInner() {
 
   if (!account) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-main)]">
-        <Link href="/" className="btn-primary">Back to Feed</Link>
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
+        <Link href="/" className="btn btn--primary">Back to Feed</Link>
       </div>
     );
   }
@@ -445,14 +445,14 @@ function WritePageInner() {
   return (
     <main className="min-h-screen bg-white relative pb-32">
       <ForgeOverlay step={processingStep} mascotImage={selectedMascot?.image} mascotName={selectedMascot?.name} />
-      <nav className="border-b border-[var(--border-soft)] h-16 flex items-center justify-between px-6 md:px-12 sticky top-0 bg-white z-50">
+      <nav className="border-b border-[var(--border)] h-16 flex items-center justify-between px-6 md:px-12 sticky top-0 bg-white z-50">
         <div className="flex items-center gap-4">
           <Link href="/" className="text-xl font-black uppercase tracking-tighter">Pager</Link>
           <div className="h-4 w-[1px] bg-gray-200" />
           <span className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Story Forge</span>
         </div>
         <button onClick={handlePublish} disabled={status !== "idle" || !title}
-          className="btn-primary px-6 py-2 flex items-center gap-2 disabled:opacity-50 font-black uppercase tracking-widest text-[10px]">
+          className="btn btn--primary px-6 py-2 flex items-center gap-2 disabled:opacity-50 font-black uppercase tracking-widest text-[10px]">
           {status === "idle" ? <>Publish <Send size={14} /></> : <Loader2 size={14} className="animate-spin" />}
         </button>
       </nav>
@@ -642,7 +642,7 @@ function WritePageInner() {
 export default function WritePage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-main)]">
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
         <Loader2 size={24} className="animate-spin text-gray-300" />
       </div>
     }>

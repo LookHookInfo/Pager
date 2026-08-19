@@ -85,7 +85,7 @@ export default function LikeButton({
         <button 
           onClick={handleLikeClick}
           disabled={isPending}
-          className={`flex items-center gap-1.5 transition-colors ${pendingAmount > 0 ? "text-black" : "text-[var(--text-secondary)] hover:text-black"}`}
+          className={`flex items-center gap-1.5 transition-colors ${pendingAmount > 0 ? "text-black" : "text-[var(--text-dim)] hover:text-black"}`}
         >
           <Heart 
             size={18} 
@@ -96,7 +96,7 @@ export default function LikeButton({
         </button>
 
         {pendingAmount > 0 && (
-          <span className="text-xs text-[var(--text-secondary)]">
+          <span className="text-xs text-[var(--text-dim)]">
             {pendingAmount} $HASH
           </span>
         )}
@@ -106,7 +106,7 @@ export default function LikeButton({
         <button
           onClick={confirmReward}
           disabled={isPending}
-          className="btn-primary py-1.5 px-4 text-xs h-8"
+          className="btn btn--primary py-1.5 px-4 text-xs h-8"
         >
           {isPending ? (
             <div className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" />

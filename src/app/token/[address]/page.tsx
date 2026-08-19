@@ -94,7 +94,7 @@ export default function TokenPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4">
         <p className="text-sm text-gray-400">{error || "Token not found"}</p>
-        <button onClick={() => router.back()} className="btn-primary text-[10px]">Go Back</button>
+        <button onClick={() => router.back()} className="btn btn--primary text-[10px]">Go Back</button>
       </div>
     );
   }
@@ -102,7 +102,7 @@ export default function TokenPage() {
   return (
     <main className="min-h-screen bg-white">
       <Navbar />
-      <nav className="border-b border-[var(--border-soft)] h-12 flex items-center px-6 md:px-12 sticky top-16 bg-white z-40">
+      <nav className="border-b border-[var(--border)] h-12 flex items-center px-6 md:px-12 sticky top-16 bg-white z-40">
         <div className="flex items-center gap-4">
           <button onClick={() => router.back()} className="p-1.5 text-gray-400 hover:text-black transition-colors">
             <ArrowLeft size={16} />

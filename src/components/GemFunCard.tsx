@@ -129,35 +129,36 @@ export default function GemFunCard({
   }, []);
 
   return (
-    <section className="mb-12 border border-gray-100 rounded-sm bg-white overflow-hidden shadow-sm">
-      <div className="flex items-center gap-3 px-5 py-3 border-b border-gray-50 bg-gray-50/50">
-        <span className="text-[9px] font-black uppercase tracking-widest text-gray-500 shrink-0">TGE 🚀</span>
-        <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-700" style={{ width: `${curveW}%` }} />
+    <section className="mb-12 card overflow-hidden">
+      <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--border)] bg-[var(--surface-dim)]">
+        <span className="badge badge--blue">TGE</span>
+        <div className="flex-1 progress">
+          <div className="progress-fill progress-fill--blue" style={{ width: `${curveW}%` }} />
         </div>
-        <span className="text-[10px] font-black shrink-0">{formatCompact(sold)} / {formatCompact(CURVE_SUPPLY)}</span>
+        <span className="text-[11px] font-bold text-[var(--text-dim)]">{formatCompact(sold)} / {formatCompact(CURVE_SUPPLY)}</span>
       </div>
 
-      <div className="p-5 flex flex-col gap-4">
-        <div className="flex items-center gap-4">
+      <div className="p-4 flex flex-col gap-3.5">
+        <div className="flex items-center gap-3">
           {tokenData.logoUrl ? (
-            <img src={tokenData.logoUrl} alt="" className="w-12 h-12 rounded-full border border-gray-100 object-cover shrink-0" />
+            <div className="avatar avatar--md border border-[var(--border)]">
+              <img src={tokenData.logoUrl} alt="" className="w-full h-full rounded-[12px] object-cover" />
+            </div>
           ) : (
-            <div className="w-12 h-12 rounded-full bg-black text-white flex items-center justify-center font-black text-sm uppercase shrink-0">
+            <div className="avatar avatar--md bg-[var(--accent)] text-white font-bold text-[13px]">
               {tokenData.symbol.slice(0, 2)}
             </div>
           )}
           <div className="min-w-0">
             <a href="https://hashcoin.farm/gem" target="_blank" rel="noopener noreferrer" className="block">
-              <h4 className="text-sm font-black uppercase tracking-tight truncate leading-tight hover:underline">
-                {tokenData.name} <span className="text-[10px] text-gray-400">${tokenData.symbol}</span>
+              <h4 className="text-[13px] font-bold tracking-tight truncate leading-tight hover:underline">
+                {tokenData.name} <span className="text-[11px] text-[var(--text-dim)]">${tokenData.symbol}</span>
               </h4>
             </a>
             <a
               href={`https://basescan.org/address/${tokenAddress}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[10px] font-mono text-blue-500 hover:text-blue-600 hover:underline"
+              target="_blank" rel="noopener noreferrer"
+              className="text-[10px] font-mono text-[var(--blue)] hover:underline"
             >
               {shortAddress(tokenAddress)}
             </a>
@@ -165,9 +166,9 @@ export default function GemFunCard({
         </div>
 
         {canBuy ? (
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             <div className="flex items-center gap-3">
-              <span className="text-[9px] font-black uppercase tracking-widest text-gray-500 shrink-0">Buy💎</span>
+              <span className="section-label text-[var(--text-faint)] shrink-0">Buy</span>
               <div
                 ref={barRef}
                 onPointerDown={e => {
@@ -181,32 +182,25 @@ export default function GemFunCard({
                 onPointerCancel={() => { draggingRef.current = false; }}
                 className="relative flex-1 h-8 flex items-center cursor-pointer select-none touch-none"
               >
-                <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-500 to-blue-600"
-                    style={{ width: `${pct}%` }}
-                  />
+                <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 progress">
+                  <div className="progress-fill progress-fill--blue" style={{ width: `${pct}%` }} />
                 </div>
                 {account && balance !== null && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <span className="text-[8px] font-black tracking-wide bg-black/55 text-white px-2 py-0.5 rounded-full whitespace-nowrap">
+                    <span className="text-[9px] font-bold bg-[var(--accent)]/80 text-white px-2 py-0.5 rounded-lg whitespace-nowrap">
                       {formatCompact(cost)} / {formatCompact(balance)} $HASH
                     </span>
                   </div>
                 )}
                 <div
-                  className="absolute w-6 h-6 rounded-full border-[3px] border-blue-600 bg-white shadow-md pointer-events-none"
-                  style={{
-                    left: `${pct}%`,
-                    top: "50%",
-                    transform: "translate(-50%, -50%)",
-                  }}
+                  className="absolute w-5 h-5 rounded-full border-[3px] border-[var(--blue)] bg-white shadow-sm pointer-events-none"
+                  style={{ left: `${pct}%`, top: "50%", transform: "translate(-50%, -50%)" }}
                 />
               </div>
-              <span className="text-[10px] font-black shrink-0 w-11 text-right">{pct}%</span>
+              <span className="text-[11px] font-bold shrink-0 w-10 text-right">{pct}%</span>
             </div>
             {status && (
-              <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-500 animate-in fade-in duration-300">
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-dim)] animate-in fade-in duration-300">
                 <Loader2 size={11} className="animate-spin" /> {status}
               </div>
             )}
@@ -214,19 +208,19 @@ export default function GemFunCard({
               <button
                 onClick={handleBuy}
                 disabled={busy || memeOut <= 0n || insufficient}
-                className={`w-full py-2.5 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all disabled:opacity-40 ${insufficient ? "bg-red-50 text-red-500 border border-red-200" : "bg-black text-white hover:bg-gray-800"}`}
+                className={`btn btn--full ${insufficient ? "btn--danger" : "btn--primary"}`}
               >
-                {busy ? <Loader2 size={13} className="animate-spin" /> : <ShoppingCart size={13} />}
+                {busy ? <Loader2 size={12} className="animate-spin" /> : <ShoppingCart size={12} />}
                 {insufficient ? "Insufficient $HASH" : `Buy ${formatCompact(memeOut)} ${tokenData.symbol}`}
               </button>
             ) : (
-              <div className="w-full py-2.5 text-center text-[10px] font-black uppercase tracking-widest border border-dashed border-gray-200 text-gray-400">
+              <div className="btn btn--ghost btn--full opacity-50 pointer-events-none">
                 Connect wallet to buy
               </div>
             )}
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-[10px] font-bold text-green-600">
+          <div className="flex items-center gap-2 text-[11px] font-semibold text-[var(--green)]">
             <CheckCircle2 size={13} />
             {tokenData.isMigrated ? "Migrated to Uniswap V3" : "Curve complete — TGE"}
           </div>

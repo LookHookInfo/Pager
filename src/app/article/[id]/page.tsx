@@ -78,31 +78,31 @@ export default async function ArticlePage({ params }: { params: { id: string } }
   const authorProfile = await getAuthorProfile(article.author_address);
   const jsonLd = { "@context": "https://schema.org", "@type": "NewsArticle", "headline": article.title, "image": [article.image_url], "datePublished": article.created_at, "author": [{ "@type": "Person", "name": article.author_address, "url": `${getSiteUrl()}/tape/${article.author_address}` }] };
   return (
-    <main className="min-h-screen bg-[var(--bg-main)]">
+    <main className="min-h-screen bg-[var(--bg)]">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <Navbar />
-      <article className="max-w-3xl mx-auto px-6 pt-16 md:pt-24 pb-24">
-        <header className="mb-12">
-          <div className="flex items-center justify-between mb-8">
-            <div className="text-xs text-[var(--text-secondary)]">
+      <article className="max-w-3xl mx-auto px-4 md:px-8 pt-12 md:pt-16 pb-20">
+        <header className="mb-10">
+          <div className="flex items-center justify-between mb-6">
+            <div className="text-xs text-[var(--text-dim)]">
               {new Date(article.created_at).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })}
             </div>
             <BackButton />
           </div>
-          <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-10 leading-[1.05]">{article.title}</h1>
-          <div className="flex items-center gap-3 py-6 border-t border-[var(--border-soft)]">
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-8 leading-tight">{article.title}</h1>
+          <div className="flex items-center gap-3 py-5 border-t border-[var(--border)]">
              <Link href={`/tape/${article.author_address}`} className="shrink-0">
-               <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center border border-[var(--border-soft)] overflow-hidden hover:ring-2 hover:ring-black/10 transition-all">
+               <div className="avatar avatar--sm border border-[var(--border)]">
                  {authorProfile?.avatar_url ? (
                    <img src={authorProfile.avatar_url} alt="" className="w-full h-full object-cover" />
                  ) : (
-                   <span className="text-xs font-bold">{(authorProfile?.name || "0x").charAt(0)}</span>
+                   <span className="text-[10px] font-bold">{(authorProfile?.name || "0x").charAt(0)}</span>
                  )}
                </div>
              </Link>
              <div className="flex flex-col">
-                <Link href={`/tape/${article.author_address}`} className="text-sm font-bold hover:underline">{authorProfile?.name || "Anonymous Author"}</Link>
-                <span className="text-[10px] text-gray-400 font-mono">{article.author_address.slice(0,6)}...{article.author_address.slice(-4)}</span>
+               <Link href={`/tape/${article.author_address}`} className="text-[13px] font-bold hover:underline">{authorProfile?.name || "Anonymous Author"}</Link>
+               <span className="text-[10px] text-[var(--text-faint)] font-mono">{article.author_address.slice(0,6)}...{article.author_address.slice(-4)}</span>
              </div>
           </div>
         </header>
@@ -110,8 +110,8 @@ export default async function ArticlePage({ params }: { params: { id: string } }
           const tokenMatch = (article.content || '').match(/pager\.lookhook\.info\/token\/([a-fA-F0-9x]+)/i);
           const tokenLink = tokenMatch ? `/token/${tokenMatch[1]}` : null;
           return (
-            <div className="w-full mb-16 flex justify-center">
-              <div className="w-full max-w-5xl aspect-video overflow-hidden bg-gray-100 border border-[var(--border-soft)] rounded-lg">
+            <div className="w-full mb-14 flex justify-center">
+              <div className="w-full max-w-4xl aspect-[4/3] overflow-hidden bg-[var(--surface-dim)] border border-[var(--border)] rounded-xl">
                 {tokenLink ? (
                   <Link href={tokenLink} className="block w-full h-full">
                     <BannerImage src={article.image_url} alt={article.title} className="w-full h-full object-cover object-center" />
@@ -123,24 +123,20 @@ export default async function ArticlePage({ params }: { params: { id: string } }
             </div>
           );
         })()}
-        <div className="prose prose-xl prose-stone max-w-none typography-body text-[var(--text-primary)] mb-20" dangerouslySetInnerHTML={{ __html: article.content }} />
-        <footer className="pt-12 border-t border-[var(--border-soft)]">
-          <div className="flex flex-col gap-12">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-              <div className="flex items-center gap-8">
+        <div className="prose prose-xl prose-stone max-w-none typography-body text-[var(--text)] mb-14" dangerouslySetInnerHTML={{ __html: article.content }} />
+        <footer className="pt-8 border-t border-[var(--border)]">
+          <div className="flex flex-col gap-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="flex items-center gap-6">
                  <LikeButton articleId={article.id} initialLikes={article.likes || 0} authorAddress={article.author_address} />
                  <PostActions title={article.title} id={article.id} content={article.content} imageUrl={article.image_url} cmcUsername={authorProfile?.cmc_username} authorAddress={article.author_address} />
               </div>
               {article.source_url && (
-                <a href={article.source_url} target="_blank" rel="noopener noreferrer" className="text-xs font-bold uppercase tracking-widest text-[var(--text-secondary)] hover:text-black transition-colors flex items-center gap-2">Source <ExternalLink size={14} /></a>
+                <a href={article.source_url} target="_blank" rel="noopener noreferrer" className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-dim)] hover:text-[var(--text)] transition-colors flex items-center gap-1.5">Source <ExternalLink size={12} /></a>
               )}
             </div>
-            <div className="flex items-center justify-between border-t border-[var(--border-soft)] pt-8">
-              <div className="flex flex-col">
-                <span className="text-xs text-[var(--text-secondary)] mb-0.5">Curated by</span>
-                <span className="font-semibold tracking-tight">Pager AI</span>
-              </div>
-              <Link href="/" className="text-sm text-[var(--text-secondary)] hover:text-black transition-colors">Back to Feed</Link>
+            <div className="flex justify-end">
+              <Link href="/" className="text-[11px] font-semibold text-[var(--text-dim)] hover:text-[var(--text)] transition-colors">← Back to Feed</Link>
             </div>
           </div>
         </footer>

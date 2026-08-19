@@ -22,7 +22,7 @@ export function MascotRequiredPanel({ message }: { message: string }) {
       <AlertCircle className="mx-auto text-red-500 mb-4" size={32} />
       <h3 className="text-sm font-black uppercase tracking-widest mb-2">NFT Mascot Required</h3>
       <p className="text-xs text-gray-400 mb-6 uppercase font-bold">{message}</p>
-      <Link href="/mascots" className="btn-primary inline-flex items-center gap-2 px-8 py-3 text-[10px] font-black uppercase tracking-widest">
+      <Link href="/mascots" className="btn btn--primary inline-flex items-center gap-2 px-8 py-3 text-[10px] font-black uppercase tracking-widest">
         <ShoppingCart size={14} /> Visit Registry
       </Link>
     </div>

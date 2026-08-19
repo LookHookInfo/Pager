@@ -263,15 +263,15 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
         </div>
       )}
       <div className="relative">
-        <button onClick={() => setShowShareModal(!showShareModal)} className="text-[var(--text-secondary)] hover:text-black transition-colors flex items-center gap-1.5 text-sm"><Share2 size={16} /><span>Share</span></button>
+        <button onClick={() => setShowShareModal(!showShareModal)} className="text-[var(--text-dim)] hover:text-black transition-colors flex items-center gap-1.5 text-sm"><Share2 size={16} /><span>Share</span></button>
         {showShareModal && (
           <>
             <div className="fixed inset-0 z-[100]" onClick={() => setShowShareModal(false)} />
-            <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-64 bg-white border border-[var(--border-soft)] rounded-lg shadow-xl z-[101] p-2 animate-in fade-in slide-in-from-bottom-2">
+            <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-64 bg-white border border-[var(--border)] rounded-lg shadow-xl z-[101] p-2 animate-in fade-in slide-in-from-bottom-2">
               {/* Tweet preview */}
               {generatedTweet && (
-                <div className="px-3 py-2 mb-1 bg-gray-50 rounded-md border border-[var(--border-soft)]">
-                  <p className="text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-widest mb-1">Generated Tweet</p>
+                <div className="px-3 py-2 mb-1 bg-gray-50 rounded-md border border-[var(--border)]">
+                  <p className="text-[10px] font-semibold text-[var(--text-dim)] uppercase tracking-widest mb-1">Generated Tweet</p>
                   <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">{generatedTweet}</p>
                   <div className="flex items-center justify-between mt-2">
                     <span className={`text-[10px] font-semibold ${generatedTweet.length > 250 ? "text-red-500" : "text-green-600"}`}>
@@ -279,7 +279,7 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
                     </span>
                     <button
                       onClick={() => setGeneratedTweet(null)}
-                      className="text-[10px] font-semibold text-[var(--text-secondary)] hover:text-black flex items-center gap-1"
+                      className="text-[10px] font-semibold text-[var(--text-dim)] hover:text-black flex items-center gap-1"
                     >
                       <RefreshCw size={10} /> Regenerate
                     </button>
@@ -301,7 +301,7 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
                     )}
                   </button>
                 ))}
-                <div className="border-t border-[var(--border-soft)] my-1" />
+                <div className="border-t border-[var(--border)] my-1" />
                 <button
                   onClick={handleCmcShare}
                   className={`flex items-center gap-3 px-3 py-2 text-sm font-medium transition-colors rounded-md ${copied ? "bg-green-500 text-white" : "hover:bg-gray-50"}`}
@@ -310,7 +310,7 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
                   <span>{copied ? "Copied!" : "CoinMarketCap"}</span>
                 </button>
               </div>
-              <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-b border-r border-[var(--border-soft)] rotate-45 shadow-sm" />
+              <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-b border-r border-[var(--border)] rotate-45 shadow-sm" />
             </div>
           </>
         )}

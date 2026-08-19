@@ -1,8 +1,8 @@
 "use client";
 
 import {
-  Globe, Settings2, Save, X, Loader2, Camera, Plus,
-  Sparkles, Database, CheckCircle2,
+  Globe, Settings2, Save, X, Loader2, Camera,
+  Sparkles, Database, CheckCircle2, Plus,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -33,7 +33,7 @@ export default function ProfileHeader({
 
   const notify = (msg: string, type: "success" | "error" = "success") => {
     setNotification({ message: msg, type });
-    setTimeout(() => setNotification(null), 5000);
+    setTimeout(() => setNotification(null), 4000);
   };
 
   const isOwner = account?.address?.toLowerCase() === profile.address?.toLowerCase();
@@ -145,86 +145,105 @@ export default function ProfileHeader({
   };
 
   return (
-    <header className="mb-20 space-y-12">
+    <header className="mb-16 space-y-10">
       {notification && (
-        <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-[100] px-8 py-4 rounded-sm shadow-2xl border-l-4 animate-in slide-in-from-top-4 duration-300 flex items-center gap-4 ${notification.type === "success" ? "bg-black text-white border-green-500" : "bg-red-600 text-white border-red-800"}`}>
-          {notification.type === "success" ? <CheckCircle2 size={20} /> : <X size={20} />}
-          <div className="flex flex-col">
-            <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Protocol</span>
-            <span className="text-sm font-bold">{notification.message}</span>
-          </div>
+        <div className={`toast ${notification.type === "success" ? "toast--success" : "toast--error"}`}>
+          {notification.type === "success" ? <CheckCircle2 size={16} /> : <X size={16} />}
+          <span>{notification.message}</span>
         </div>
       )}
 
-      <div className="flex flex-col md:flex-row md:items-start justify-between gap-8">
-        <div className="space-y-6 flex-1">
-          <div className="flex items-center gap-6">
-            <div
-              className={`w-24 h-24 bg-white border border-[var(--border-soft)] rounded-full flex items-center justify-center font-black text-3xl text-black shadow-sm overflow-hidden relative group${isOwner ? " cursor-pointer" : ""}`}
-              onClick={isOwner ? () => fileInputRef.current?.click() : undefined}
-            >
-              {formData.avatar_url ? <img src={formData.avatar_url} className="w-full h-full object-cover" alt="" /> : displayData.name.charAt(0).toUpperCase()}
-              {isOwner && (
-                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  {isUploading ? <Loader2 size={24} className="text-white animate-spin" /> : <Camera size={24} className="text-white" />}
-                </div>
+      <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+        <div className="flex items-start gap-5 flex-1">
+          <div className="relative">
+            <div className="avatar avatar--lg bg-[var(--surface-dim)] border border-[var(--border)] shadow-sm">
+              {formData.avatar_url ? (
+                <img src={formData.avatar_url} className="w-full h-full object-cover" alt="" />
+              ) : (
+                <span className="text-[var(--text-faint)]">{displayData.name.charAt(0).toUpperCase()}</span>
               )}
-              {isOwner && <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} />}
             </div>
-            <div className="space-y-2 flex-1">
-              <div className="flex items-center gap-3">
-                <h1 className="text-4xl md:text-5xl font-bold tracking-tight leading-none">{displayData.name}</h1>
-                {isOwner && <button onClick={() => setIsEditing(!isEditing)} className="p-2 text-gray-400 hover:text-black transition-colors"><Settings2 size={20} /></button>}
-              </div>
-              <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                <span><span className="text-black">{totalArticles}</span> Stories</span>
-                <div className="w-1 h-1 bg-gray-200 rounded-full" />
-                <span>
-                  <span className={`${(profile.ai_credits || 0) < 50 ? "text-red-500" : "text-black"}`}>{profile.ai_credits || 0}</span>
-                  <span className={`${(profile.ai_credits || 0) < 50 ? "text-red-400" : ""}`}> Credits</span>
-                  {(profile.ai_credits || 0) < 50 && <span className="text-[8px] text-red-400 ml-1">LOW</span>}
-                </span>
-                {displayData.website && (
-                  <>
-                    <div className="w-1 h-1 bg-gray-200 rounded-full" />
-                    <a href={displayData.website.startsWith("http") ? displayData.website : `https://${displayData.website}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-blue-500 hover:text-blue-600 font-black">
-                      <Globe size={12} /> {getDomain(displayData.website)}
-                    </a>
-                  </>
-                )}
-                {profile.twitter && (
-                  <>
-                    <div className="w-1 h-1 bg-gray-200 rounded-full" />
-                    <a href={profile.twitter.startsWith("http") ? profile.twitter : `https://x.com/${profile.twitter}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-blue-500 hover:text-blue-600 font-black">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg> {profile.twitter.replace(/^https?:\/\/(x\.com|twitter\.com)\//, '@')}
-                    </a>
-                  </>
-                )}
+            {isOwner && (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute -bottom-1 -right-1 w-7 h-7 rounded-lg bg-[var(--accent)] text-white flex items-center justify-center shadow-md hover:bg-[var(--accent-hover)] transition-colors"
+              >
+                {isUploading ? <Loader2 size={12} className="animate-spin" /> : <Camera size={12} />}
+              </button>
+            )}
+            {isOwner && <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} />}
+          </div>
 
-              </div>
+          <div className="space-y-1.5 flex-1 min-w-0">
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-2xl font-bold tracking-tight leading-none truncate">{displayData.name}</h1>
+              {isOwner && (
+                <button onClick={() => setIsEditing(!isEditing)} className="p-1.5 text-[var(--text-faint)] hover:text-[var(--text)] transition-colors rounded-lg hover:bg-[var(--surface-dim)]">
+                  <Settings2 size={16} />
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-[11px] font-medium text-[var(--text-dim)]">
+              <span>{totalArticles} Stories</span>
+              <span className="w-1 h-1 bg-[var(--border)] rounded-full" />
+              <span className={(profile.ai_credits || 0) < 50 ? "text-[var(--red)]" : ""}>
+                {profile.ai_credits || 0} Credits
+              </span>
+              {displayData.website && (
+                <>
+                  <span className="w-1 h-1 bg-[var(--border)] rounded-full" />
+                  <a
+                    href={displayData.website.startsWith("http") ? displayData.website : `https://${displayData.website}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-[var(--blue)] hover:underline"
+                  >
+                    <Globe size={12} /> {getDomain(displayData.website)}
+                  </a>
+                </>
+              )}
+              {profile.twitter && (
+                <>
+                  <span className="w-1 h-1 bg-[var(--border)] rounded-full" />
+                  <a
+                    href={profile.twitter.startsWith("http") ? profile.twitter : `https://x.com/${profile.twitter}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-[var(--blue)] hover:underline"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                    {profile.twitter.replace(/^https?:\/\/(x\.com|twitter\.com)\//, "@")}
+                  </a>
+                </>
+              )}
             </div>
           </div>
-          <p className="text-xl text-gray-500 typography-body leading-relaxed max-w-2xl">{displayData.bio}</p>
         </div>
       </div>
 
+      {displayData.bio && (
+        <p className="text-[var(--text-dim)] typography-body max-w-2xl">{displayData.bio}</p>
+      )}
+
       {isOwner && isEditing && (
-        <div className="border-t border-gray-100 pt-12 animate-in fade-in slide-in-from-top-4 duration-500">
-          <div className="flex items-center justify-between mb-8 sticky top-0 bg-white/90 backdrop-blur-sm z-20 py-4 border-b border-gray-50">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-black text-white rounded-sm"><Settings2 size={20} /></div>
-              <h3 className="text-sm font-black uppercase tracking-[0.2em]">Protocol Configuration</h3>
+        <div className="pt-8 border-t border-[var(--border)] animate-in fade-in duration-300">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2.5">
+              <div className="avatar avatar--sm bg-[var(--accent)] text-white">
+                <Settings2 size={14} />
+              </div>
+              <h3 className="section-label">Settings</h3>
             </div>
-            <div className="flex items-center gap-3">
-              <button onClick={handleSave} disabled={isSaving} className="bg-black text-white px-6 py-2.5 rounded-sm text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-gray-800 transition-all disabled:opacity-50 shadow-lg">
-                {isSaving ? <Loader2 size={14} className="animate-spin" /> : <><Save size={14} /> Save Changes</>}
+            <div className="flex items-center gap-2">
+              <button onClick={handleSave} disabled={isSaving} className="btn btn--primary">
+                {isSaving ? <Loader2 size={12} className="animate-spin" /> : <><Save size={12} /> Save</>}
               </button>
-              <button onClick={() => setIsEditing(false)} className="p-2 text-gray-400 hover:text-black"><X size={24} /></button>
+              <button onClick={() => setIsEditing(false)} className="btn btn--ghost btn--sm">
+                <X size={14} />
+              </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-            <div className="lg:col-span-7 space-y-10">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="lg:col-span-7 space-y-8">
               <ProfileIdentity
                 formData={formData}
                 displayData={displayData}
@@ -236,23 +255,25 @@ export default function ProfileHeader({
               <ProfileDistribution formData={formData} onFormChange={setFormData} />
             </div>
 
-            <div className="lg:col-span-5 space-y-10">
-              <div className="p-6 border border-gray-100 rounded-sm space-y-6 bg-gray-50/30 shadow-sm">
+            <div className="lg:col-span-5 space-y-8">
+              <div className="card p-5 space-y-4">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
-                    <Sparkles size={14} /> Intelligence Core
+                  <h4 className="section-label flex items-center gap-1.5">
+                    <Sparkles size={12} /> Credits
                   </h4>
                   <div className="flex items-center gap-2">
-                    <div className={`px-3 py-1 bg-white border rounded-full flex items-center gap-2 shadow-sm ${(profile.ai_credits || 0) < 50 ? "border-red-200" : "border-gray-200"}`}>
-                      <Database size={12} className={`${(profile.ai_credits || 0) < 50 ? "text-red-500" : "text-blue-500"}`} />
-                      <span className={`text-[10px] font-black ${(profile.ai_credits || 0) < 50 ? "text-red-500" : ""}`}>{profile.ai_credits || 0} Credits</span>
-                    </div>
-                    <button onClick={handleDeposit} disabled={isDepositing} className="p-1.5 bg-black text-white rounded-full hover:bg-gray-800 transition-all disabled:opacity-50" title="Top Up">
-                      {isDepositing ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                    <span className={`badge ${(profile.ai_credits || 0) < 50 ? "badge--red" : "badge--blue"}`}>
+                      <Database size={10} />
+                      {profile.ai_credits || 0}
+                    </span>
+                    <button onClick={handleDeposit} disabled={isDepositing} className="btn btn--primary btn--sm !p-1.5 !rounded-lg" title="Top Up">
+                      {isDepositing ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
                     </button>
                   </div>
                 </div>
-                <p className="text-[10px] text-gray-400 font-medium">Mascot creation is on the <a href="/mascots" className="underline hover:text-black">Mascots page</a>.</p>
+                <p className="text-[11px] text-[var(--text-dim)]">
+                  Mascot creation is on the <a href="/mascots" className="underline hover:text-[var(--text)]">Mascots page</a>.
+                </p>
               </div>
             </div>
           </div>
