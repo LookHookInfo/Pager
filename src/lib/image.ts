@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { ANYMODEL_IMAGE_MODEL, ANYMODEL_IMAGE_FALLBACK_MODEL } from "@/lib/ai-models";
+import { ANYMODEL_IMAGE_MODEL, ANYMODEL_IMAGE_FALLBACK_MODEL, ANYMODEL_IMAGE_FALLBACK2_MODEL } from "@/lib/ai-models";
 
 const PINATA_TIMEOUT = 12000;
 
@@ -165,6 +165,7 @@ export async function generateAnyModelImage(
 
   const primary = options.model || ANYMODEL_IMAGE_MODEL();
   const fallback = ANYMODEL_IMAGE_FALLBACK_MODEL();
+  const fallback2 = ANYMODEL_IMAGE_FALLBACK2_MODEL();
 
   const body: Record<string, unknown> = {
     prompt,
@@ -241,14 +242,23 @@ export async function generateAnyModelImage(
     if (result) return result;
   } catch (e: any) {
     const retryable = e?.name === "TimeoutError" || e?.status === undefined || (e?.status && IMAGE_RETRYABLE.has(e.status));
-    if (!retryable || primary === fallback) return null;
+    if (!retryable) return null;
     console.warn(`AnyModel image primary ${primary} failed, falling back to ${fallback}`);
   }
 
   try {
-    return await attempt(fallback, ANYMODEL_IMAGE_TIMEOUT_MS);
+    const result = await attempt(fallback, ANYMODEL_IMAGE_TIMEOUT_MS);
+    if (result) return result;
   } catch (e: any) {
-    console.error(`AnyModel image fallback ${fallback} also failed: ${e.message}`);
+    const retryable = e?.name === "TimeoutError" || e?.status === undefined || (e?.status && IMAGE_RETRYABLE.has(e.status));
+    if (!retryable) return null;
+    console.warn(`AnyModel image fallback ${fallback} also failed, trying ${fallback2}`);
+  }
+
+  try {
+    return await attempt(fallback2, ANYMODEL_IMAGE_TIMEOUT_MS);
+  } catch (e: any) {
+    console.error(`AnyModel image fallback2 ${fallback2} also failed: ${e.message}`);
     return null;
   }
 }

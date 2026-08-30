@@ -26,6 +26,14 @@ export const ANYMODEL_IMAGE_FALLBACK_MODEL = () =>
   process.env.ANYMODEL_IMAGE_FALLBACK_MODEL?.trim() || "am/flux.2-klein-4b";
 
 /**
+ * Third-tier image model — used when both the primary and the fallback fail
+ * (429/5xx/timeout). A stable, separate provider (FLUX.2) that stays up even
+ * when nano-banana / gemini flash are temporarily unavailable.
+ */
+export const ANYMODEL_IMAGE_FALLBACK2_MODEL = () =>
+  process.env.ANYMODEL_IMAGE_FALLBACK2_MODEL?.trim() || "am/flux.2-klein-4b";
+
+/**
  * Vision-capable text fallback — used for calls that include image_url content
  * (e.g. DNA scan). The default text fallback (gpt-5.4-mini) rejects image inputs.
  */
