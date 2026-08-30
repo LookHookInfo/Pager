@@ -10,7 +10,8 @@ export const MOODS = [
 ];
 
 export const ATMOSPHERE_PRESETS = [
-  "Surrealism", "Pixel Art", "Brick Style", "Anime Style", "Graffiti", "Comics",
+  "Surrealism", "Pixel Art", "Brick Style", "Anime Style", "Graffiti", "Comics", "GTA Style",
+  "Origami", "Minecraft", "Yarn Style",
 ];
 
 export const MOOD_ATMOSPHERES: Record<string, string> = {

@@ -260,10 +260,15 @@ const SVG_PALETTES: [string, string][] = [
   ["#100c08", "#c98a4b"],
   ["#0b1d3a", "#2dd4bf"],
   ["#3a0b0b", "#fbbf24"],
+  ["#1a0e00", "#ff6b00"],
+  ["#f5efe0", "#d4a95c"],
+  ["#3a5a2f", "#8fbf5f"],
+  ["#e8d8c8", "#b06a4a"],
 ];
 
 const ATMOSPHERE_PALETTE_INDEX: Record<string, number> = {
-  "Surrealism": 0, "Pixel Art": 1, "Brick Style": 3, "Anime Style": 4, "Graffiti": 2, "Comics": 5,
+  "Surrealism": 0, "Pixel Art": 1, "Brick Style": 3, "Anime Style": 4, "Graffiti": 2, "Comics": 5, "GTA Style": 6,
+  "Origami": 7, "Minecraft": 8, "Yarn Style": 9,
 };
 
 function escapeXml(value: string): string {

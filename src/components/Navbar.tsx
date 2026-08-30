@@ -63,8 +63,11 @@ export default function Navbar() {
   return (
     <nav className="sticky top-0 z-50 h-14 flex items-center bg-[var(--surface)] shadow-sm">
       <div className="max-w-6xl mx-auto w-full px-4 md:px-8 flex justify-between items-center">
-        <Link href="/" className="text-[18px] font-black tracking-tight text-[var(--text)]">
+        <Link href="/" className="flex items-center gap-1.5 text-[18px] font-black tracking-tight text-[var(--text)]">
           Pager
+          <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[var(--accent)] text-white leading-none">
+            Beta
+          </span>
         </Link>
 
         <div className="flex items-center gap-5">

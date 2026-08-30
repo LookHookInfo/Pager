@@ -3,7 +3,7 @@ import { getCharacterVisualPrompt } from "@/lib/character";
 import { resolveDna } from "@/lib/character/resolve";
 import { getSupabaseServer } from "@/lib/supabase";
 import { sanitizeBannerPrompt, generateAnyModelImage, generateSvgBanner } from "@/lib/image";
-import { ATMOSPHERE_PRESETS, MOODS } from "@/lib/moods";
+import { MOODS } from "@/lib/moods";
 import { verifySessionAnyAction } from "@/lib/auth";
 import { atomicDebitCredits, atomicRefundCredits } from "@/lib/credits";
 import { withBudget } from "@/lib/with-budget";
@@ -16,7 +16,6 @@ import { ANYMODEL_IMAGE_MODEL } from "@/lib/ai-models";
 export const maxDuration = 150;
 export const dynamic = "force-dynamic";
 
-const KNOWN_ATMOSPHERES = new Set(ATMOSPHERE_PRESETS);
 const KNOWN_MOODS = new Set(MOODS.map((m) => m.id));
 
 const ANYMODEL_ATTEMPT_BUDGET_MS = 90000;
@@ -60,7 +59,7 @@ export async function POST(req: Request) {
     let atmosphere = providedAtmosphere
       ? providedAtmosphere.replace(/["`${}]/g, "").trim().slice(0, 100)
       : "";
-    if (!KNOWN_ATMOSPHERES.has(atmosphere)) atmosphere = "Surrealism";
+    if (!atmosphere) atmosphere = "Surrealism";
     const safeMood = KNOWN_MOODS.has(mood) ? mood : "neutral";
 
     const prompt = sanitizeBannerPrompt(getCharacterVisualPrompt(safeMood, atmosphere, activeDna, bannerDescription || title, title));
