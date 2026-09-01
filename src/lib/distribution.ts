@@ -3,6 +3,7 @@ import { ANYMODEL_FALLBACK_TEXT_MODEL } from "@/lib/ai-models";
 import { stripHtml } from "@/lib/utils";
 import { ipfsGatewayVariants, normalizeIpfs } from "@/lib/ipfs";
 import { getSiteUrl } from "@/lib/site";
+import { detectCommunities, cleanHashtag } from "@/lib/tweet-entities";
 import type { BinanceAccount, TelegramChannel } from "@/types";
 
 const HASH_TOKEN_LINK = "https://www.cryptocompare.com/coins/hashcoin";
@@ -42,23 +43,121 @@ async function fetchImageBytes(imageUrl: string): Promise<ImageBytes | null> {
   return null;
 }
 
+/**
+ * Known crypto token names -> $TICKER tags. Used to enrich Binance posts with
+ * cashtags of the coins actually mentioned in the article so posts surface on
+ * the corresponding token pages.
+ */
+const CRYPTO_TICKERS: Record<string, string> = {
+  bitcoin: "BTC",
+  ethereum: "ETH",
+  solana: "SOL",
+  monero: "XMR",
+  binancecoin: "BNB",
+  "binance coin": "BNB",
+  bnb: "BNB",
+  tether: "USDT",
+  usdt: "USDT",
+  ripple: "XRP",
+  xrp: "XRP",
+  cardano: "ADA",
+  dogecoin: "DOGE",
+  polkadot: "DOT",
+  chainlink: "LINK",
+  polygon: "MATIC",
+  matic: "MATIC",
+  arb: "ARB",
+  arbitrum: "ARB",
+  op: "OP",
+  optimism: "OP",
+  aave: "AAVE",
+  worldcoin: "WLD",
+  wld: "WLD",
+  thorchain: "RUNE",
+  rune: "RUNE",
+  aptos: "APT",
+  near: "NEAR",
+  toncoin: "TON",
+  "the open network": "TON",
+  litecoin: "LTC",
+  avalanche: "AVAX",
+  shiba: "SHIB",
+  "shiba inu": "SHIB",
+  pepe: "PEPE",
+  tron: "TRX",
+  cosmos: "ATOM",
+  uniswap: "UNI",
+  render: "RNDR",
+  stx: "STX",
+  stacks: "STX",
+  sui: "SUI",
+  link: "LINK",
+  innit: "INIT",
+  init: "INIT",
+  hash: "HASH",
+};
+
+/** Extract $TICKER cashtags of coins actually mentioned in the text (incl. title). */
+function extractCashtags(title: string, content: string): string[] {
+  const source = `${title}\n${content}`;
+  const found: string[] = [];
+
+  // Inline $CASHTAGS already present in the article text.
+  const inline = source.match(/\$[A-Z][A-Z0-9]{1,10}\b/g) || [];
+  for (const t of inline) found.push(t.toUpperCase());
+
+  // Known coin names -> $TICKER.
+  for (const [name, ticker] of Object.entries(CRYPTO_TICKERS)) {
+    if (new RegExp(`\\b${name}\\b`, "i").test(source)) {
+      found.push(`$${ticker.toUpperCase()}`);
+    }
+  }
+
+  return [...new Set(found)].slice(0, 6);
+}
+
+/**
+ * Topic hashtags for the Binance footer. Built from communities detected in the
+ * article (tweet-entities) plus a couple of always-on project tags. The default
+ * set kicks in when no community is detected so the post never goes tagless.
+ */
+function extractTopicHashtags(title: string, content: string): string[] {
+  const source = `${title}\n${content}`;
+  const tags = new Set<string>();
+
+  for (const c of detectCommunities(source)) {
+    tags.add(`#${c.tag}`);
+  }
+
+  // Always-on Pager / ecosystem tags.
+  tags.add("#HASH");
+  tags.add("#CryptoNews");
+
+  return [...tags].slice(0, 6);
+}
+
 function formatForBinance(title: string, content: string, articleId: string, index: number = 0): string {
   const baseUrl = getSiteUrl();
   const articleUrl = `${baseUrl}/article/${articleId}`;
 
-  let text = content.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/g, '\n\n').replace(/<[^>]*>?/gm, '').replace(/#\w+/g, '');
+  // Keep inline #hashtags (do NOT strip them) so the author's tags survive.
+  let text = content.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/g, '\n\n').replace(/<[^>]*>?/gm, '');
   text = text.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 
   const header = `🔥 ${title.toUpperCase()}\n\n`;
-  const footer = `\n\n🔗 Full story: ${articleUrl}\n💎 $HASH: ${HASH_TOKEN_LINK}\n\n#Base #HASH #BinanceSquare`;
-  
+
+  const cashtags = extractCashtags(title, text);
+  const hashtags = extractTopicHashtags(title, text);
+  const tagLine = [...hashtags, ...cashtags].join(" ");
+  const footer = `\n\n🔗 Full story: ${articleUrl}\n💎 $HASH: ${HASH_TOKEN_LINK}\n\n${tagLine}`;
+
   const maxBodyLength = 700 - header.length - footer.length - 20;
   let cleanBody = text.trim();
   if (cleanBody.length > maxBodyLength) cleanBody = cleanBody.slice(0, maxBodyLength) + "...";
 
   const variations = ["🚀", "📈", "⚡", "💎", "✨", "🌐", "🔥", "🛰️", "🛸", "🦾"];
   const randomEmoji = variations[(Math.floor(Math.random() * variations.length) + index) % variations.length];
-  
+
   return header + cleanBody.trim() + footer + " " + randomEmoji;
 }
 
