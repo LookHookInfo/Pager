@@ -144,22 +144,21 @@ const ANYMODEL_IMAGE_SIZES = new Set([
 ]);
 const DEFAULT_ANYMODEL_IMAGE_SIZE = "1792x1024";
 
-// Transient upstream failures — safe to retry on a different model.
-const IMAGE_RETRYABLE = new Set([400, 408, 425, 429, 500, 502, 503, 504]);
-
 /**
  * Primary banner engine: AnyModel (https://anymodel.org/v1) — an
  * OpenAI-compatible gateway. Synchronous POST to /v1/images/generations,
  * returns the base64 image which we recompress to WebP and pin to IPFS.
  * The mascot reference image is passed as a base64 data URL in `image`
  * (the gateway rejects public URLs unless a model explicitly supports them).
- * Returns the Pinata IPFS URL on success, or null on any failure.
- * Retries once with the fallback image model on transient errors (429/5xx).
+ * Resolves to the pinned IPFS URL plus the model that actually produced it
+ * (primary, fallback or fallback2), or null if every model fails — the chain
+ * always cascades primary → fallback → fallback2 on ANY error (including 4xx
+ * like model-not-found or balance), never aborting early.
  */
 export async function generateAnyModelImage(
   prompt: string,
   options: AnyModelImageOptions = {},
-): Promise<string | null> {
+): Promise<{ url: string; model: string } | null> {
   const apiKey = process.env.ANYMODEL_API_KEY?.trim();
   if (!apiKey) return null;
 
@@ -237,30 +236,20 @@ export async function generateAnyModelImage(
     }
   };
 
-  try {
-    const result = await attempt(primary, ANYMODEL_IMAGE_TIMEOUT_MS);
-    if (result) return result;
-  } catch (e: any) {
-    const retryable = e?.name === "TimeoutError" || e?.status === undefined || (e?.status && IMAGE_RETRYABLE.has(e.status));
-    if (!retryable) return null;
-    console.warn(`AnyModel image primary ${primary} failed, falling back to ${fallback}`);
+  // Cascade through every model on ANY failure — a 404 (bad model id),
+  // 402 (empty balance) or 406 must not abort the chain before trying the
+  // next model. Only when all three fail do we return null (SVG placeholder).
+  const chain = [primary, fallback, fallback2];
+  for (const target of chain) {
+    try {
+      const result = await attempt(target, ANYMODEL_IMAGE_TIMEOUT_MS);
+      if (result) return { url: result, model: target };
+    } catch (e: any) {
+      console.warn(`AnyModel image ${target} failed, trying next model: ${e.message}`);
+    }
   }
 
-  try {
-    const result = await attempt(fallback, ANYMODEL_IMAGE_TIMEOUT_MS);
-    if (result) return result;
-  } catch (e: any) {
-    const retryable = e?.name === "TimeoutError" || e?.status === undefined || (e?.status && IMAGE_RETRYABLE.has(e.status));
-    if (!retryable) return null;
-    console.warn(`AnyModel image fallback ${fallback} also failed, trying ${fallback2}`);
-  }
-
-  try {
-    return await attempt(fallback2, ANYMODEL_IMAGE_TIMEOUT_MS);
-  } catch (e: any) {
-    console.error(`AnyModel image fallback2 ${fallback2} also failed: ${e.message}`);
-    return null;
-  }
+  return null;
 }
 
 const SVG_PALETTES: [string, string][] = [

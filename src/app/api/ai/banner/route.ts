@@ -70,13 +70,13 @@ export async function POST(req: Request) {
     // generateAnyModelImage; the client gets the ready URL inline.
     const model = ANYMODEL_IMAGE_MODEL();
 
-    const imageUrl = await withBudget(
+    const imageResult = await withBudget(
       () => generateAnyModelImage(prompt, { model, inputImage: activeDna.image_url || undefined }),
       ANYMODEL_ATTEMPT_BUDGET_MS,
     );
 
-    if (imageUrl) {
-      return NextResponse.json({ image_url: imageUrl, image_engine: "anymodel", image_model: model });
+    if (imageResult) {
+      return NextResponse.json({ image_url: imageResult.url, image_engine: "anymodel", image_model: imageResult.model });
     }
 
     // Total failure: refund credits and serve a branded SVG placeholder so the

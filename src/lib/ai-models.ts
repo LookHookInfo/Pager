@@ -23,12 +23,12 @@ export const ANYMODEL_IMAGE_MODEL = () =>
 
 /** Fallback image model when primary returns 429/5xx/timeout. */
 export const ANYMODEL_IMAGE_FALLBACK_MODEL = () =>
-  process.env.ANYMODEL_IMAGE_FALLBACK_MODEL?.trim() || "am/flux.2-klein-4b";
+  process.env.ANYMODEL_IMAGE_FALLBACK_MODEL?.trim() || "ag/gemini-3.1-flash-image";
 
 /**
- * Third-tier image model — used when both the primary and the fallback fail
- * (429/5xx/timeout). A stable, separate provider (FLUX.2) that stays up even
- * when nano-banana / gemini flash are temporarily unavailable.
+ * Third-tier image model — used when both the primary and the fallback fail.
+ * "Ours" are nano-banana-lite + gemini-3.1-flash-image; flux.2-klein-4b is the
+ * paid last resort and must never run before both free models have failed.
  */
 export const ANYMODEL_IMAGE_FALLBACK2_MODEL = () =>
   process.env.ANYMODEL_IMAGE_FALLBACK2_MODEL?.trim() || "am/flux.2-klein-4b";

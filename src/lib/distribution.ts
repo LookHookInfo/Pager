@@ -6,7 +6,7 @@ import { getSiteUrl } from "@/lib/site";
 import { detectCommunities, cleanHashtag } from "@/lib/tweet-entities";
 import type { BinanceAccount, TelegramChannel } from "@/types";
 
-const HASH_TOKEN_LINK = "https://www.cryptocompare.com/coins/hashcoin";
+const HASH_TOKEN_LINK = "https://coinpaprika.com/coin/hash-hash-coin";
 
 const IMAGE_FETCH_TIMEOUT_MS = 10000;
 
