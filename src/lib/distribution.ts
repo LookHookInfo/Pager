@@ -174,28 +174,60 @@ function binanceMimeFromBytes(mime: string, buffer: Buffer): string {
  *   3) poll POST /image/imageStatus { fileTicket } until status === 1
  */
 async function uploadBinanceImage(apiKey: string, image: ImageBytes): Promise<string> {
-  const imageName = `banner.${image.mime.includes("jpeg") ? "jpg" : "webp"}`;
-  const contentType = binanceMimeFromBytes(image.mime, image.buffer);
+  // NOTE: Binance's /image/presignedUrl rejects some extensions (webp -> 20005
+  // "Can't get presigned url"). jpg/png are universally accepted, so we always
+  // request those. The actual bytes are uploaded as-is; Binance re-encodes and
+  // returns a CDN url whose extension matches the requested name.
+  let contentType = binanceMimeFromBytes(image.mime, image.buffer);
+  const imageName = contentType.includes("jpeg") ? "banner.jpg" : "banner.png";
 
-  const presignedRes = await fetch(`${BINANCE_OPENAPI_BASE_V2}/image/presignedUrl`, {
-    method: "POST",
-    headers: binanceHeaders(apiKey),
-    body: JSON.stringify({ imageName }),
-  });
-  const presigned = await presignedRes.json();
-  if (presigned.code !== "000000") {
-    throw new Error(`presignedUrl [${presigned.code}]: ${presigned.message}`);
+  let presignedUrl: string | undefined;
+  let fileTicket: string | undefined;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const presignedRes = await fetch(`${BINANCE_OPENAPI_BASE_V2}/image/presignedUrl`, {
+        method: "POST",
+        headers: binanceHeaders(apiKey),
+        body: JSON.stringify({ imageName }),
+      });
+      const presigned = await presignedRes.json();
+      if (presigned.code !== "000000") {
+        if (attempt === 2) throw new Error(`presignedUrl [${presigned.code}]: ${presigned.message}`);
+        console.warn(`[Binance] presigned transient (${presigned.code}), retry ${attempt + 1}`);
+      } else {
+        presignedUrl = presigned.data.presignedUrl;
+        fileTicket = presigned.data.fileTicket;
+        break;
+      }
+    } catch (e: any) {
+      if (attempt === 2) throw e;
+      console.warn(`[Binance] presigned call failed: ${e.message}, retry ${attempt + 1}`);
+    }
+    await new Promise((r) => setTimeout(r, 1500));
   }
-  const { presignedUrl, fileTicket } = presigned.data;
+  if (!presignedUrl || !fileTicket) throw new Error("presignedUrl not obtained");
 
-  const upRes = await fetch(presignedUrl, {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
-    body: new Uint8Array(image.buffer),
-  });
-  if (!upRes.ok) {
-    throw new Error(`S3 upload failed: ${upRes.status} ${upRes.statusText}`);
+  let uploaded = false;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const upRes = await fetch(presignedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": contentType },
+        body: new Uint8Array(image.buffer),
+      });
+      if (upRes.ok) {
+        uploaded = true;
+        break;
+      }
+      if (attempt === 2) throw new Error(`S3 upload failed: ${upRes.status} ${upRes.statusText}`);
+      console.warn(`[Binance] S3 PUT failed (${upRes.status}), retry ${attempt + 1}`);
+    } catch (e: any) {
+      if (attempt === 2) throw e;
+      console.warn(`[Binance] S3 PUT error: ${e.message}, retry ${attempt + 1}`);
+    }
+    await new Promise((r) => setTimeout(r, 1500));
   }
+  if (!uploaded) throw new Error("S3 upload failed after retries");
 
   for (let i = 0; i < BINANCE_MAX_POLL_RETRIES; i++) {
     const statusRes = await fetch(`${BINANCE_OPENAPI_BASE_V2}/image/imageStatus`, {
