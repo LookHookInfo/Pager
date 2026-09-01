@@ -76,7 +76,7 @@ export async function POST(req: Request) {
 
       if (type === "binance") {
         const secureAccount = { ...account, apiKey: account.apiKey ? decryptData(account.apiKey) : "" };
-        res = await postToBinance(secureAccount, title, content, articleId);
+        res = await postToBinance(secureAccount, title, content, articleId, 0, imageUrl);
       } else if (type === "telegram") {
         const chatId = account.topicId ? `${account.chatId}/${account.topicId}` : account.chatId;
         res = await postToTelegram(chatId, title, content, articleId, imageUrl, authorName);

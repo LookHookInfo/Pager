@@ -144,13 +144,101 @@ export async function adaptContent(title: string, html: string, language: string
   }
 }
 
-export async function postToBinance(account: BinanceAccount, title: string, content: string, articleId: string, index: number = 0) {
+const BINANCE_OPENAPI_BASE = "https://www.binance.com/bapi/composite/v1/public/pgc/openApi";
+const BINANCE_OPENAPI_BASE_V2 = "https://www.binance.com/bapi/composite/v2/public/pgc/openApi";
+
+const BINANCE_POLL_INTERVAL_MS = 3000;
+const BINANCE_MAX_POLL_RETRIES = 10;
+
+function binanceHeaders(apiKey: string): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    "X-Square-OpenAPI-Key": apiKey,
+    clienttype: "binanceSkill",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/120.0.0.0 Safari/537.36",
+  };
+}
+
+function binanceMimeFromBytes(mime: string, buffer: Buffer): string {
+  if (mime && /^image\//.test(mime)) return mime;
+  // JPEG magic, else assume PNG/WebP — Binance accepts jpeg/png/webp.
+  if (buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
+  return "image/webp";
+}
+
+/**
+ * Upload an image to Binance Square and return its processed imageUrl.
+ * Uses the official presigned-url flow:
+ *   1) POST /image/presignedUrl { imageName }           -> { presignedUrl, fileTicket }
+ *   2) PUT  the image bytes to the S3 presignedUrl
+ *   3) poll POST /image/imageStatus { fileTicket } until status === 1
+ */
+async function uploadBinanceImage(apiKey: string, image: ImageBytes): Promise<string> {
+  const imageName = `banner.${image.mime.includes("jpeg") ? "jpg" : "webp"}`;
+  const contentType = binanceMimeFromBytes(image.mime, image.buffer);
+
+  const presignedRes = await fetch(`${BINANCE_OPENAPI_BASE_V2}/image/presignedUrl`, {
+    method: "POST",
+    headers: binanceHeaders(apiKey),
+    body: JSON.stringify({ imageName }),
+  });
+  const presigned = await presignedRes.json();
+  if (presigned.code !== "000000") {
+    throw new Error(`presignedUrl [${presigned.code}]: ${presigned.message}`);
+  }
+  const { presignedUrl, fileTicket } = presigned.data;
+
+  const upRes = await fetch(presignedUrl, {
+    method: "PUT",
+    headers: { "Content-Type": contentType },
+    body: new Uint8Array(image.buffer),
+  });
+  if (!upRes.ok) {
+    throw new Error(`S3 upload failed: ${upRes.status} ${upRes.statusText}`);
+  }
+
+  for (let i = 0; i < BINANCE_MAX_POLL_RETRIES; i++) {
+    const statusRes = await fetch(`${BINANCE_OPENAPI_BASE_V2}/image/imageStatus`, {
+      method: "POST",
+      headers: binanceHeaders(apiKey),
+      body: JSON.stringify({ fileTicket }),
+    });
+    const status = await statusRes.json();
+    if (status.code !== "000000") {
+      throw new Error(`imageStatus [${status.code}]: ${status.message}`);
+    }
+    if (status.data?.status === 1) {
+      return status.data.imageUrl;
+    }
+    if (status.data?.status === 2) {
+      throw new Error(`Image processing failed: ${status.data.failedReason || "unknown"}`);
+    }
+    await new Promise((r) => setTimeout(r, BINANCE_POLL_INTERVAL_MS));
+  }
+  throw new Error(`Image processing timed out after ${BINANCE_MAX_POLL_RETRIES} retries`);
+}
+
+export async function postToBinance(account: BinanceAccount, title: string, content: string, articleId: string, index: number = 0, imageUrl?: string) {
   try {
     const plainText = formatForBinance(title, content, articleId, index);
-    const res = await fetch('https://www.binance.com/bapi/composite/v1/public/pgc/openApi/content/add', {
+
+    // Banner (IPFS gateway or data-URL) is uploaded and attached as the article cover.
+    let coverUrl: string | undefined;
+    if (imageUrl) {
+      const image = await fetchImageBytes(imageUrl);
+      if (image) {
+        coverUrl = await uploadBinanceImage(account.apiKey, image);
+      }
+    }
+
+    const body: Record<string, unknown> = coverUrl
+      ? { contentType: 2, bodyTextOnly: plainText, title: (title || "").slice(0, 100), cover: coverUrl }
+      : { contentType: 1, bodyTextOnly: plainText };
+
+    const res = await fetch(`${BINANCE_OPENAPI_BASE}/content/add`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Square-OpenAPI-Key': account.apiKey, 'clienttype': 'binanceSkill', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/120.0.0.0 Safari/537.36' },
-      body: JSON.stringify({ bodyTextOnly: plainText })
+      headers: binanceHeaders(account.apiKey),
+      body: JSON.stringify(body),
     });
     const data = await res.json();
     return data.code === '000000' ? { success: true, id: data.data?.id } : { success: false, error: `${account.label} (${data.code}): ${data.message || data.messageDetail || 'Binance rejected the post'}` };
