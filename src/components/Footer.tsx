@@ -1,4 +1,3 @@
-import { Twitter, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { getSiteUrl } from "@/lib/site";
 
@@ -17,20 +16,22 @@ export default function Footer() {
 
         <div className="flex items-center gap-4 text-[11px] text-white/50">
           <Link
-            href={siteUrl}
-            className="flex items-center gap-1.5 hover:text-white transition-colors"
+            href="https://road.lookhook.info"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-white transition-colors"
           >
             Ecosystem
-            <ExternalLink size={10} />
           </Link>
           <Link
             href="https://x.com/LookHookInfo"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1.5 hover:text-white transition-colors"
+            className="flex items-center hover:text-white transition-colors"
           >
-            <Twitter size={12} />
-            X
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+            </svg>
           </Link>
         </div>
       </div>
