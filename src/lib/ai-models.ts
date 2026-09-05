@@ -34,6 +34,40 @@ export const ANYMODEL_IMAGE_FALLBACK2_MODEL = () =>
   process.env.ANYMODEL_IMAGE_FALLBACK2_MODEL?.trim() || "am/flux.2-klein-4b";
 
 /**
+ * Additional image models the banner pipeline may PROBE (health-check) when
+ * the primary chain is down. These are the "spare engines" — not used unless a
+ * cheap probe shows them alive. Configure via ANYMODEL_IMAGE_EXTRA_MODELS
+ * (comma-separated) to override; defaults to a couple of moderately-cheap
+ * engines that are periodically available when the main three are rate-limited
+ * or down.
+ */
+export const ANYMODEL_IMAGE_EXTRA_MODELS = (): string[] =>
+  (process.env.ANYMODEL_IMAGE_EXTRA_MODELS || "flow/nano-banana,xai/grok-imagine-image")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+/**
+ * The full, ordered candidate list the reliable banner engine probes before
+ * rendering: primary → fallback → fallback2 → extra spares. Deduplicated.
+ */
+export const ANYMODEL_IMAGE_CANDIDATES = (): string[] => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of [
+    ANYMODEL_IMAGE_MODEL(),
+    ANYMODEL_IMAGE_FALLBACK_MODEL(),
+    ANYMODEL_IMAGE_FALLBACK2_MODEL(),
+    ...ANYMODEL_IMAGE_EXTRA_MODELS(),
+  ]) {
+    if (!m || seen.has(m)) continue;
+    seen.add(m);
+    out.push(m);
+  }
+  return out;
+};
+
+/**
  * Vision-capable text fallback — used for calls that include image_url content
  * (e.g. DNA scan). The default text fallback (gpt-5.4-mini) rejects image inputs.
  */

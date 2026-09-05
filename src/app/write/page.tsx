@@ -73,6 +73,9 @@ function WritePageInner() {
   const [isAiDropdownOpen, setIsAiDropdownOpen] = useState(false);
   const [isTokenDropdownOpen, setIsTokenDropdownOpen] = useState(false);
   const [processingStep, setProcessingStep] = useState<"idle" | "scraping" | "rewriting" | "banner" | "done">("idle");
+  const [bannerPhase, setBannerPhase] = useState<"probing" | "rendering" | "pinning" | "done" | null>(null);
+  const [bannerActiveModel, setBannerActiveModel] = useState<string>("");
+  const [bannerProbes, setBannerProbes] = useState<{ model: string; ok: boolean; status?: number }[]>([]);
   const [tokenAddress, setTokenAddress] = useState("");
   const [tokenResults, setTokenResults] = useState<TokenResult[]>([]);
 
@@ -107,6 +110,54 @@ function WritePageInner() {
     setNotifications(prev => [...prev, { id, message, type }]);
     setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 5000);
   };
+
+  const resetBannerProgress = useCallback(() => {
+    setBannerPhase(null);
+    setBannerActiveModel("");
+    setBannerProbes([]);
+  }, []);
+
+  const startBannerWithProgress = useCallback(async (payload: Record<string, unknown>) => {
+    resetBannerProgress();
+
+    // The banner endpoint is paid, so a full render is never auto-retried
+    // (that would double-charge). But when the server returns an SVG placeholder
+    // it REFUNDS the credits — so retrying once after a short cooldown is safe
+    // and gives the user a real second chance when the provider recovers.
+    const runOnce = () => requestBannerJob(payload, {
+      onStatus: (status) => {
+        setProcessingStep("banner");
+        setBannerPhase(status.phase);
+        if (status.model) setBannerActiveModel(status.model);
+      },
+      onProbe: (probe) => {
+        setBannerProbes((prev) => {
+          if (prev.some((p) => p.model === probe.model)) return prev;
+          return [...prev, probe];
+        });
+      },
+    });
+
+    let result = await runOnce();
+    if (result.image_engine === "svg") {
+      // Safe retry (credits were refunded on the placeholder). Wait a moment for
+      // the provider to recover, then try the whole chain once more.
+      addNotification("Engines unavailable — retrying once…", "info");
+      setBannerProbes([]);
+      await new Promise((r) => setTimeout(r, 2500));
+      result = await runOnce();
+    }
+
+    // SVG is the true last-resort placeholder (credits already refunded),
+    // clearly surfaced so the user knows they did NOT get a real AI banner.
+    if (result.image_engine === "svg") {
+      setBannerModel("");
+      addNotification("Banner engines are still busy — showing a placeholder. Tap Regenerate to retry.", "info");
+    } else if (result.image_model) {
+      setBannerModel(result.image_model);
+    }
+    return result;
+  }, [resetBannerProgress]);
 
   // Sign ONCE per session with "publish article" and reuse it across forge + publish.
   const ensureAuth = useCallback(async () => {
@@ -236,13 +287,14 @@ function WritePageInner() {
 
       const articleContent = editorRef.current?.innerHTML || textData.content || "";
       // Paid, non-idempotent endpoint — must NOT auto-retry (would double-charge credits).
-      const bannerData = await requestBannerJob({
+      const bannerData = await startBannerWithProgress({
         title: textData.title, bannerDescription: textData.banner_description, mood,
         nftTokenId: selectedNftId, atmosphere,
         userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
         content: articleContent,
       });
       if (bannerData.image_url) { setImageUrl(bannerData.image_url); setBannerModel(bannerData.image_model || ""); }
+      setBannerPhase("done");
 
       addNotification("Article ready!", "success");
       setProcessingStep("done");
@@ -266,13 +318,13 @@ function WritePageInner() {
 
       const articleContent = editorRef.current?.innerHTML || "";
       // Paid, non-idempotent endpoint — must NOT auto-retry (would double-charge credits).
-      const data = await requestBannerJob({
+      const data = await startBannerWithProgress({
         title, bannerDescription, mood, nftTokenId: selectedNftId,
         atmosphere,
         userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
         content: articleContent,
       });
-      if (data.image_url) { setImageUrl(data.image_url); setBannerModel(data.image_model || ""); addNotification("Banner updated!"); fetchProfile(); }
+      if (data.image_url) { setImageUrl(data.image_url); setBannerModel(data.image_model || ""); setBannerPhase("done"); addNotification("Banner updated!"); fetchProfile(); }
     } catch (err: any) { addNotification(err.message, "error"); }
   };
 
@@ -318,13 +370,13 @@ function WritePageInner() {
         const articleContent = editorRef.current?.innerHTML || "";
         // Paid, non-idempotent endpoint — must NOT auto-retry (would double-charge credits).
         try {
-          const bannerData = await requestBannerJob({
+          const bannerData = await startBannerWithProgress({
             title: data.title, bannerDescription: data.banner_description, mood,
             nftTokenId: selectedNftId, atmosphere,
             userAddress: account.address.toLowerCase(), signature: authSig, message: authMsg,
             content: articleContent,
           });
-          if (bannerData.image_url) { setImageUrl(bannerData.image_url); setBannerModel(bannerData.image_model || ""); }
+          if (bannerData.image_url) { setImageUrl(bannerData.image_url); setBannerModel(bannerData.image_model || ""); setBannerPhase("done"); }
         } catch (bannerErr: any) {
           addNotification(bannerErr.message, "error");
         }
@@ -444,7 +496,7 @@ function WritePageInner() {
 
   return (
     <main className="min-h-screen bg-white relative pb-32">
-      <ForgeOverlay step={processingStep} mascotImage={selectedMascot?.image} mascotName={selectedMascot?.name} />
+      <ForgeOverlay step={processingStep} mascotImage={selectedMascot?.image} mascotName={selectedMascot?.name} bannerPhase={bannerPhase} bannerModel={bannerActiveModel} bannerProbes={bannerProbes} />
       <nav className="border-b border-[var(--border)] h-16 flex items-center justify-between px-6 md:px-12 sticky top-0 bg-white z-50">
         <div className="flex items-center gap-4">
           <Link href="/" className="text-xl font-black uppercase tracking-tighter">Pager</Link>

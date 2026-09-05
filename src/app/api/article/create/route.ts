@@ -46,6 +46,23 @@ export async function POST(req: Request) {
 
     console.log("✅ [API Create Article] Article created:", data.id);
 
+    // Прогреваем OG-картинку прямо при публикации: холодный старт роута занимает
+    // ~15 c (fetch + sharp + резка), а Twitter-бот сдаётся раньше и показывает
+    // пустой баннер до повторного ретрая. Рендерим заранее и кладём ответ
+    // в CDN-кэш (s-maxage), чтобы первый запрос бота был быстрым.
+    try {
+      const ogUrl = new URL(`/api/og?id=${articleId}`, req.url).toString();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 25000);
+      try {
+        await fetch(ogUrl, { signal: controller.signal, cache: "no-store" });
+      } finally {
+        clearTimeout(timer);
+      }
+    } catch {
+      // Не критично: боты в итоге сами сделают рендер, кэш соберётся с первого успешного ответа.
+    }
+
     // Fetch user profile to return distribution targets to the client
     let distributionTargets: any = null;
     try {

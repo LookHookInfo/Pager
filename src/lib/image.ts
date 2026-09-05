@@ -1,5 +1,6 @@
 import sharp from "sharp";
-import { ANYMODEL_IMAGE_MODEL, ANYMODEL_IMAGE_FALLBACK_MODEL, ANYMODEL_IMAGE_FALLBACK2_MODEL } from "@/lib/ai-models";
+import { ANYMODEL_IMAGE_MODEL, ANYMODEL_IMAGE_FALLBACK_MODEL, ANYMODEL_IMAGE_FALLBACK2_MODEL, ANYMODEL_IMAGE_CANDIDATES } from "@/lib/ai-models";
+import { aiLog, aiWarn } from "@/lib/ai-log";
 
 const PINATA_TIMEOUT = 12000;
 
@@ -144,113 +145,223 @@ const ANYMODEL_IMAGE_SIZES = new Set([
 ]);
 const DEFAULT_ANYMODEL_IMAGE_SIZE = "1792x1024";
 
+// Short timeout for cheap model probes (256x256) — dead models should fall
+// through fast so we don't burn the banner budget on them.
+const ANYMODEL_PROBE_TIMEOUT_MS = 12000;
+
 /**
- * Primary banner engine: AnyModel (https://anymodel.org/v1) — an
- * OpenAI-compatible gateway. Synchronous POST to /v1/images/generations,
- * returns the base64 image which we recompress to WebP and pin to IPFS.
- * The mascot reference image is passed as a base64 data URL in `image`
- * (the gateway rejects public URLs unless a model explicitly supports them).
- * Resolves to the pinned IPFS URL plus the model that actually produced it
- * (primary, fallback or fallback2), or null if every model fails — the chain
- * always cascades primary → fallback → fallback2 on ANY error (including 4xx
- * like model-not-found or balance), never aborting early.
+ * One raw AnyModel image request returning the raw image buffer (pre-compress,
+ * pre-pin), or null when the model returns no usable image. Does not swallow
+ * HTTP errors — callers decide how to react.
+ */
+async function rawAnyModelImage(
+  target: string,
+  prompt: string,
+  opts: { apiKey: string; size: string; timeoutMs: number; inputImage?: string; quality?: string },
+): Promise<Buffer | null> {
+  const body: Record<string, unknown> = {
+    prompt,
+    n: 1,
+    quality: opts.quality || "medium",
+    output_format: "png",
+    response_format: "b64_json",
+    model: target,
+    size: opts.size,
+  };
+  if (opts.inputImage) {
+    const dataUrl = opts.inputImage.startsWith("data:")
+      ? opts.inputImage
+      : await imageToDataUrl(opts.inputImage);
+    if (dataUrl) body.image = dataUrl;
+  }
+
+  const res = await fetch("https://anymodel.org/v1/images/generations", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${opts.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(opts.timeoutMs),
+  });
+
+  if (!res.ok) {
+    const err = await res.text().catch(() => "unknown");
+    const hint =
+      res.status === 402
+        ? " — AnyModel balance empty (top up in cabinet)"
+        : res.status === 401
+          ? " — AnyModel key invalid/revoked"
+            : res.status === 404 || res.status === 406
+              ? " — image model not found/unsupported"
+              : "";
+    aiWarn("image.raw", `${target} HTTP ${res.status}: ${err.slice(0, 220)}${hint}`);
+    const e = new Error(`AnyModel image error (${res.status})`) as Error & { status?: number };
+    e.status = res.status;
+    throw e;
+  }
+
+  const data = await res.json();
+  const item = data?.data?.[0];
+  if (item?.b64_json) {
+    return Buffer.from(item.b64_json, "base64");
+  }
+  if (item?.url) {
+    const imgRes = await fetch(item.url, { signal: AbortSignal.timeout(10000) });
+    if (imgRes.ok) return Buffer.from(await imgRes.arrayBuffer());
+  }
+  aiLog("image.raw", `${target} returned no image data`);
+  return null;
+}
+
+/**
+ * Cheap health-check for a single image model before committing a full render.
+ * Sends a tiny 256x256 request with a trivial prompt. Returns the live status:
+ * { ok: true } when the model produced image bytes, or { ok: false, status } on
+ * failure. `status` is the HTTP code (429/5xx/timeout) so the UI can tell the
+ * user exactly why a model was rejected. Costs a fraction of a full banner.
+ */
+export async function probeAnyModelImage(model: string): Promise<{ ok: boolean; status?: number }> {
+  const apiKey = process.env.ANYMODEL_API_KEY?.trim();
+  if (!apiKey || !model) return { ok: false };
+  try {
+    const start = Date.now();
+    const buf = await rawAnyModelImage(model, "solid grey background", {
+      apiKey,
+      size: "256x256",
+      timeoutMs: ANYMODEL_PROBE_TIMEOUT_MS,
+      quality: "low",
+    });
+    const ms = Date.now() - start;
+    aiLog("probe", `${model} ${buf ? "OK" : "no-image"} in ${ms}ms`);
+    return { ok: !!buf };
+  } catch (e: any) {
+    const status = (e as Error & { status?: number })?.status;
+    aiWarn("probe", `${model} FAILED${status ? ` (${status})` : ""}: ${e.message}`);
+    return { ok: false, status };
+  }
+}
+
+/** HTTP statuses that mean "upstream hiccup" — worth one probe retry. */
+const PROBE_RETRYABLE = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+/**
+ * Probe a model, retrying once on transient upstream errors (429/5xx/timeout)
+ * so a momentary blip doesn't wrongly rule out a working engine. Probes are
+ * cheap and never produce the paid banner, so this is safe to retry.
+ */
+export async function probeAnyModelImageWithRetry(model: string): Promise<{ ok: boolean; status?: number }> {
+  const first = await probeAnyModelImage(model);
+  if (first.ok || first.status === undefined || !PROBE_RETRYABLE.has(first.status)) {
+    return first;
+  }
+  aiLog("probe", `${model} retryable probe (${first.status}), retrying once`);
+  return probeAnyModelImage(model);
+}
+
+/**
+ * Primary banner engine with a probe-first strategy (the "health-check before
+ * you waste a full render" approach). Candidates are probed cheaply first, then
+ * the first model proven alive renders the actual banner. If the chosen model
+ * then fails mid-render, the next alive candidate is tried. Only when no
+ * candidate can produce a real banner does it return null (→ SVG last resort).
+ *
+ * @param prompt        the sanitized visual prompt
+ * @param options       size/quality/inputImage (mascot I2I reference)
+ * @param candidates    ordered model list to try (defaults to the full chain)
+ * @param onProgress    optional callback to observe pipeline phase changes
+ * @param onProbe       optional per-model probe verdict (model + ok + HTTP status)
+ */
+export async function generateReliableBanner(
+  prompt: string,
+  options: AnyModelImageOptions = {},
+  candidates?: string[],
+  onProgress?: (phase: "probing" | "rendering" | "pinning" | "done", model?: string) => void,
+  onProbe?: (result: { model: string; ok: boolean; status?: number }) => void,
+): Promise<{ url: string; model: string } | null> {
+  const apiKey = process.env.ANYMODEL_API_KEY?.trim();
+  if (!apiKey) return null;
+
+  const chain = (candidates && candidates.length ? candidates : ANYMODEL_IMAGE_CANDIDATES()).filter(Boolean);
+  if (chain.length === 0) {
+    aiWarn("banner", "no image models configured");
+    return null;
+  }
+
+  const requestedSize = options.size || process.env.ANYMODEL_IMAGE_SIZE?.trim() || DEFAULT_ANYMODEL_IMAGE_SIZE;
+  const size = ANYMODEL_IMAGE_SIZES.has(requestedSize) ? requestedSize : DEFAULT_ANYMODEL_IMAGE_SIZE;
+
+  const inputImage = options.inputImage;
+  let dataUrl: string | undefined;
+  if (inputImage) {
+    dataUrl = inputImage.startsWith("data:") ? inputImage : (await imageToDataUrl(inputImage)) || undefined;
+  }
+
+  // Lazy probe → render loop: for each candidate, cheaply health-check it, then
+  // immediately render full-size if it's alive. This avoids wasting the budget
+  // probing engines we'll never reach, while still reporting each model's live
+  // verdict (ok + HTTP status) so the UI can show the user the engine-by-engine
+  // state instead of a silent progress bar. An alive probe can still fail the
+  // full render (size/I2I support), in which case we move to the next candidate.
+  onProgress?.("probing");
+  let anyAlive = false;
+  for (const model of chain) {
+    const probe = await probeAnyModelImageWithRetry(model);
+    if (!probe.ok) {
+      onProbe?.({ model, ok: false, status: probe.status });
+      aiLog("banner", `${model} DOWN on probe${probe.status ? ` (${probe.status})` : ""}`);
+      continue;
+    }
+    anyAlive = true;
+    onProbe?.({ model, ok: true });
+
+    // Probe passed — try the full render now.
+    const start = Date.now();
+    onProgress?.("rendering", model);
+    try {
+      const buffer = await rawAnyModelImage(model, prompt, {
+        apiKey,
+        size,
+        timeoutMs: ANYMODEL_IMAGE_TIMEOUT_MS,
+        inputImage: dataUrl,
+        quality: options.quality,
+      });
+      if (!buffer) {
+        aiWarn("banner", `${model} probe OK but returned no image`);
+        continue;
+      }
+      onProgress?.("pinning");
+      const compressed = await sharp(buffer).webp({ quality: 85, effort: 4 }).toBuffer();
+      const pinned = await pinBufferToPinata(compressed);
+      if (!pinned) {
+        aiWarn("banner", `${model} rendered but pin failed`);
+        continue;
+      }
+      aiLog("banner", `${model} OK in ${Date.now() - start}ms size ${size}`);
+      onProgress?.("done", model);
+      return { url: pinned, model };
+    } catch (e: any) {
+      aiWarn("banner", `${model} full render failed: ${e.message}`);
+    }
+  }
+
+  if (!anyAlive) aiWarn("banner", "no model passed the probe — no banner rendered");
+  else aiWarn("banner", "all probed models failed the full render");
+  return null;
+}
+
+/**
+ * @deprecated kept as a plain cascade for direct/fallback callers; prefer
+ * generateReliableBanner (probe-first). Primary banner engine: AnyModel
+ * (https://anymodel.org/v1). Returns the rendered+bound URL + model, or null.
  */
 export async function generateAnyModelImage(
   prompt: string,
   options: AnyModelImageOptions = {},
 ): Promise<{ url: string; model: string } | null> {
-  const apiKey = process.env.ANYMODEL_API_KEY?.trim();
-  if (!apiKey) return null;
-
-  const primary = options.model || ANYMODEL_IMAGE_MODEL();
-  const fallback = ANYMODEL_IMAGE_FALLBACK_MODEL();
-  const fallback2 = ANYMODEL_IMAGE_FALLBACK2_MODEL();
-
-  const body: Record<string, unknown> = {
-    prompt,
-    n: 1,
-    quality: options.quality || "medium",
-    output_format: "png",
-    response_format: "b64_json",
-  };
-
-  const inputImage = options.inputImage;
-  if (inputImage) {
-    const dataUrl = inputImage.startsWith("data:")
-      ? inputImage
-      : await imageToDataUrl(inputImage);
-    if (dataUrl) body.image = dataUrl;
-  }
-
-  const attempt = async (target: string, timeoutMs: number): Promise<string | null> => {
-    const requestedSize = options.size || process.env.ANYMODEL_IMAGE_SIZE?.trim() || DEFAULT_ANYMODEL_IMAGE_SIZE;
-    const size = ANYMODEL_IMAGE_SIZES.has(requestedSize) ? requestedSize : DEFAULT_ANYMODEL_IMAGE_SIZE;
-
-    try {
-      const res = await fetch("https://anymodel.org/v1/images/generations", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ ...body, model: target, size }),
-        signal: AbortSignal.timeout(timeoutMs),
-      });
-
-      if (!res.ok) {
-        const err = await res.text().catch(() => "unknown");
-        const hint =
-          res.status === 402
-            ? " — AnyModel balance empty (top up in cabinet)"
-            : res.status === 401
-              ? " — AnyModel key invalid/revoked"
-                : res.status === 404 || res.status === 406
-                  ? " — image model not found (check ANYMODEL_IMAGE_MODEL in .env)"
-                  : "";
-        console.error(`AnyModel image ${target} failed: ${res.status} — ${err.slice(0, 300)}${hint}`);
-        const e = new Error(`AnyModel image error (${res.status})`) as Error & { status?: number };
-        e.status = res.status;
-        throw e;
-      }
-
-      const data = await res.json();
-      const item = data?.data?.[0];
-      let buffer: Buffer | null = null;
-      if (item?.b64_json) {
-        buffer = Buffer.from(item.b64_json, "base64");
-      } else if (item?.url) {
-        const imgRes = await fetch(item.url, { signal: AbortSignal.timeout(10000) });
-        if (imgRes.ok) buffer = Buffer.from(await imgRes.arrayBuffer());
-      }
-      if (!buffer) {
-        console.error("AnyModel returned no image data");
-        return null;
-      }
-
-      const compressed = await sharp(buffer).webp({ quality: 85, effort: 4 }).toBuffer();
-      const pinned = await pinBufferToPinata(compressed);
-      return pinned || null;
-    } catch (e: any) {
-      console.error(`AnyModel image ${target} error: ${e.message}`);
-      throw e;
-    }
-  };
-
-  // Cascade through every model on ANY failure — a 404 (bad model id),
-  // 402 (empty balance) or 406 must not abort the chain before trying the
-  // next model. Only when all three fail do we return null (SVG placeholder).
-  const chain = [primary, fallback, fallback2];
-  for (const target of chain) {
-    try {
-      const result = await attempt(target, ANYMODEL_IMAGE_TIMEOUT_MS);
-      if (result) return { url: result, model: target };
-    } catch (e: any) {
-      console.warn(`AnyModel image ${target} failed, trying next model: ${e.message}`);
-    }
-  }
-
-  return null;
+  return generateReliableBanner(prompt, options, options.model ? [options.model] : undefined);
 }
+
 
 const SVG_PALETTES: [string, string][] = [
   ["#0f0c29", "#7b2ff7"],

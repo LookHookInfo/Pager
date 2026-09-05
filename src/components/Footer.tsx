@@ -10,7 +10,7 @@ export default function Footer() {
         <div className="flex flex-col gap-0.5">
           <span className="text-[15px] font-black tracking-tight">Pager</span>
           <span className="text-[11px] text-white/40">
-            Web3 media for $HASH on Base. Powered by LookHook.
+            Web3 media AI.
           </span>
         </div>
 
