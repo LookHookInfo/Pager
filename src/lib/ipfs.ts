@@ -48,3 +48,32 @@ export function ipfsGatewayVariants(url: string): string[] {
   }
   return [...new Set(variants)];
 }
+
+/**
+ * Pre-warm: forces public gateways to materialize a fresh CID right after it's
+ * pinned. A just-pinned CID is often unreachable on public gateways for a few
+ * seconds — they have to discover and pull the block first, and every cold
+ * request in that window falls back to the branded (previously black) OG card.
+ * Firing one fetch per gateway bridges the gap so the first real visitor and
+ * the social crawlers land on the actual image. Resolves in bounded time.
+ *
+ * The caller should precede this from a route that is about to return anyway
+ * (banner generation already takes seconds), so the ~seconds of latency here
+ * is invisible to the user.
+ */
+export function prewarmIpfs(url: string, timeoutMs = 7000): Promise<void> {
+  const cid = extractIpfsCid(url);
+  if (!cid) return Promise.resolve();
+
+  const variants = ipfsGatewayVariants(url);
+  return Promise.allSettled(
+    variants.map(async (variant) => {
+      try {
+        const res = await fetch(variant, { signal: AbortSignal.timeout(timeoutMs) });
+        if (res.ok) await res.arrayBuffer().catch(() => {});
+      } catch {
+        // Unreachable gateway — the others still warm up in parallel.
+      }
+    }),
+  ).then(() => undefined);
+}

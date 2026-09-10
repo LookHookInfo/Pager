@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { prewarmIpfs } from '@/lib/ipfs';
 
 export async function POST(req: Request) {
   try {
@@ -73,6 +74,10 @@ export async function POST(req: Request) {
     const publicUrl = `${gateway.endsWith('/') ? gateway : gateway + '/'}${data.IpfsHash}`;
 
     console.log("✅ [Upload API] Success! IPFS URL:", publicUrl);
+
+    // Прогреваем гейтвеи сразу: свежий CID на них появляется с задержкой, а
+    // аватар из URL вскоре задействует /api/og (профили) индексироваться ботами.
+    await prewarmIpfs(publicUrl);
 
     return NextResponse.json({ 
       success: true, 

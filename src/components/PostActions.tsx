@@ -19,8 +19,54 @@ interface ShareLink {
   needsAsync?: boolean;
 }
 
-const fallbackHashtags = "Web3,Base,Hash";
-const fallbackFormatted = `#${fallbackHashtags.split(',').join(' #')}`;
+const STOPWORDS = new Set([
+  "with", "from", "that", "this", "have", "being", "their", "would", "about", "which",
+  "there", "after", "before", "those", "where", "while", "been", "have", "more", "when",
+  "than", "into", "over", "under", "until", "just", "also", "does", "will", "what",
+  "these", "only", "your", "here", "they", "you", "out", "per", "via", "its", "was",
+  "his", "her", "for", "and", "the", "are", "but", "not", "all", "any", "can", "had",
+  "has", "him", "how", "our", "own", "may", "off", "old", "see", "she", "too", "use",
+  "who", "now", "new", "say", "get", "one", "two", "day", "year", "crypto", "news",
+  "price", "market", "token", "blockchain", "base", "web3",
+]);
+
+function capitalize(w: string): string {
+  return w.charAt(0).toUpperCase() + w.slice(1);
+}
+
+/**
+ * Хештеги по теме статьи — fallback на клиенте, когда AI-генерация твита
+ * недоступна. Раньше подставлялся глухой набор #Web3 #Base #Hash; теперь теги
+ * строятся из слов заголовка/текста. Тикеры ($HASH и т.п.) вырезаются целиком
+ * и в теги не попадают. Упоминания (@mentions) генерирует серверный /api/ai/tweet.
+ */
+function buildTopicHashtags(title: string, content: string): string[] {
+  const text = `${title} ${content}`.replace(/\$[A-Za-z0-9._]{1,24}/g, " ").toLowerCase();
+  const picks: string[] = [];
+
+  const words = text.match(/[a-zа-яё0-9]+/g) || [];
+  const freq = new Map<string, number>();
+  for (const w of words) {
+    if (w.length < 4 || /^\d+$/.test(w)) continue;
+    if (STOPWORDS.has(w)) continue;
+    freq.set(w, (freq.get(w) || 0) + 1);
+  }
+
+  const ranked = [...freq.entries()]
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
+    .slice(0, 6);
+
+  for (const [w] of ranked) {
+    const h = `#${capitalize(w.replace(/[^a-zа-яё0-9]/g, ""))}`;
+    if (h === "#" || picks.includes(h)) continue;
+    picks.push(h);
+    if (picks.length >= 4) break;
+  }
+
+  if (picks.length === 0) picks.push("#Crypto");
+  if (picks.length < 3 && !picks.includes("#Web3")) picks.push("#Web3");
+  return picks.slice(0, 5);
+}
 
 export default function PostActions({ title, id, content = "", imageUrl, cmcUsername, authorAddress }: PostActionsProps) {
   const [showShareModal, setShowShareModal] = useState(false);
@@ -40,6 +86,8 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
   const shortDescription = cleanContent.length > 80
     ? cleanContent.slice(0, 80).trim() + "..."
     : cleanContent;
+
+  const topicTagsLine = buildTopicHashtags(title, cleanContent).join(" ");
 
   const getShareUrl = () => {
     if (typeof window === "undefined") return "";
@@ -71,7 +119,7 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
   };
 
   const getFallbackTweet = () => {
-    return `${title}\n\n${shortDescription}\n\nContinue reading: ${getShareUrl()}\n\n${fallbackFormatted}`;
+    return `${title}\n\n${shortDescription}\n\nContinue reading: ${getShareUrl()}\n\n${topicTagsLine}`;
   };
 
   const copyTextToClipboard = async (text: string) => {
@@ -128,7 +176,7 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
     const instaWindow = isNativeShare ? null : window.open("https://www.instagram.com/", "_blank");
 
     const tweet = generatedTweet || (await generateTweet());
-    const body = (tweet || `${shortDescription}\n\n${fallbackFormatted}`)
+    const body = (tweet || `${shortDescription}\n\n${topicTagsLine}`)
       .replace(/\n\nContinue reading:[^\n]*/g, "")
       .trim();
     const caption = `${title}\n\n${body}\n\nRead full article on Pager:\n${url}`;
@@ -171,7 +219,7 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
   const handleFacebookShare = async () => {
     const url = getShareUrl();
     const tweet = generatedTweet || (await generateTweet());
-    const text = (tweet || `${title}\n\n${shortDescription}\n\n${fallbackFormatted}`)
+    const text = (tweet || `${title}\n\n${shortDescription}\n\n${topicTagsLine}`)
       .replace(/\n\nContinue reading:[^\n]*/g, "")
       .trim();
 
@@ -199,7 +247,7 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
       icon: <Send size={18} />,
       getUrl: () => {
         const url = getShareUrl();
-        return `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(`${title}\n\n${shortDescription}\n\n${fallbackFormatted}`)}`;
+        return `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(`${title}\n\n${shortDescription}\n\n${topicTagsLine}`)}`;
       },
       needsAsync: false,
     },
@@ -222,7 +270,7 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
   const buildCmcPostText = () => {
     const url = getShareUrl();
     const text = generatedTweet || `${title}\n\n${shortDescription}`;
-    return `${text}\n\nRead full article on Pager:\n${url}`;
+    return `${text}\n\n${topicTagsLine}\n\nRead full article on Pager:\n${url}`;
   };
 
   const handleCmcShare = async () => {

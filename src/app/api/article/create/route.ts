@@ -48,19 +48,29 @@ export async function POST(req: Request) {
 
     // Прогреваем OG-картинку прямо при публикации: холодный старт роута занимает
     // ~15 c (fetch + sharp + резка), а Twitter-бот сдаётся раньше и показывает
-    // пустой баннер до повторного ретрая. Рендерим заранее и кладём ответ
-    // в CDN-кэш (s-maxage), чтобы первый запрос бота был быстрым.
+    // пустой баннер до повторного ретрая. Рендерим заранее и кладём ответ в
+    // CDN-кэш (s-maxage), чтобы первый запрос бота был быстрым.
+    //
+    // Свежий CID сразу после генерации может быть ещё не разложен по публичным
+    // гейтвеям — первый рендер вернёт fallback-карточку. Fallback не кэшируется
+    // (s-maxage=0), поэтому повторяем вывод несколько раз с паузой, пока не
+    // срендерится реальный баннер (только он попадает в CDN-кэш на сутки).
     try {
       const ogUrl = new URL(`/api/og?id=${articleId}`, req.url).toString();
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 25000);
+      const timer = setTimeout(() => controller.abort(), 20000);
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       try {
-        await fetch(ogUrl, { signal: controller.signal, cache: "no-store" });
+        for (let attempt = 0; attempt < 3; attempt++) {
+          await fetch(ogUrl, { signal: controller.signal, cache: "no-store" });
+          if (attempt < 2) await sleep(4000);
+        }
       } finally {
         clearTimeout(timer);
       }
     } catch {
-      // Не критично: боты в итоге сами сделают рендер, кэш соберётся с первого успешного ответа.
+      // Не критично: fallback-карточка не кэшируется, и боты в итоге поймают
+      // реальный баннер, как только CID прогреется на гейтвеях.
     }
 
     // Fetch user profile to return distribution targets to the client

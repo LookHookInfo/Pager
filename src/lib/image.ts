@@ -1,6 +1,7 @@
 import sharp from "sharp";
 import { ANYMODEL_IMAGE_MODEL, ANYMODEL_IMAGE_FALLBACK_MODEL, ANYMODEL_IMAGE_FALLBACK2_MODEL, ANYMODEL_IMAGE_CANDIDATES } from "@/lib/ai-models";
 import { aiLog, aiWarn } from "@/lib/ai-log";
+import { prewarmIpfs } from "@/lib/ipfs";
 
 const PINATA_TIMEOUT = 12000;
 
@@ -337,6 +338,11 @@ export async function generateReliableBanner(
         aiWarn("banner", `${model} rendered but pin failed`);
         continue;
       }
+      // Сразу после пина CID ещё «не прогрелся» на публичных гейтвеях — первые
+      // запросы (OG-прогрев, соцсети) могли бы не получить картинку. Заставляем
+      // гейтвеи забрать блок уже сейчас, чтобы к моменту публикации баннер был
+      // доступен мгновенно.
+      await prewarmIpfs(pinned);
       aiLog("banner", `${model} OK in ${Date.now() - start}ms size ${size}`);
       onProgress?.("done", model);
       return { url: pinned, model };
@@ -443,7 +449,7 @@ export async function generateSvgBanner(
   }).join("\n");
 
   const titleLines = lines.map((line, i) =>
-    `<text x="672" y="${textY + i * lineHeight}" text-anchor="middle" font-size="${fontSize}" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" fill="#ffffff" letter-spacing="2">${escapeXml(line)}</text>`
+    `<text x="672" y="${textY + i * lineHeight}" text-anchor="middle" font-size="${fontSize}" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" fill="#ffffff">${escapeXml(line)}</text>`
   ).join("\n");
 
   const svg = `<svg width="1344" height="768" viewBox="0 0 1344 768" xmlns="http://www.w3.org/2000/svg">
@@ -456,9 +462,9 @@ export async function generateSvgBanner(
   <rect width="1344" height="768" fill="url(#bg)"/>
   ${circles}
   <rect x="40" y="40" width="1264" height="688" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="2"/>
-  <text x="672" y="120" text-anchor="middle" font-size="20" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" fill="rgba(255,255,255,0.85)" letter-spacing="10">PAGER PROTOCOL</text>
+  <text x="672" y="120" text-anchor="middle" font-size="20" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" fill="rgba(255,255,255,0.85)">PAGER PROTOCOL</text>
   ${titleLines}
-  <text x="672" y="690" text-anchor="middle" font-size="18" font-family="DejaVu Sans, Arial, sans-serif" fill="rgba(255,255,255,0.7)" letter-spacing="6">${escapeXml(normalizedAtmosphere.toUpperCase())}</text>
+  <text x="672" y="690" text-anchor="middle" font-size="18" font-family="DejaVu Sans, Arial, sans-serif" fill="rgba(255,255,255,0.7)">${escapeXml(normalizedAtmosphere.toUpperCase())}</text>
 </svg>`;
 
   try {
@@ -467,7 +473,10 @@ export async function generateSvgBanner(
       .toBuffer();
 
     const pinned = await pinBufferToPinata(webp);
-    if (pinned) return pinned;
+    if (pinned) {
+      await prewarmIpfs(pinned);
+      return pinned;
+    }
 
     return `data:image/webp;base64,${webp.toString("base64")}`;
   } catch (e: any) {
