@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase';
 import { verifySession } from '@/lib/auth';
 
+export const maxDuration = 90;
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -58,12 +60,15 @@ export async function POST(req: Request) {
     try {
       const ogUrl = new URL(`/api/og?id=${articleId}`, req.url).toString();
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 20000);
+      const timer = setTimeout(() => controller.abort(), 45000);
       const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       try {
+        // Первый успешный рендер реального баннера попадает в CDN-кэш на сутки,
+        // поэтому достаточно одного «тёплого» запроса; остальные — страховка
+        // (fallback не кэшируется и самовосстанавливается).
         for (let attempt = 0; attempt < 3; attempt++) {
           await fetch(ogUrl, { signal: controller.signal, cache: "no-store" });
-          if (attempt < 2) await sleep(4000);
+          if (attempt < 2) await sleep(2000);
         }
       } finally {
         clearTimeout(timer);

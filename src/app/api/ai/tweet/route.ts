@@ -7,6 +7,7 @@ export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 const FALLBACK_FILLERS = ["#Crypto", "#Web3", "#DeFi", "#Base", "#Blockchain"];
+const TWEET_LIMIT = 250;
 
 export async function POST(req: Request) {
   try {
@@ -52,7 +53,7 @@ ${communityContext}
 MAIN SUBJECT TAG: ${mainSubject} — this tag MUST be the FIRST hashtag.
 
 RULES:
-1. "hook": ONE provocative, curiosity-driven sentence. Max 110 chars. It MUST reference the article's actual subject.
+1. "hook": ONE provocative, curiosity-driven sentence. Max 100 chars. It MUST reference the article's actual subject. Remember: the final tweet = hook + 5 hashtags + the article link, and the whole thing must fit in 250 characters.
 2. "hook" MUST include 1-2 @mentions chosen ONLY from RELEVANT COMMUNITIES. NEVER invent or guess handles. If none were detected, only mention a project/person whose official handle is clearly present in the article.
 3. "hashtags": EXACTLY 5 hashtags, space-separated, ALL ON-TOPIC:
    - FIRST: the MAIN SUBJECT TAG.
@@ -119,7 +120,7 @@ RULES:
     const fullUrl = articleUrl || getSiteUrl();
     const linkLine = `\n\nContinue reading: ${fullUrl}`;
     const hashtagsLine = "\n\n" + hashtags;
-    const hookBudget = 280 - linkLine.length - hashtagsLine.length;
+    const hookBudget = TWEET_LIMIT - linkLine.length - hashtagsLine.length;
 
     if (mentionPool.length > 0 && !mentionPool.some(h => hook.toLowerCase().includes(h))) {
       const handle = communities[0].handle;

@@ -269,8 +269,16 @@ export default function PostActions({ title, id, content = "", imageUrl, cmcUser
 
   const buildCmcPostText = () => {
     const url = getShareUrl();
-    const text = generatedTweet || `${title}\n\n${shortDescription}`;
-    return `${text}\n\n${topicTagsLine}\n\nRead full article on Pager:\n${url}`;
+    // The AI tweet already carries its own 5 on-topic hashtags and an inline
+    // "Continue reading" link — reuse them as-is, strip the link, and append a
+    // single Pager URL. Without the AI tweet, use title + description + the
+    // client-built topic hashtags. Either way: ONE link, 3-5 on-topic tags.
+    const tweet = (generatedTweet || "")
+      .replace(/\n\nContinue reading:[^\n]*/g, "")
+      .trim();
+    const body = tweet || `${title}\n\n${shortDescription}`;
+    const tags = tweet ? "" : `\n\n${topicTagsLine}`;
+    return `${body}${tags}\n\nRead full article on Pager:\n${url}`;
   };
 
   const handleCmcShare = async () => {

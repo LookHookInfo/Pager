@@ -416,6 +416,7 @@ function wrapTitle(text: string, maxChars: number): string[] {
 /**
  * Deterministic last-resort banner: renders title + atmosphere palette to an
  * SVG, rasterizes with sharp, pins to Pinata, falls back to a base64 data URL.
+ * Minimalist — just a gradient by atmosphere and the article title, no branding.
  * Never depends on external APIs, so it cannot fail to produce an image.
  */
 export async function generateSvgBanner(
@@ -438,15 +439,9 @@ export async function generateSvgBanner(
 
   const fontSize = cleanTitle.length > 80 ? 52 : cleanTitle.length > 40 ? 64 : 78;
   const maxChars = Math.floor(1120 / (fontSize * 0.58));
-  const lines = wrapTitle(cleanTitle.toUpperCase(), maxChars);
+  const lines = wrapTitle(cleanTitle, maxChars);
   const lineHeight = Math.round(fontSize * 1.25);
-  const textY = 380 - ((lines.length - 1) * lineHeight) / 2;
-
-  const circles = SVG_PALETTES.map((_, i) => {
-    const x = 60 + (i * 247) % 1260;
-    const y = 90 + (i * 173) % 560;
-    return `<circle cx="${x}" cy="${y}" r="${60 + i * 22}" fill="${i % 2 ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.12)"}"/>`;
-  }).join("\n");
+  const textY = 384 - ((lines.length - 1) * lineHeight) / 2;
 
   const titleLines = lines.map((line, i) =>
     `<text x="672" y="${textY + i * lineHeight}" text-anchor="middle" font-size="${fontSize}" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" fill="#ffffff">${escapeXml(line)}</text>`
@@ -460,11 +455,7 @@ export async function generateSvgBanner(
     </linearGradient>
   </defs>
   <rect width="1344" height="768" fill="url(#bg)"/>
-  ${circles}
-  <rect x="40" y="40" width="1264" height="688" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="2"/>
-  <text x="672" y="120" text-anchor="middle" font-size="20" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold" fill="rgba(255,255,255,0.85)">PAGER PROTOCOL</text>
   ${titleLines}
-  <text x="672" y="690" text-anchor="middle" font-size="18" font-family="DejaVu Sans, Arial, sans-serif" fill="rgba(255,255,255,0.7)">${escapeXml(normalizedAtmosphere.toUpperCase())}</text>
 </svg>`;
 
   try {
