@@ -12,10 +12,11 @@ export const ANYMODEL_TEXT_MODEL = () =>
 
 /**
  * Fallback text model — used when the primary returns 429/5xx/timeout.
- * Falls back to gpt-5.4-mini if gemini-3-flash is rate-limited.
+ * Falls back to gemini-2.5-flash-lite if the primary text model is
+ * rate-limited. gpt-5.4-mini is no longer served by the gateway (404).
  */
 export const ANYMODEL_FALLBACK_TEXT_MODEL = () =>
-  process.env.ANYMODEL_FALLBACK_TEXT_MODEL?.trim() || "cx/gpt-5.4-mini";
+  process.env.ANYMODEL_FALLBACK_TEXT_MODEL?.trim() || "ag/gemini-2.5-flash-lite";
 
 /** Banner / image generation model. */
 export const ANYMODEL_IMAGE_MODEL = () =>
@@ -69,7 +70,8 @@ export const ANYMODEL_IMAGE_CANDIDATES = (): string[] => {
 
 /**
  * Vision-capable text fallback — used for calls that include image_url content
- * (e.g. DNA scan). The default text fallback (gpt-5.4-mini) rejects image inputs.
+ * (e.g. DNA scan). gemini-2.5-flash-lite is a confirmed vision-capable model;
+ * gpt-5.4-mini rejected image inputs and was removed from the gateway (404).
  */
 export const ANYMODEL_VISION_FALLBACK_MODEL = () =>
-  process.env.ANYMODEL_VISION_FALLBACK_MODEL?.trim() || "cx/gpt-5.4-mini";
+  process.env.ANYMODEL_VISION_FALLBACK_MODEL?.trim() || "ag/gemini-2.5-flash-lite";

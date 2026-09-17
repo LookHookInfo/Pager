@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { chatAnyModel } from "@/lib/anymodel";
+import { ANYMODEL_VISION_FALLBACK_MODEL } from "@/lib/ai-models";
 import { extractJson } from "@/lib/utils";
 
 export const maxDuration = 60;
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
       const dataUrl = await toDataUrl(imageUrl);
 
       const result = extractJson(await chatAnyModel({
-        model: "cx/gpt-5.4-mini",
+        model: ANYMODEL_VISION_FALLBACK_MODEL(),
         messages: [{
           role: "user",
           content: [
