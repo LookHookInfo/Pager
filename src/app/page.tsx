@@ -43,7 +43,9 @@ export default async function Home({ searchParams }: { searchParams: { page?: st
             Post your opinion.
           </h1>
           <p className="text-[15px] text-[var(--text-dim)] leading-relaxed">
-            Web3 media community of $HASH on the Base network.
+            Web3 media community of $Pager on the Base network.
+            <br />
+            Pager contract: 0x31cf45b15c17befa20f8e031a935daa398568e40
           </p>
         </div>
       </section>
