@@ -116,7 +116,7 @@ export default function NewsPage() {
               Fresh Signal.
             </h1>
             <p className="text-lg text-[var(--text-dim)] leading-relaxed">
-              Real-time crypto news from 12 sources. Pick a story, rewrite it with AI, publish on Pager.
+              Real-time crypto news from 26 sources. Pick a story, rewrite it with AI, publish on Pager.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -210,7 +210,7 @@ export default function NewsPage() {
           <div className="flex flex-col items-center justify-center py-32 gap-4">
             <Loader2 size={28} className="animate-spin text-gray-300" />
             <span className="text-sm text-[var(--text-dim)]">
-              Fetching 12 feeds...
+              Fetching 26 feeds...
             </span>
           </div>
         ) : error ? (
