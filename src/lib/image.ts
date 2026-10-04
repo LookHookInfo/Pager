@@ -1,7 +1,8 @@
 import sharp from "sharp";
-import { ANYMODEL_IMAGE_MODEL, ANYMODEL_IMAGE_FALLBACK_MODEL, ANYMODEL_IMAGE_FALLBACK2_MODEL, ANYMODEL_IMAGE_CANDIDATES } from "@/lib/ai-models";
+import { ANYMODEL_IMAGE_MODEL, ANYMODEL_IMAGE_FALLBACK_MODEL, ANYMODEL_IMAGE_FALLBACK2_MODEL, ANYMODEL_IMAGE_CANDIDATES, imageModelSkipsProbe } from "@/lib/ai-models";
 import { aiLog, aiWarn } from "@/lib/ai-log";
-import { prewarmIpfs } from "@/lib/ipfs";
+import { prewarmIpfs, ipfsGatewayVariants } from "@/lib/ipfs";
+import { uploadBannerToStorage } from "@/lib/storage";
 
 const PINATA_TIMEOUT = 12000;
 
@@ -108,20 +109,30 @@ async function pinBufferToPinata(compressed: Buffer): Promise<string | null> {
 
 /** Fetch a remote image and return it as a base64 data URL (AnyModel reference format). */
 async function imageToDataUrl(url: string): Promise<string | null> {
-  try {
-    const res = await fetch(url, {
-      // The Pinata gateway is slow — 10s used to lose the reference on
-      // half the requests. 25s covers connect + body for a typical mascot.
-      signal: AbortSignal.timeout(25000),
-    });
-    if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    const mime = res.headers.get("content-type")?.split(";")[0]?.trim() || "image/png";
-    return `data:${mime};base64,${buf.toString("base64")}`;
-  } catch (e: any) {
-    console.warn("imageToDataUrl error:", e.message);
-    return null;
+  // Public gateways go down and rate-limit independently (a single blocked
+  // gateway used to cost the whole mascot reference), so every gateway variant
+  // is tried in turn before giving up.
+  const variants = ipfsGatewayVariants(url);
+  if (variants.length === 0) return null;
+
+  for (const variant of variants) {
+    try {
+      const res = await fetch(variant, {
+        // The gateways are slow — 10s used to lose the reference on
+        // half the requests. 25s covers connect + body for a typical mascot.
+        signal: AbortSignal.timeout(25000),
+      });
+      if (!res.ok) continue;
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length === 0) continue;
+      const mime = res.headers.get("content-type")?.split(";")[0]?.trim() || "image/png";
+      return `data:${mime};base64,${buf.toString("base64")}`;
+    } catch (e: any) {
+      console.warn(`imageToDataUrl ${variant.split("/")[2]}:`, e.message);
+    }
   }
+  console.warn("imageToDataUrl: no gateway served the reference image");
+  return null;
 }
 
 export interface AnyModelImageOptions {
@@ -147,7 +158,10 @@ const ANYMODEL_IMAGE_SIZES = new Set([
 const DEFAULT_ANYMODEL_IMAGE_SIZE = "1792x1024";
 
 // Short timeout for cheap model probes (256x256) — dead models should fall
-// through fast so we don't burn the banner budget on them.
+  // through fast so we don't burn the banner budget on them.
+  // Models whose cheapest render already exceeds this budget are exempted from
+  // probing entirely (see IMAGE_MODEL_PROBE_POLICY) — otherwise a probe would
+  // reject a perfectly working engine before it was ever tried.
 const ANYMODEL_PROBE_TIMEOUT_MS = 12000;
 
 /**
@@ -307,16 +321,26 @@ export async function generateReliableBanner(
   onProgress?.("probing");
   let anyAlive = false;
   for (const model of chain) {
-    const probe = await probeAnyModelImageWithRetry(model);
-    if (!probe.ok) {
-      onProbe?.({ model, ok: false, status: probe.status });
-      aiLog("banner", `${model} DOWN on probe${probe.status ? ` (${probe.status})` : ""}`);
-      continue;
+    // Slow engines skip the health-check and go straight to the render: their
+    // cheapest render already costs more than the probe budget, so probing them
+    // would reject a working engine 100% of the time (measured: cx/gpt-image-2
+    // needs 26-89s per render vs the 12s probe timeout).
+    const skipProbe = imageModelSkipsProbe(model);
+    if (skipProbe) {
+      anyAlive = true;
+      aiLog("banner", `${model} slow engine — probe skipped, rendering directly`);
+    } else {
+      const probe = await probeAnyModelImageWithRetry(model);
+      if (!probe.ok) {
+        onProbe?.({ model, ok: false, status: probe.status });
+        aiLog("banner", `${model} DOWN on probe${probe.status ? ` (${probe.status})` : ""}`);
+        continue;
+      }
+      anyAlive = true;
+      onProbe?.({ model, ok: true });
     }
-    anyAlive = true;
-    onProbe?.({ model, ok: true });
 
-    // Probe passed — try the full render now.
+    // Probe passed (or was skipped) — try the full render now.
     const start = Date.now();
     onProgress?.("rendering", model);
     try {
@@ -333,9 +357,12 @@ export async function generateReliableBanner(
       }
       onProgress?.("pinning");
       const compressed = await sharp(buffer).webp({ quality: 85, effort: 4 }).toBuffer();
-      const pinned = await pinBufferToPinata(compressed);
+      // Pinata is primary, Supabase Storage is the safety net. A render that
+      // took 26-89s must never be discarded because of a storage outage — that
+      // is what used to produce the SVG placeholder.
+      const pinned = (await pinBufferToPinata(compressed)) || (await uploadBannerToStorage(compressed, "image/webp"));
       if (!pinned) {
-        aiWarn("banner", `${model} rendered but pin failed`);
+        aiWarn("banner", `${model} rendered but pin AND storage fallback failed`);
         continue;
       }
       // Сразу после пина CID ещё «не прогрелся» на публичных гейтвеях — первые
@@ -463,7 +490,7 @@ export async function generateSvgBanner(
       .webp({ quality: 85, effort: 3 })
       .toBuffer();
 
-    const pinned = await pinBufferToPinata(webp);
+    const pinned = (await pinBufferToPinata(webp)) || (await uploadBannerToStorage(webp, "image/webp", "placeholder"));
     if (pinned) {
       await prewarmIpfs(pinned);
       return pinned;

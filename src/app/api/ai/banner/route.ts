@@ -36,7 +36,7 @@ interface BannerInput {
 /**
  * Runs the full debited banner job (authorize not included — caller gates).
  * Writes progress into `emit` (called on phase changes) and resolves to the
- * ready banner, or null when every engine failed (SVG fallback path handled by
+ * ready banner, or null when every engine failed (no AI image produced path handled by
  * caller).
  */
 async function runBannerJob(
@@ -96,15 +96,11 @@ async function runBannerJob(
   }
 
   // True last resort — every probed engine failed to produce a real banner.
-  // We refund credits and serve a branded SVG placeholder so the article still
-  // gets a banner instead of an error screen (per product decision the SVG is
-  // the final fallback; the client surfaces a retry hint).
-  aiWarn("banner-route", "all engines failed → SVG fallback");
+  
+  
+  
+  aiWarn("banner-route", "all engines failed - no AI image produced");
   await atomicRefundCredits(normalizedAddress, 10);
-  const svgUrl = await generateSvgBanner(input.title || "Pager", atmosphere);
-  if (svgUrl) {
-    return { url: svgUrl, model: "svg" };
-  }
   return null;
 }
 
@@ -127,8 +123,8 @@ export async function POST(req: Request) {
 
       const result = await runBannerJob(body, emitProgress);
       if (result) {
-        if (result.model === "svg") {
-          return NextResponse.json({ image_url: result.url, image_engine: "svg", error: "anymodel_failed" });
+        if (result.model === "") {
+          return NextResponse.json({ image_url: result.url, image_engine: "", error: "anymodel_failed" });
         }
         return NextResponse.json({ image_url: result.url, image_engine: "anymodel", image_model: result.model });
       }
@@ -178,8 +174,8 @@ export async function POST(req: Request) {
         try {
           const result = await runBannerJob(body, emit, emitProbe);
           if (result) {
-            if (result.model === "svg") {
-              send({ type: "result", image_url: result.url, image_engine: "svg", error: "anymodel_failed" });
+            if (result.model === "") {
+              send({ type: "result", image_url: result.url, image_engine: "", error: "anymodel_failed" });
             } else {
               send({ type: "result", image_url: result.url, image_engine: "anymodel", image_model: result.model });
             }

@@ -23,7 +23,7 @@ Mascots are NFTs on the **Base** network. Their DNA lives in two places, resolve
 
 ### 3. Creating a Mascot (Forge) — `/mascots`
 1.  **Image upload** → `/api/upload` → pinned to **IPFS (Pinata)** → `image_url`.
-2.  **AI DNA scan** (`/api/ai/analyze`, Gemini 3.5 Flash via AnyModel) optionally extracts `personality`, `voice`, `visual_desc` from the image.
+2.  **AI DNA scan** (`/api/ai/analyze`, Gemini 2.5 Flash via AnyModel) optionally extracts `personality`, `voice`, `visual_desc` from the image.
 3.  **Required fields:** `name`, `personality`, `image_url`, `price` (`voice`, `visual_desc` optional).
 4.  A row is `upsert`ed into `mascots_dna` with `id = nextTokenId` **before** minting, so the DB is always in sync with the contract.
 5.  `createMascot(price)` runs on-chain (with a `$HASH` approval of `CREATION_FEE`).
@@ -31,7 +31,7 @@ Mascots are NFTs on the **Base** network. Their DNA lives in two places, resolve
 ### 4. AI Pipeline (Publishing Workflow) — `/write`
 1.  **Mascot selection:** `getUserMascots(address)` (on-chain) → active owned token IDs → matched against `mascots_dna` → the user picks a mascot (default: profile `ai_nft_token_id`, else first owned).
 2.  **Scraping:** **Jina Reader (r.jina.ai)** fetches and cleans content from an external URL into structured Markdown.
-3.  **Rewriting:** The text is rewritten with **Gemini 3.5 Flash (via AnyModel)** applying the selected **Mood** (Sarcastic, Bullish, Bearish, Humorous, Negative, FOMO, Happy, Neutral) and the mascot's **DNA** (`personality` + `voice`) from `getCharacterSystemPrompt`.
+3.  **Rewriting:** The text is rewritten with **Gemini 2.5 Flash (via AnyModel)** applying the selected **Mood** (Sarcastic, Bullish, Bearish, Humorous, Negative, FOMO, Happy, Neutral) and the mascot's **DNA** (`personality` + `voice`) from `getCharacterSystemPrompt`.
 4.  **Visual generation:** See the *Banner Pipeline* below.
 5.  **Distribution:** The engine adapts and posts content to the user's connected **Telegram** channels and **Binance Square** accounts.
 
@@ -51,7 +51,7 @@ The banner always depicts **the user's chosen mascot**. Two mechanisms enforce t
 
 1.  Session verification + **atomic debit of 10 $HASH credits** (`ai_credits`).
 2.  `resolveDna(nftTokenId)` → if no DNA: refund + `404`.
-3.  Build + sanitize the prompt; call **`generateAnyModelImage`** (`flow/nano-banana-lite`, 1280×720, sync, budget-bounded via `withBudget`). The mascot reference is passed as a base64 data URL.
+3.  Build + sanitize the prompt; call **`generateReliableBanner`** — a single-engine pipeline on **`cx/gpt-image-2`**, with the mascot reference passed as a base64 data URL. The engine is exempted from the 256×256 probe via `IMAGE_MODEL_PROBE_POLICY`: it needs 26–89s per render at 1280×720, always more than the 12s probe budget, so a probe would reject it every time. Sync, budget-bounded via `withBudget` (140s). If the render fails, the route **refunds the 10 credits** and serves the branded **SVG placeholder** (the client retries once). Retired engines (`am/flux.2-klein-4b`, `flow/nano-banana-lite`, `ag/gemini-3.1-flash-image`, …) are archived in `src/lib/ai-models.ts` and come back by uncommenting one line.
 4.  On success the image is compressed to WebP (**sharp**), pinned to **IPFS (Pinata)**, and the ready gateway URL is returned inline (`image_engine: "anymodel"`).
 5.  On total failure the 10 credits are **refunded** (`atomicRefundCredits`) and a branded **SVG placeholder** (`generateSvgBanner`) is returned so the article still gets a banner.
 
@@ -84,7 +84,7 @@ User profiles hide several mechanisms for customizing the protocol's operation:
 | Setting | Impact on the System |
 | :--- | :--- |
 | **User AI API Key** | If provided, AI requests are routed through the user's key. This bypasses platform limits and allows the use of personal distribution protocols. |
-| **Image Engine** | **Banner rendering.** Banners are generated with **Nano Banana 2 Lite (AnyModel)** using the mascot reference image; an **SVG placeholder** is the final fallback. Every banner costs **10 AI credits** and is pinned to IPFS via Pinata. |
+| **Image Engine** | **Banner rendering.** Banners are drawn by **gpt-image-2 (AnyModel)** with the mascot reference image. If it fails, credits are refunded and an **SVG placeholder** is served. Every banner costs **10 AI credits** and is pinned to IPFS via Pinata. |
 | **Thirdweb Client ID** | **The key storage switch.** If a Client ID is provided, the system switches from Supabase Storage to **IPFS**. Your images become decentralized and permanent. |
 | **Monetization** | Custom CTA links for Telegram channels, Forums, and Referral networks integrated into every article. |
 | **GemFun Token** | A meme-token address from hashcoin.farm/gem. Pins the **GemFunCard** (bonding-curve progress + buy slider) under the bio on the author's Tape page. |
@@ -98,7 +98,7 @@ User profiles hide several mechanisms for customizing the protocol's operation:
 *   **Blockchain:** Thirdweb SDK + Base Network (mascot NFT contract, $HASH token).
 *   **Launchpad:** GemFun (hashcoin.farm/gem) — bonding-curve meme-token buy-card on profile pages.
 *   **Database/Auth:** Supabase (`profiles`, `mascots_dna`).
-*   **AI Engine:** AnyModel (Gemini 2.5 Flash text / Nano Banana 2 Lite banners), Jina Reader (scraping).
+*   **AI Engine:** AnyModel (Gemini 2.5 Flash text / gpt-image-2 banners), Jina Reader (scraping).
 *   **Media:** Pinata (IPFS), sharp (WebP compression).
 
 ---
@@ -114,7 +114,8 @@ Required in `.env` / Vercel:
 | `ANYMODEL_API_KEY` | AnyModel gateway key (text + image generation) |
 | `ANYMODEL_TEXT_MODEL` | Text model for all LLM calls (`gc/gemini-2.5-flash`) |
 | `ANYMODEL_FALLBACK_TEXT_MODEL` | Retry model on upstream failure — same pool as primary, app is strictly limited to two models (`gc/gemini-2.5-flash`) |
-| `ANYMODEL_IMAGE_MODEL` | Banner image model (`flow/nano-banana-lite`) |
+| `ANYMODEL_IMAGE_MODEL` | The **only** banner engine — **gpt-image-2** (`cx/gpt-image-2`). Verified on the live gateway: accepts `1280x720` and supports I2I. Slow (26–89s), hence exempted from probing. |
+| `ANYMODEL_IMAGE_FALLBACK_MODEL` / `ANYMODEL_IMAGE_FALLBACK2_MODEL` / `ANYMODEL_IMAGE_EXTRA_MODELS` | **Archived.** Empty by default. Uncomment in `.env` (or the accessor in `src/lib/ai-models.ts`) to revive `am/flux.2-klein-4b` (paid but fast/reliable, 6.6s) or the nano-banana tier. |
 | `ANYMODEL_IMAGE_SIZE` | Banner size — see `ANYMODEL_IMAGE_SIZES` in `src/lib/image.ts` (16:9 `1792x1024` is the default, `1280x720` is proven against the live gateway) |
 | `JINA_API_KEY` | Jina Reader scraping (`/api/ai/scrape`) |
 | `PINATA_JWT` | IPFS pinning (JWT auth) |
