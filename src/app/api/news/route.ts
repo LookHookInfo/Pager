@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 interface FeedSource {
   name: string;
@@ -11,7 +11,6 @@ interface FeedSource {
 }
 
 const FEEDS: FeedSource[] = [
-  // ── Crypto Core ──
   { name: "CoinDesk", url: "https://www.coindesk.com/arc/outboundfeeds/rss/", icon: "📰", category: "general" },
   { name: "CoinTelegraph", url: "https://cointelegraph.com/rss", icon: "⚡", category: "general" },
   { name: "crypto.news", url: "https://crypto.news/feed/", icon: "🪙", category: "general" },
@@ -30,23 +29,17 @@ const FEEDS: FeedSource[] = [
   { name: "Unchained", url: "https://unchainedcrypto.com/feed/", icon: "🔗", category: "defi" },
   { name: "The Defiant", url: "https://thedefiant.io/feed", icon: "🦇", category: "defi" },
   { name: "Cryptonews", url: "https://cryptonews.com/news/feed/", icon: "📜", category: "regulation" },
-
-  // ── Geopolitics & Global Affairs ──
   { name: "Al Jazeera", url: "https://www.aljazeera.com/xml/rss/all.xml", icon: "🌍", category: "geopolitics" },
   { name: "DW News", url: "https://rss.dw.com/rdf/rss-en-all", icon: "🌐", category: "geopolitics" },
-
-  // ── Economy & Markets ──
   { name: "MarketWatch", url: "https://feeds.marketwatch.com/marketwatch/topstories/", icon: "📊", category: "economy" },
   { name: "Investing.com", url: "https://www.investing.com/rss/news.rss", icon: "💹", category: "economy" },
   { name: "FT Markets", url: "https://www.ft.com/markets?format=rss", icon: "🏦", category: "economy" },
   { name: "CNBC Economy", url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258", icon: "🇺🇸", category: "economy" },
-
-  // ── AI & Tech ──
   { name: "TechCrunch", url: "https://techcrunch.com/feed/", icon: "🤖", category: "tech" },
   { name: "The Verge", url: "https://www.theverge.com/rss/index.xml", icon: "🔬", category: "tech" },
 ];
 
-const DEFAULT_MAX_AGE_HOURS = 48;
+const DEFAULT_MAX_AGE_HOURS = 168;
 
 interface ParsedItem {
   title: string;
@@ -84,17 +77,16 @@ function cleanCdata(text: string): string {
     .trim();
 }
 
-// RFC2822 and ISO 8601 are both handled by Date.parse; JS locales only.
-function parseDate(value: string): number {
-  const t = new Date(value).getTime();
-  return Number.isNaN(t) ? 0 : t;
-}
-
 function limitDescription(text: string): string {
   return text.slice(0, 300);
 }
 
-// ── RSS 2.0 ──
+function parseDate(value: string): number {
+  if (!value) return Date.now();
+  const t = new Date(value).getTime();
+  return Number.isNaN(t) ? Date.now() : t;
+}
+
 function parseRss2Items(xml: string, source: FeedSource): ParsedItem[] {
   const items: ParsedItem[] = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
@@ -107,7 +99,7 @@ function parseRss2Items(xml: string, source: FeedSource): ParsedItem[] {
     const pubDate = parseDate(cleanCdata(extractTag(itemXml, "pubDate")));
     const description = limitDescription(cleanCdata(extractTag(itemXml, "description")));
 
-    if (title && link && pubDate) {
+    if (title && link) {
       items.push({
         title,
         link,
@@ -123,7 +115,6 @@ function parseRss2Items(xml: string, source: FeedSource): ParsedItem[] {
   return items;
 }
 
-// ── Atom ──
 function parseAtomItems(xml: string, source: FeedSource): ParsedItem[] {
   const items: ParsedItem[] = [];
   const entryRegex = /<entry>([\s\S]*?)<\/entry>/gi;
@@ -141,7 +132,7 @@ function parseAtomItems(xml: string, source: FeedSource): ParsedItem[] {
       cleanCdata(extractTag(entryXml, "summary") || extractTag(entryXml, "content"))
     );
 
-    if (title && link && pubDate) {
+    if (title && link) {
       items.push({
         title,
         link,
@@ -157,7 +148,6 @@ function parseAtomItems(xml: string, source: FeedSource): ParsedItem[] {
   return items;
 }
 
-// ── RSS 1.0 / RDF ──
 function parseRdfItems(xml: string, source: FeedSource): ParsedItem[] {
   const items: ParsedItem[] = [];
   const itemRegex = /<item rdf:about="([^"]*)">([\s\S]*?)<\/item>/gi;
@@ -170,7 +160,7 @@ function parseRdfItems(xml: string, source: FeedSource): ParsedItem[] {
     const pubDate = parseDate(cleanCdata(extractTag(itemXml, "dc:date")));
     const description = limitDescription(cleanCdata(extractTag(itemXml, "description")));
 
-    if (title && link && pubDate) {
+    if (title && link) {
       items.push({
         title,
         link,
@@ -193,24 +183,39 @@ function parseFeed(xml: string, source: FeedSource): ParsedItem[] {
   const atom = parseAtomItems(xml, source);
   if (atom.length) return atom;
 
-  return parseRdfItems(xml, source);
+  const rdf = parseRdfItems(xml, source);
+  if (rdf.length) return rdf;
+
+  return [];
 }
 
-async function fetchFeed(source: FeedSource) {
+async function fetchFeed(source: FeedSource): Promise<ParsedItem[]> {
   try {
     const res = await fetch(source.url, {
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(15000),
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-        Accept: "application/rss+xml, application/xml, text/xml",
+        "User-Agent": "Mozilla/5.0 (compatible; PagerBot/1.0)",
+        Accept: "application/xml, application/rss+xml, application/atom+xml, text/xml, */*",
       },
     });
 
-    if (!res.ok) return [];
+    if (!res.ok) {
+      console.warn(`[NEWS] ${source.name}: HTTP ${res.status}`);
+      return [];
+    }
 
-    const xml = await res.text();
-    return parseFeed(xml, source);
-  } catch {
+    const text = await res.text();
+    const isXml = text.trim().startsWith("<?xml") || text.trim().startsWith("<rss") || text.trim().startsWith("<feed") || text.trim().startsWith("<rdf");
+    if (!isXml) {
+      console.warn(`[NEWS] ${source.name}: Non-XML response`);
+      return [];
+    }
+
+    const items = parseFeed(text, source);
+    console.log(`[NEWS] ${source.name}: ${items.length} items`);
+    return items;
+  } catch (e: any) {
+    console.warn(`[NEWS] ${source.name}: Timeout or error`);
     return [];
   }
 }
@@ -230,12 +235,19 @@ export async function GET(request: Request) {
       ? FEEDS
       : FEEDS.filter((f) => f.name.toLowerCase() === sourceFilter.toLowerCase());
 
+  console.log(`[NEWS] Fetching ${feedsToFetch.length} feeds`);
+
   const results = await Promise.allSettled(feedsToFetch.map(fetchFeed));
 
-  const allItems = results
+  const fulfilled = results
     .filter((r): r is PromiseFulfilledResult<ParsedItem[]> => r.status === "fulfilled")
-    .flatMap((r) => r.value)
-    .filter((item) => item.pubDate && new Date(item.pubDate).getTime() >= cutoff)
+    .flatMap((r) => r.value);
+
+  const allItems = fulfilled
+    .filter((item) => {
+      const t = item.pubDate ? new Date(item.pubDate).getTime() : 0;
+      return t >= cutoff;
+    })
     .sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
     .slice(0, limit);
 
