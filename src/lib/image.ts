@@ -62,30 +62,54 @@ async function tryPinataWithBuffer(
     return null;
   }
 
-  try {
-    const res = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
-      method: "POST",
-      headers,
-      body: formData,
-      signal: AbortSignal.timeout(PINATA_TIMEOUT),
-    });
+  let attempts = 0;
+  const maxAttempts = 3;
+  const baseDelay = 2000;
 
-    if (!res.ok) {
-      const err = await res.text().catch(() => "unknown");
-      const hint = res.status === 403 && err.includes("NO_SCOPES_FOUND")
-        ? " — Pinata key is missing the pinFileToIPFS scope (recreate the key with Pinning scopes)"
-        : "";
-      console.error(`Pinata ${authType} failed: ${res.status} — ${err.slice(0, 200)}${hint}`);
+  while (attempts < maxAttempts) {
+    attempts++;
+    try {
+      const res = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
+        method: "POST",
+        headers,
+        body: formData,
+        signal: AbortSignal.timeout(PINATA_TIMEOUT),
+      });
+
+      if (!res.ok) {
+        const err = await res.text().catch(() => "unknown");
+        if (res.status === 403 && err.includes("Account blocked due to plan usage limit")) {
+          if (attempts < maxAttempts) {
+            const delay = baseDelay * attempts;
+            aiWarn("pinata", `plan limit hit, retry #${attempts} after ${delay}ms`);
+            await new Promise((r) => setTimeout(r, delay));
+            continue;
+          }
+          aiWarn("pinata", "plan usage limit exceeded after all retries");
+          return null;
+        }
+        const hint = res.status === 403 && err.includes("NO_SCOPES_FOUND")
+          ? " — Pinata key is missing the pinFileToIPFS scope (recreate the key with Pinning scopes)"
+          : "";
+        console.error(`Pinata ${authType} failed: ${res.status} — ${err.slice(0, 200)}${hint}`);
+        return null;
+      }
+
+      const data = await res.json();
+      const gateway = process.env.NEXT_PUBLIC_PINATA_GATEWAY || "https://gateway.pinata.cloud/ipfs/";
+      return `${gateway.replace(/\/+$/, "")}/${data.IpfsHash}`;
+    } catch (e: any) {
+      if (attempts < maxAttempts) {
+        const delay = baseDelay * attempts;
+        aiWarn("pinata", `network error, retry #${attempts} after ${delay}ms`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      console.error(`Pinata ${authType} fetch error after ${attempts} attempts: ${e.message}`);
       return null;
     }
-
-    const data = await res.json();
-    const gateway = process.env.NEXT_PUBLIC_PINATA_GATEWAY || "https://gateway.pinata.cloud/ipfs/";
-    return `${gateway.replace(/\/+$/, "")}/${data.IpfsHash}`;
-  } catch (e: any) {
-    console.error(`Pinata ${authType} fetch error: ${e.message}`);
-    return null;
   }
+  return null;
 }
 
 async function pinBufferToPinata(compressed: Buffer): Promise<string | null> {

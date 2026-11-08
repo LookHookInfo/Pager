@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prewarmIpfs } from '@/lib/ipfs';
+import { uploadBannerToStorage } from '@/lib/storage';
 
 export async function POST(req: Request) {
   try {
@@ -38,52 +39,106 @@ export async function POST(req: Request) {
     }
     cleanJwt = cleanJwt.replace(/JWT$/, '');
 
-    const pinataFormData = new FormData();
-    pinataFormData.append('file', file);
+    const formDataPinata = new FormData();
+    formDataPinata.append('file', file);
     
     const metadata = JSON.stringify({ 
       name: `pager-${Date.now()}-${file.name}`,
       keyvalues: { project: 'Pager', timestamp: Date.now().toString() }
     });
-    pinataFormData.append('pinataMetadata', metadata);
-    pinataFormData.append('pinataOptions', JSON.stringify({ cidVersion: 1 }));
+    formDataPinata.append('pinataMetadata', metadata);
+    formDataPinata.append('pinataOptions', JSON.stringify({ cidVersion: 1 }));
 
-    console.log("📡 [Upload API] Sending request to Pinata... (Token length:", cleanJwt.length, ")");
+    let attempts = 0;
+    const maxAttempts = 3;
+    const baseDelay = 2000;
 
-    const res = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${cleanJwt}`,
-      },
-      body: pinataFormData,
-    });
+    // Retry logic for Pinata plan usage limit
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        const res = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${cleanJwt}`,
+          },
+          body: formDataPinata,
+        });
 
-    const responseText = await res.text();
+        if (!res.ok) {
+          const err = await res.text().catch(() => "unknown");
+          if (res.status === 403 && err.includes("Account blocked due to plan usage limit")) {
+            if (attempts < maxAttempts) {
+              const delay = baseDelay * attempts;
+              console.warn(`Pinata plan limit hit, retry #${attempts} after ${delay}ms`);
+              await new Promise((r) => setTimeout(r, delay));
+              continue;
+            }
+            console.error("Pinata plan usage limit exceeded after all retries");
+            // Fallback to Supabase
+            const buffer = Buffer.from(await file.arrayBuffer());
+            const supUrl = await uploadBannerToStorage(buffer, file.type || "image/webp");
+            if (supUrl) {
+              await prewarmIpfs(supUrl);
+              return NextResponse.json({ 
+                success: true, 
+                ipfsHash: null, 
+                url: supUrl, 
+                fallback: "supabase" 
+              });
+            }
+            return NextResponse.json({ 
+              error: 'Pinata plan limit exceeded and Supabase fallback failed', 
+              status: 403 
+            }, { status: 403 });
+          }
+          console.error(`Pinata API error ${res.status}:`, err);
+          return NextResponse.json({ error: 'Pinata upload failed', status: res.status }, { status: res.status });
+        }
 
-    if (!res.ok) {
-      console.error(`❌ [Pinata API] Error ${res.status}:`, responseText);
-      return NextResponse.json({ 
-        error: 'Pinata upload failed', 
-        status: res.status,
-        details: responseText 
-      }, { status: res.status });
+        const data = await res.json();
+        const gateway = process.env.NEXT_PUBLIC_PINATA_GATEWAY || "https://gateway.pinata.cloud/ipfs/";
+        const publicUrl = `${gateway.endsWith('/') ? gateway : gateway + '/'}${data.IpfsHash}`;
+
+        // Прогреваем гейтвеи сразу: свежий CID на них появляется с задержкой, а
+        // аватар из URL вскоре задействует /api/og (профили) индексироваться ботами.
+        await prewarmIpfs(publicUrl);
+
+        return NextResponse.json({ 
+          success: true, 
+          ipfsHash: data.IpfsHash, 
+          url: publicUrl 
+        });
+
+      } catch (e: any) {
+        if (attempts < maxAttempts) {
+          const delay = baseDelay * attempts;
+          console.warn(`Pinata network error, retry #${attempts} after ${delay}ms`);
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
+        console.error(`Pinata upload failed after ${attempts} attempts:`, e.message);
+        // Fallback to Supabase on final attempt failure
+        try {
+          const buffer = Buffer.from(await file.arrayBuffer());
+          const supUrl = await uploadBannerToStorage(buffer, file.type || "image/webp");
+          if (supUrl) {
+            await prewarmIpfs(supUrl);
+            return NextResponse.json({ 
+              success: true, 
+              ipfsHash: null, 
+              url: supUrl, 
+              fallback: "supabase" 
+            });
+          }
+        } catch (supaErr: any) {
+          console.error("Supabase fallback failed:", supaErr.message);
+        }
+        return NextResponse.json({ error: 'Pinata upload failed after retries', status: 500 }, { status: 500 });
+      }
     }
 
-    const data = JSON.parse(responseText);
-    const gateway = process.env.NEXT_PUBLIC_PINATA_GATEWAY || "https://gateway.pinata.cloud/ipfs/";
-    const publicUrl = `${gateway.endsWith('/') ? gateway : gateway + '/'}${data.IpfsHash}`;
-
-    console.log("✅ [Upload API] Success! IPFS URL:", publicUrl);
-
-    // Прогреваем гейтвеи сразу: свежий CID на них появляется с задержкой, а
-    // аватар из URL вскоре задействует /api/og (профили) индексироваться ботами.
-    await prewarmIpfs(publicUrl);
-
-    return NextResponse.json({ 
-      success: true, 
-      ipfsHash: data.IpfsHash, 
-      url: publicUrl 
-    });
+    return NextResponse.json({ error: 'Pinata upload failed after retries' }, { status: 500 });
 
   } catch (error: any) {
     console.error("❌ [Upload API] Critical Error:", error.message);
