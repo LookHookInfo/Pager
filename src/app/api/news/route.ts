@@ -39,7 +39,7 @@ const FEEDS: FeedSource[] = [
   { name: "The Verge", url: "https://www.theverge.com/rss/index.xml", icon: "🔬", category: "tech" },
 ];
 
-const DEFAULT_MAX_AGE_HOURS = 168;
+const DEFAULT_MAX_AGE_HOURS = 24;
 
 interface ParsedItem {
   title: string;
@@ -224,9 +224,9 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const sourceFilter = searchParams.get("source") || "all";
   const limit = Math.min(Number(searchParams.get("limit")) || 60, 120);
-  const maxAgeHours = Math.max(
+const maxAgeHours = Math.min(
     Number(searchParams.get("maxAge")) || DEFAULT_MAX_AGE_HOURS,
-    1
+    DEFAULT_MAX_AGE_HOURS
   );
   const cutoff = Date.now() - maxAgeHours * 60 * 60 * 1000;
 
